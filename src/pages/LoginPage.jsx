@@ -184,11 +184,6 @@ export default function LoginPage() {
         </button>
       </form>
 
-      <div className="mt-4 p-3 bg-[var(--color-bg-alt)] rounded-lg text-xs text-[var(--color-text-muted)] space-y-0.5">
-        <p><strong className="text-[var(--color-text)]">Demo Admin:</strong> admin@examprep.com / Admin@123</p>
-        <p><strong className="text-[var(--color-text)]">Demo User:</strong> user@examprep.com / User@123</p>
-      </div>
-
       <p className="text-sm text-center text-[var(--color-text-muted)] mt-5">
         Don't have an account?{' '}
         <Link to="/signup" className="text-[var(--color-primary)] font-semibold hover:underline">Sign up free</Link>
