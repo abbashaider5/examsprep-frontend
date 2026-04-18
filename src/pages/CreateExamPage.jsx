@@ -4,7 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
-import FeedbackModal, { shouldShowFeedback } from '../components/FeedbackModal.jsx';
+import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
 import { examApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -176,6 +176,7 @@ export default function CreateExamPage() {
       qc.invalidateQueries({ queryKey: ['subscription'] });
       qc.invalidateQueries({ queryKey: ['me'] }); // refresh remaining exam count
       toast.success('Exam created!');
+      trackFeedbackInteraction(); // count creating an exam as an interaction
       if (isInstructor) {
         setCreatedExam(res.data.exam);
         if (shouldShowFeedback()) setTimeout(() => setShowFeedback(true), 3000);

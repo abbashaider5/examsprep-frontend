@@ -20,9 +20,12 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Inbox,
   Layers,
+  Mail,
   MessageSquare,
   RefreshCw,
+  Reply,
   Search,
   Settings,
   Shield,
@@ -36,7 +39,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, feedbackApi, logsApi, settingsApi } from '../services/api.js';
+import { adminApi, feedbackApi, logsApi, settingsApi, contactApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -44,6 +47,7 @@ const TABS = [
   { id: 'overview',  label: 'Overview',         icon: BarChart2 },
   { id: 'users',     label: 'Users',             icon: Users },
   { id: 'plans',     label: 'Plan Management',   icon: Layers },
+  { id: 'contacts',  label: 'Contact Queries',   icon: Inbox },
   { id: 'logs',      label: 'Activity Logs',     icon: Activity },
   { id: 'settings',  label: 'Settings',          icon: Settings },
   { id: 'payments',  label: 'Payments',          icon: CreditCard },
@@ -1043,6 +1047,179 @@ function FeedbackTab() {
   );
 }
 
+// ── Contacts ──────────────────────────────────────────────────────────────────
+const STATUS_BADGE = {
+  pending: 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400',
+  in_progress: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  resolved: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+};
+
+function ContactsTab() {
+  const qc = useQueryClient();
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState('');
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [replyingId, setReplyingId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminContacts', page, statusFilter, search],
+    queryFn: () => contactApi.getAll({ page, status: statusFilter, search }).then(r => r.data),
+  });
+
+  const statusMut = useMutation({
+    mutationFn: ({ id, status }) => contactApi.updateStatus(id, status),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminContacts'] }); toast.success('Status updated'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const replyMut = useMutation({
+    mutationFn: ({ id, reply }) => contactApi.reply(id, reply),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminContacts'] });
+      toast.success('Reply sent to user');
+      setReplyingId(null);
+      setReplyText('');
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to send reply'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => contactApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminContacts'] }); toast.success('Deleted'); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
+  });
+
+  const contacts = data?.contacts || [];
+  const pages = data?.pages || 1;
+  const total = data?.total || 0;
+
+  return (
+    <div className="space-y-4">
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center">
+        <div className="flex gap-1.5 flex-wrap">
+          {[{ v: '', l: 'All' }, { v: 'pending', l: 'Pending' }, { v: 'in_progress', l: 'In Progress' }, { v: 'resolved', l: 'Resolved' }].map(s => (
+            <button key={s.v} onClick={() => { setStatusFilter(s.v); setPage(1); }}
+              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${statusFilter === s.v ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}>
+              {s.l}
+            </button>
+          ))}
+        </div>
+        <form className="flex gap-2 ml-auto" onSubmit={e => { e.preventDefault(); setSearch(searchInput); setPage(1); }}>
+          <div className="relative">
+            <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <input value={searchInput} onChange={e => setSearchInput(e.target.value)} placeholder="Search name / email…" className="input pl-7 text-xs py-1.5 w-52" />
+          </div>
+          <button type="submit" className="btn-secondary text-xs py-1.5 px-3">Search</button>
+        </form>
+      </div>
+
+      <p className="text-xs text-[var(--color-text-muted)]">{total} {total === 1 ? 'query' : 'queries'} total</p>
+
+      {/* List */}
+      {isLoading ? (
+        <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="skeleton h-28 rounded-xl" />)}</div>
+      ) : contacts.length === 0 ? (
+        <div className="card text-center py-12 text-[var(--color-text-muted)]">
+          <Inbox size={32} className="mx-auto mb-3 opacity-30" />
+          <p className="text-sm">No contact queries found.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {contacts.map(c => (
+            <div key={c._id} className="card">
+              {/* Header row */}
+              <div className="flex items-start gap-3 mb-3">
+                <div className="w-9 h-9 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center shrink-0 text-sm font-bold text-blue-600">
+                  {c.name?.[0]?.toUpperCase() || '?'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="font-semibold text-[var(--color-text)] text-sm">{c.name}</span>
+                    <span className="text-xs text-[var(--color-text-muted)]">{c.email}</span>
+                    <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ml-auto ${STATUS_BADGE[c.status] || STATUS_BADGE.pending}`}>
+                      {c.status?.replace('_', ' ')}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    <span className="text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full capitalize">{c.type}</span>
+                    <span className="text-[10px] text-[var(--color-text-muted)]">{new Date(c.createdAt).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Message */}
+              <p className="text-sm text-[var(--color-text)] bg-[var(--color-bg-alt)] rounded-lg px-3 py-2.5 mb-3 leading-relaxed">
+                {c.message}
+              </p>
+
+              {/* Admin reply preview */}
+              {c.adminReply && replyingId !== c._id && (
+                <div className="mb-3 pl-3 border-l-2 border-[var(--color-primary)]/40 text-xs text-[var(--color-text-muted)]">
+                  <span className="font-semibold text-[var(--color-primary)]">Admin replied: </span>{c.adminReply}
+                </div>
+              )}
+
+              {/* Reply form */}
+              {replyingId === c._id && (
+                <div className="mb-3 space-y-2">
+                  <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={3} maxLength={1000}
+                    placeholder="Type your reply…" className="input text-xs resize-none" />
+                  <div className="flex gap-2">
+                    <button onClick={() => { setReplyingId(null); setReplyText(''); }} className="text-xs text-[var(--color-text-muted)] hover:underline">Cancel</button>
+                    <button onClick={() => replyMut.mutate({ id: c._id, reply: replyText })}
+                      disabled={replyMut.isPending || !replyText.trim()}
+                      className="btn-primary text-xs py-1.5 px-4 flex items-center gap-1.5">
+                      {replyMut.isPending ? <><RefreshCw size={11} className="animate-spin" /> Sending…</> : <><Reply size={11} /> Send Reply</>}
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="flex items-center gap-2 flex-wrap pt-2 border-t border-[var(--color-border)]">
+                {/* Status dropdown */}
+                <select
+                  value={c.status}
+                  onChange={e => statusMut.mutate({ id: c._id, status: e.target.value })}
+                  className="input text-xs py-1 pr-7 w-auto"
+                >
+                  <option value="pending">Pending</option>
+                  <option value="in_progress">In Progress</option>
+                  <option value="resolved">Resolved</option>
+                </select>
+                <button onClick={() => { setReplyingId(c._id); setReplyText(c.adminReply || ''); }}
+                  className="flex items-center gap-1 text-xs text-[var(--color-primary)] hover:underline font-medium">
+                  <Reply size={12} /> {c.adminReply ? 'Edit reply' : 'Reply'}
+                </button>
+                <button onClick={() => { if (confirm('Delete this query?')) deleteMut.mutate(c._id); }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:underline ml-auto">
+                  <Trash2 size={12} /> Delete
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Pagination */}
+      {pages > 1 && (
+        <div className="flex justify-center items-center gap-3 pt-2">
+          <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1 disabled:opacity-40">
+            <ChevronLeft size={13} /> Prev
+          </button>
+          <span className="text-xs text-[var(--color-text-muted)]">Page {page} of {pages}</span>
+          <button onClick={() => setPage(p => p + 1)} disabled={page >= pages} className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1 disabled:opacity-40">
+            Next <ChevronRight size={13} />
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -1080,6 +1257,7 @@ export default function AdminPage() {
       {activeTab === 'overview' && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
       {activeTab === 'users' && <UsersTab />}
       {activeTab === 'plans' && <PlansTab />}
+      {activeTab === 'contacts' && <ContactsTab />}
       {activeTab === 'logs' && <LogsTab />}
       {activeTab === 'settings' && <SettingsTab />}
       {activeTab === 'payments' && <PaymentsTab />}

@@ -44,10 +44,11 @@ api.interceptors.response.use(
       }
     }
     if (err.response?.status === 401 && !original._retry) {
-      // Only clear user if it's NOT a token-expiry (which has its own retry path above)
-      // and the endpoint is one that should always be authenticated (not permission-check 401s)
+      // Only clear user on definitive auth failures (not network errors or permission 403s)
       const code = err.response?.data?.code;
-      if (code !== 'TOKEN_EXPIRED' && !original.url?.includes('/auth/')) {
+      const msg = err.response?.data?.message || '';
+      const isDefinitiveLogout = code === 'LOGGED_OUT' || msg === 'User no longer exists.' || msg.includes('suspended');
+      if (isDefinitiveLogout && !original.url?.includes('/auth/')) {
         useAuthStore.getState().clearUser();
       }
     }
@@ -144,6 +145,14 @@ export const instructorApi = {
   rejectInvite: (token) => api.post(`/instructor/invite/${token}/reject`),
   getMyInvites: () => api.get('/instructor/my-invites'),
   getMyAcceptedInvites: () => api.get('/instructor/my-accepted-invites'),
+};
+
+export const contactApi = {
+  submit: (data) => api.post('/contact', data),
+  getAll: (params) => api.get('/contact', { params }),
+  updateStatus: (id, status) => api.patch(`/contact/${id}/status`, { status }),
+  reply: (id, reply) => api.post(`/contact/${id}/reply`, { reply }),
+  delete: (id) => api.delete(`/contact/${id}`),
 };
 
 export const feedbackApi = {

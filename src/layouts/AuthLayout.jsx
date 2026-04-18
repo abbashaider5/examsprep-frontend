@@ -1,51 +1,93 @@
-import { Award, BarChart2, BookOpen, Moon, ShieldCheck, Sparkles, Sun, Users } from 'lucide-react';
+import { Award, BookOpen, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 
-const FEATURES = [
+const SLIDES = [
   {
-    icon: Sparkles,
-    title: 'AI-Powered Exam Generation',
-    desc: 'Generate unique MCQ exams on any topic in under 10 seconds.',
-    color: 'bg-blue-500/10 text-blue-400',
+    img: 'https://images.pexels.com/photos/4143793/pexels-photo-4143793.jpeg?auto=compress&cs=tinysrgb&w=900',
+    heading: 'Ace any exam with AI',
+    sub: 'Generate unique MCQs on any subject in under 10 seconds.',
   },
   {
-    icon: ShieldCheck,
-    title: 'AI Proctoring Built-In',
-    desc: 'Face detection, tab monitoring & screenshot capture — no extra tools.',
-    color: 'bg-violet-500/10 text-violet-400',
+    img: 'https://images.pexels.com/photos/3184360/pexels-photo-3184360.jpeg?auto=compress&cs=tinysrgb&w=900',
+    heading: 'Learn smarter, not harder',
+    sub: 'Get personalised AI recommendations based on your weak topics.',
   },
   {
-    icon: Award,
-    title: 'Verifiable Certificates',
-    desc: 'Score 75%+ to earn a PDF certificate with a unique QR code.',
-    color: 'bg-amber-500/10 text-amber-400',
+    img: 'https://images.pexels.com/photos/1181671/pexels-photo-1181671.jpeg?auto=compress&cs=tinysrgb&w=900',
+    heading: 'Earn verified certificates',
+    sub: 'Score 75%+ and instantly receive a QR-verifiable PDF certificate.',
   },
   {
-    icon: BarChart2,
-    title: 'Smart Analytics',
-    desc: 'Track your progress and get AI-powered study recommendations.',
-    color: 'bg-green-500/10 text-green-400',
-  },
-  {
-    icon: Users,
-    title: 'Instructor Tools',
-    desc: 'Create exams, invite candidates, and review performance reports.',
-    color: 'bg-teal-500/10 text-teal-400',
-  },
-  {
-    icon: BookOpen,
-    title: 'Study Mode & Flashcards',
-    desc: 'Reinforce learning with interactive flashcards at your own pace.',
-    color: 'bg-rose-500/10 text-rose-400',
+    img: 'https://images.pexels.com/photos/256395/pexels-photo-256395.jpeg?auto=compress&cs=tinysrgb&w=900',
+    heading: 'Study with confidence',
+    sub: 'Proctored exams, flashcards, leaderboards — all in one place.',
   },
 ];
 
-const STATS = [
-  { value: '50K+', label: 'Exams Generated' },
-  { value: '100%', label: 'Free to Start' },
-  { value: '10K+', label: 'Active Learners' },
-];
+function ImageCarousel() {
+  const [active, setActive] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setActive((i) => (i + 1) % SLIDES.length), 4500);
+    return () => clearInterval(t);
+  }, []);
+
+  const slide = SLIDES[active];
+
+  return (
+    <div className="relative w-full h-full min-h-[500px] overflow-hidden">
+      {/* Background image */}
+      {SLIDES.map((s, i) => (
+        <img
+          key={i}
+          src={s.img}
+          alt=""
+          className={`absolute inset-0 w-full h-full object-cover transition-opacity duration-700 ${i === active ? 'opacity-100' : 'opacity-0'}`}
+          loading={i === 0 ? 'eager' : 'lazy'}
+        />
+      ))}
+
+      {/* Dark overlay */}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-black/10" />
+
+      {/* Text overlay */}
+      <div className="absolute bottom-0 left-0 right-0 px-10 pb-12">
+        <div className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm text-white/90 text-xs font-semibold px-3 py-1.5 rounded-full mb-3">
+          <Sparkles size={11} /> AI-Powered Learning
+        </div>
+        <h2 className="text-2xl font-bold text-white mb-2 leading-snug">{slide.heading}</h2>
+        <p className="text-white/70 text-sm leading-relaxed max-w-xs">{slide.sub}</p>
+
+        {/* Dots */}
+        <div className="flex gap-1.5 mt-5">
+          {SLIDES.map((_, i) => (
+            <button
+              key={i}
+              onClick={() => setActive(i)}
+              className={`rounded-full transition-all duration-300 ${i === active ? 'w-6 h-1.5 bg-white' : 'w-1.5 h-1.5 bg-white/40'}`}
+            />
+          ))}
+        </div>
+      </div>
+
+      {/* Trust chips at top */}
+      <div className="absolute top-8 left-8 right-8 flex flex-wrap gap-2">
+        {[
+          { icon: ShieldCheck, label: 'AI Proctoring', color: 'text-violet-300' },
+          { icon: Award, label: 'Verified Certificates', color: 'text-amber-300' },
+          { icon: Sparkles, label: 'Instant Generation', color: 'text-blue-300' },
+        ].map((c) => (
+          <div key={c.label} className="flex items-center gap-1.5 bg-white/10 backdrop-blur-sm text-white/80 text-xs font-medium px-3 py-1.5 rounded-full border border-white/15">
+            <c.icon size={11} className={c.color} />
+            {c.label}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
 
 export default function AuthLayout() {
   const { isAuthenticated } = useAuthStore();
@@ -55,69 +97,50 @@ export default function AuthLayout() {
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg)]">
-      {/* ── Left: Form ── */}
-      <div className="flex-1 flex flex-col justify-center px-8 py-12 max-w-lg mx-auto w-full">
-        <div className="flex items-center justify-between mb-10">
-          <Link to="/" className="flex items-center gap-2 font-bold text-xl text-[var(--color-primary)]">
-            <BookOpen size={24} /> ExamPrep AI
-          </Link>
-          <button onClick={toggle} className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors">
-            {dark ? <Sun size={18} /> : <Moon size={18} />}
-          </button>
+
+      {/* ── Left: Form Panel ── */}
+      <div className="flex-1 flex flex-col min-h-screen relative">
+        {/* Soft background blobs */}
+        <div className="absolute inset-0 pointer-events-none overflow-hidden">
+          <div className="absolute -top-32 -left-32 w-[400px] h-[400px] bg-blue-100/50 dark:bg-blue-900/10 rounded-full blur-3xl" />
+          <div className="absolute -bottom-32 -right-32 w-[400px] h-[400px] bg-indigo-100/40 dark:bg-indigo-900/10 rounded-full blur-3xl" />
         </div>
-        <Outlet />
-      </div>
 
-      {/* ── Right: Feature Panel ── */}
-      <div className="hidden lg:flex flex-1 relative overflow-hidden bg-gradient-to-br from-slate-900 via-[#0a1628] to-slate-900">
-        {/* Subtle radial glow */}
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-1/4 right-1/4 w-64 h-64 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex flex-col flex-1 max-w-md mx-auto w-full px-8 py-10">
+          {/* Top bar */}
+          <div className="flex items-center justify-between mb-12">
+            <Link to="/" className="flex items-center gap-2 font-extrabold text-lg text-[var(--color-primary)]">
+              <div className="w-8 h-8 bg-[var(--color-primary)] rounded-lg flex items-center justify-center shadow-sm">
+                <BookOpen size={16} className="text-white" />
+              </div>
+              ExamPrep AI
+            </Link>
+            <button
+              onClick={toggle}
+              className="p-2 rounded-xl hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
+              aria-label="Toggle theme"
+            >
+              {dark ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
+          </div>
 
-        <div className="relative z-10 flex flex-col justify-center px-12 py-16 w-full">
-          {/* Brand */}
-          <div className="mb-10">
-            <div className="inline-flex items-center gap-2 bg-white/5 border border-white/10 rounded-full px-4 py-1.5 mb-5">
-              <Sparkles size={12} className="text-blue-400" />
-              <span className="text-white/70 text-xs font-medium">AI-Powered Learning Platform</span>
+          {/* Form — vertically centered */}
+          <div className="flex-1 flex items-center justify-center">
+            <div className="w-full">
+              <Outlet />
             </div>
-            <h2 className="text-3xl font-bold text-white leading-tight mb-3">
-              The smartest way to<br />
-              <span className="text-blue-400">prepare for any exam</span>
-            </h2>
-            <p className="text-white/50 text-sm leading-relaxed max-w-xs">
-              Generate exams, get proctored, earn verified certificates. Everything you need — free.
-            </p>
           </div>
 
-          {/* Stats row */}
-          <div className="flex gap-6 mb-10">
-            {STATS.map((s) => (
-              <div key={s.label}>
-                <div className="text-xl font-bold text-white">{s.value}</div>
-                <div className="text-white/40 text-xs mt-0.5">{s.label}</div>
-              </div>
-            ))}
-          </div>
-
-          {/* Feature grid */}
-          <div className="grid grid-cols-2 gap-3">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="bg-white/[0.03] border border-white/[0.07] rounded-xl p-4 hover:bg-white/[0.06] transition-colors">
-                <div className={`w-8 h-8 rounded-lg ${f.color} flex items-center justify-center mb-3`}>
-                  <f.icon size={15} />
-                </div>
-                <p className="text-white/90 text-xs font-semibold mb-1 leading-tight">{f.title}</p>
-                <p className="text-white/40 text-[11px] leading-relaxed">{f.desc}</p>
-              </div>
-            ))}
-          </div>
-
-          {/* Footer trust line */}
-          <p className="mt-8 text-white/25 text-xs">
-            Free forever · No credit card required · Join 10,000+ learners
+          {/* Bottom trust line */}
+          <p className="text-center text-xs text-[var(--color-text-muted)] mt-10">
+            Free forever &middot; No credit card needed &middot; 10,000+ learners
           </p>
         </div>
+      </div>
+
+      {/* ── Right: Image Carousel (desktop only) ── */}
+      <div className="hidden lg:block w-[48%] xl:w-[52%] relative overflow-hidden">
+        <ImageCarousel />
       </div>
     </div>
   );

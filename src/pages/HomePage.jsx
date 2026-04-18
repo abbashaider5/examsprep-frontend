@@ -2,7 +2,7 @@ import {
   ArrowRight, Award, BarChart2, BookOpen, Brain, Briefcase,
   Camera, Check, CheckCircle, ChevronRight, Clock, Code2, Crown, FileText,
   GraduationCap, LayoutDashboard, Mail, Monitor,
-  PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users, Zap,
+  PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/index.js';
@@ -129,6 +129,59 @@ const STATS = [
   { value: '200+', label: 'Subjects Covered', icon: BookOpen },
 ];
 
+const DEMO_SCREENSHOTS = [
+  {
+    src: '/demo-ss/user-or-instructor-will-create-exams-here.png',
+    tag: 'AI Exam Creator',
+    tagColor: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400',
+    heading: 'Create any exam in seconds',
+    desc: 'Type a subject, pick how many questions, choose difficulty — and AI writes the entire exam for you. No manual work needed.',
+    bullets: ['Works for any subject or topic', 'MCQ and coding questions supported', 'Instant generation — under 10 seconds'],
+    bulletColor: 'text-blue-500',
+    layout: 'image-right',
+  },
+  {
+    src: '/demo-ss/dashboard-for-instructor-or-user-also-show-ai-recommendation-based-on-previous-exams.png',
+    tag: 'Smart Dashboard',
+    tagColor: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400',
+    heading: 'Know exactly where you stand',
+    desc: 'Your dashboard shows all recent exams, scores, XP earned, and streaks — plus AI-powered study tips based on your weakest topics.',
+    bullets: ['AI recommends what to study next', 'Track streaks and level progress', 'See all past results at a glance'],
+    bulletColor: 'text-indigo-500',
+    layout: 'image-left',
+  },
+  {
+    src: '/demo-ss/study-mode-where-user-will-find-all-exams.png',
+    tag: 'Study Mode',
+    tagColor: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400',
+    heading: 'Study smarter with flashcards',
+    desc: 'Every exam becomes a study set. Flip through questions as flashcards, review answers, and repeat until you have mastered the topic.',
+    bullets: ['Flashcard mode for every exam', 'Attempt, reattempt, or just review', 'Works on any device'],
+    bulletColor: 'text-purple-500',
+    layout: 'image-right',
+  },
+  {
+    src: '/demo-ss/instructor-will-check-the-report-of-all-inviteds-users.png',
+    tag: 'Instructor Reports',
+    tagColor: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400',
+    heading: 'See how every candidate performed',
+    desc: 'As an instructor you get a full breakdown — who attempted, what they scored, how long they took, and which questions they got wrong.',
+    bullets: ['Per-candidate score and time', 'Question-level accuracy breakdown', 'Proctoring screenshots included'],
+    bulletColor: 'text-teal-500',
+    layout: 'image-left',
+  },
+  {
+    src: '/demo-ss/report-for-instructor-of-all-invited-users.png',
+    tag: 'Analytics Overview',
+    tagColor: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400',
+    heading: 'Full analytics for all your invites',
+    desc: 'Get a bird\'s-eye view across all invited users — pass rates, average scores, top performers, and those who need extra support.',
+    bullets: ['Overall pass rate and avg score', 'Identify who needs help fast', 'Export or share with stakeholders'],
+    bulletColor: 'text-amber-500',
+    layout: 'image-right',
+  },
+];
+
 export default function HomePage() {
   const { isAuthenticated } = useAuthStore();
 
@@ -136,15 +189,19 @@ export default function HomePage() {
     <div className="bg-[var(--color-bg)]">
       {/* ── Hero ── */}
       <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-blue-600/5 via-transparent to-indigo-600/5 pointer-events-none" />
-        <div className="absolute top-20 right-0 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl pointer-events-none" />
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
+        {/* Apple-style multi-layer radial gradients */}
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-gradient-radial from-blue-100/60 via-indigo-50/30 to-transparent dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-transparent rounded-full blur-3xl" />
+          <div className="absolute top-20 left-0 w-72 h-72 bg-violet-100/40 dark:bg-violet-900/10 rounded-full blur-3xl" />
+          <div className="absolute top-40 right-0 w-80 h-80 bg-blue-100/40 dark:bg-blue-900/10 rounded-full blur-3xl" />
+        </div>
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
           <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
-              <Sparkles size={13} />
+            <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm">
+              <Sparkles size={12} />
               Powered by Advanced AI — Fast & Accurate
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-[var(--color-text)] mb-6 leading-tight tracking-tight">
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.75rem] font-extrabold text-[var(--color-text)] mb-6 leading-[1.12] tracking-tight">
               The Smartest Way to<br />
               <span className="text-[var(--color-primary)]">Prepare for Any Exam</span>
             </h1>
@@ -196,8 +253,8 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── How it works ── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
+            {/* ── How it works ── */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-[var(--color-surface)]">
         <div className="max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
@@ -228,9 +285,82 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* ── Screenshots — section header ── */}
+      <section className="pt-20 pb-4 px-4 sm:px-6 lg:px-8 text-center">
+        <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
+          <Monitor size={13} /> Product Preview
+        </div>
+        <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">See it in action</h2>
+        <p className="text-[var(--color-text-muted)] max-w-xl mx-auto">
+          A clean, modern interface built for real use — from exam creation to analytics.
+        </p>
+      </section>
+
+      {/* ── Screenshots — individual sections ── */}
+      {DEMO_SCREENSHOTS.map((ss, i) => {
+        const isImageLeft = ss.layout === 'image-left';
+        return (
+          <section
+            key={ss.tag}
+            className={`py-16 px-4 sm:px-6 lg:px-8 ${i % 2 === 0 ? 'bg-[var(--color-bg)]' : 'bg-[var(--color-surface)]'}`}
+          >
+            <div className="max-w-7xl mx-auto">
+              <div className={`flex flex-col ${isImageLeft ? 'lg:flex-row' : 'lg:flex-row-reverse'} gap-10 lg:gap-16 items-center`}>
+
+                {/* Text side */}
+                <div className="flex-1 min-w-0">
+                  <div className={`inline-flex items-center gap-2 ${ss.tagColor} text-xs font-semibold px-3 py-1.5 rounded-full mb-4`}>
+                    {ss.tag}
+                  </div>
+                  <h3 className="text-2xl sm:text-3xl font-bold text-[var(--color-text)] mb-3 leading-snug">
+                    {ss.heading}
+                  </h3>
+                  <p className="text-[var(--color-text-muted)] text-base leading-relaxed mb-6">
+                    {ss.desc}
+                  </p>
+                  <ul className="space-y-2.5">
+                    {ss.bullets.map((b) => (
+                      <li key={b} className="flex items-center gap-2.5 text-sm text-[var(--color-text)]">
+                        <CheckCircle size={15} className={`${ss.bulletColor} shrink-0`} />
+                        {b}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+
+                {/* Screenshot side */}
+                <div className="flex-1 min-w-0 w-full">
+                  <div className="rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-xl shadow-black/5">
+                    {/* Browser chrome bar */}
+                    <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[var(--color-bg-alt)] border-b border-[var(--color-border)]">
+                      <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/80" />
+                      <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
+                      <div className="flex-1 mx-3">
+                        <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2.5 py-0.5 text-[10px] text-[var(--color-text-muted)] font-mono">
+                          exams.abbaslogic.com
+                        </div>
+                      </div>
+                    </div>
+                    <img
+                      src={ss.src}
+                      alt={ss.heading}
+                      className="w-full object-cover object-top"
+                      loading="lazy"
+                    />
+                  </div>
+                </div>
+
+              </div>
+            </div>
+          </section>
+        );
+      })}
+
       {/* ── Features ── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-[var(--color-surface)]">
-        <div className="max-w-7xl mx-auto">
+      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-[var(--color-bg)] via-blue-50/20 to-[var(--color-bg)] dark:via-blue-900/5" />
+        <div className="relative max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Everything you need to succeed</h2>
             <p className="text-[var(--color-text-muted)] max-w-xl mx-auto">A complete exam preparation platform built for serious learners and organisations.</p>
@@ -300,7 +430,7 @@ export default function HomePage() {
       {/* ── AI Proctoring highlight ── */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="rounded-2xl bg-gradient-to-br from-slate-900 to-slate-800 dark:from-slate-800 dark:to-slate-900 p-8 sm:p-12 text-white overflow-hidden relative">
+          <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 dark:from-slate-700 dark:to-slate-800 p-8 sm:p-12 text-white overflow-hidden relative">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
               <div>

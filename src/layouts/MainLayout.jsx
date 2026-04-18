@@ -114,7 +114,7 @@ export default function MainLayout() {
         <Outlet />
       </main>
 
-      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] py-10 mt-16">
+      <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] py-12 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
@@ -124,7 +124,10 @@ export default function MainLayout() {
                 </div>
                 ExamPrep AI
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">AI-powered exam preparation platform. Generate, take, and ace your exams.</p>
+              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-3">
+                AI-powered exam preparation platform. Generate, take, and ace your exams.
+              </p>
+              <p className="text-xs text-[var(--color-text-muted)]">Payments secured by Razorpay · AI by Groq</p>
             </div>
             <div>
               <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Product</p>
@@ -143,9 +146,13 @@ export default function MainLayout() {
               </div>
             </div>
             <div>
-              <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Support</p>
+              <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Support & Legal</p>
               <div className="space-y-2">
-                {[{ to: '/contact', label: 'Contact Us' }].map(l => (
+                {[
+                  { to: '/contact', label: 'Contact Us' },
+                  { to: '/privacy', label: 'Privacy Policy' },
+                  { to: '/terms', label: 'Terms & Conditions' },
+                ].map(l => (
                   <Link key={l.to} to={l.to} className="block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{l.label}</Link>
                 ))}
               </div>
@@ -153,7 +160,10 @@ export default function MainLayout() {
           </div>
           <div className="border-t border-[var(--color-border)] pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
             <p className="text-xs text-[var(--color-text-muted)]">© {new Date().getFullYear()} ExamPrep AI. All rights reserved.</p>
-            <p className="text-xs text-[var(--color-text-muted)]">Payments secured by Razorpay · AI by Groq</p>
+            <div className="flex items-center gap-4">
+              <Link to="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Privacy Policy</Link>
+              <Link to="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Terms & Conditions</Link>
+            </div>
           </div>
         </div>
       </footer>

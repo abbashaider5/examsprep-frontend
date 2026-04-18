@@ -7,18 +7,18 @@ import { authApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const schema = z.object({
-  name: z.string().min(2, 'Name must be at least 2 characters').max(60),
-  email: z.string().email('Enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  name: z.string().min(2, 'At least 2 characters').max(60),
+  email: z.string().email('Enter a valid email'),
+  password: z.string().min(6, 'At least 6 characters'),
 });
 
-function getStrength(password) {
-  let score = 0;
-  if (password.length >= 8) score++;
-  if (/[A-Z]/.test(password)) score++;
-  if (/[0-9]/.test(password)) score++;
-  if (/[^A-Za-z0-9]/.test(password)) score++;
-  return score;
+function getStrength(pw) {
+  let s = 0;
+  if (pw.length >= 8) s++;
+  if (/[A-Z]/.test(pw)) s++;
+  if (/[0-9]/.test(pw)) s++;
+  if (/[^A-Za-z0-9]/.test(pw)) s++;
+  return s;
 }
 
 const STRENGTH_CONFIG = [
@@ -43,16 +43,10 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 
   const handleChange = (i, val) => {
     if (!/^\d?$/.test(val)) return;
-    const next = [...otp];
-    next[i] = val;
-    setOtp(next);
+    const next = [...otp]; next[i] = val; setOtp(next);
     if (val && i < 5) inputs.current[i + 1]?.focus();
   };
-
-  const handleKeyDown = (i, e) => {
-    if (e.key === 'Backspace' && !otp[i] && i > 0) inputs.current[i - 1]?.focus();
-  };
-
+  const handleKeyDown = (i, e) => { if (e.key === 'Backspace' && !otp[i] && i > 0) inputs.current[i - 1]?.focus(); };
   const handlePaste = (e) => {
     const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (paste.length === 6) { setOtp(paste.split('')); inputs.current[5]?.focus(); }
@@ -70,29 +64,26 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
     setResending(true);
     try {
       await authApi.requestOtp({ email });
-      setCountdown(30);
-      setOtp(['', '', '', '', '', '']);
+      setCountdown(30); setOtp(['', '', '', '', '', '']);
       inputs.current[0]?.focus();
-      toast.success('New OTP sent! Check your email.');
+      toast.success('New code sent.');
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to resend OTP');
-    } finally {
-      setResending(false);
-    }
+      toast.error(err.response?.data?.message || 'Failed to resend');
+    } finally { setResending(false); }
   };
 
   return (
     <div className="animate-fade-in">
-      <div className="flex justify-center mb-4">
-        <div className="w-14 h-14 rounded-2xl bg-[var(--color-primary)]/10 flex items-center justify-center">
-          <ShieldCheck size={28} className="text-[var(--color-primary)]" />
+      <div className="flex justify-center mb-5">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+          <ShieldCheck size={24} className="text-[var(--color-primary)]" />
         </div>
       </div>
       <h1 className="text-2xl font-bold text-[var(--color-text)] text-center mb-1">Verify your email</h1>
-      <p className="text-[var(--color-text-muted)] text-sm text-center mb-6">
-        We sent a 6-digit code to <span className="font-semibold text-[var(--color-text)]">{email}</span>
+      <p className="text-[var(--color-text-muted)] text-sm text-center mb-7">
+        We sent a 6-digit code to <span className="font-medium text-[var(--color-text)]">{email}</span>
       </p>
-      <form onSubmit={handleSubmit} className="space-y-6">
+      <form onSubmit={handleSubmit} className="space-y-5">
         <div className="flex gap-2 justify-center" onPaste={handlePaste}>
           {otp.map((d, i) => (
             <input
@@ -104,40 +95,30 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
               value={d}
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKeyDown(i, e)}
-              className="w-11 h-14 text-center text-xl font-bold input rounded-xl"
+              className="w-11 text-center text-xl font-bold input rounded-xl"
+              style={{ height: '3.25rem' }}
             />
           ))}
         </div>
         {verifyMut.error && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm text-center">
-            {verifyMut.error.response?.data?.message || 'Verification failed'}
-          </div>
+          <p className="text-red-500 text-sm text-center">
+            {verifyMut.error.response?.data?.message || 'Incorrect code. Try again.'}
+          </p>
         )}
-        <button type="submit" disabled={verifyMut.isPending || otp.join('').length < 6} className="btn-primary w-full py-3">
-          {verifyMut.isPending ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Verifying...
-            </span>
-          ) : 'Verify & Create Account'}
+        <button type="submit" disabled={verifyMut.isPending || otp.join('').length < 6} className="btn-primary w-full py-3 rounded-xl font-semibold">
+          {verifyMut.isPending
+            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Verifying…</span>
+            : 'Verify & Create Account'}
         </button>
       </form>
-      <div className="mt-5 flex flex-col items-center gap-1">
-        {countdown > 0 ? (
-          <p className="text-xs text-[var(--color-text-muted)]">
-            Resend available in <span className="font-semibold tabular-nums">{countdown}s</span>
-          </p>
-        ) : (
-          <button
-            onClick={handleResend}
-            disabled={resending}
-            className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] font-semibold hover:underline disabled:opacity-50"
-          >
-            <RefreshCw size={12} className={resending ? 'animate-spin' : ''} />
-            {resending ? 'Resending…' : 'Resend OTP'}
-          </button>
-        )}
-        <p className="text-xs text-[var(--color-text-muted)]">Code expires in 10 minutes · Check spam if not received</p>
+      <div className="mt-5 text-center space-y-1">
+        {countdown > 0
+          ? <p className="text-xs text-[var(--color-text-muted)]">Resend in <span className="tabular-nums font-semibold">{countdown}s</span></p>
+          : <button onClick={handleResend} disabled={resending} className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] font-semibold hover:underline mx-auto disabled:opacity-50">
+              <RefreshCw size={11} className={resending ? 'animate-spin' : ''} />
+              {resending ? 'Sending…' : 'Resend code'}
+            </button>}
+        <p className="text-xs text-[var(--color-text-muted)]">Expires in 10 min · Check spam</p>
       </div>
     </div>
   );
@@ -163,38 +144,34 @@ export default function SignupPage() {
       return;
     }
     setErrors({});
-    signup.mutate(form, {
-      onSuccess: (res) => {
-        if (res.data.requiresOTP) setOtpEmail(form.email);
-      },
-    });
+    signup.mutate(form, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
   };
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   if (otpEmail) {
     return (
-      <div className="w-full max-w-sm mx-auto">
+      <div className="w-full">
         <OTPInput email={otpEmail} purpose="signup" onVerify={verifyOtp.mutate} verifyMut={verifyOtp} />
-        <button onClick={() => setOtpEmail(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-4 block">
-          ← Back to signup
+        <button onClick={() => setOtpEmail(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-5">
+          ← Back
         </button>
       </div>
     );
   }
 
   return (
-    <div className="animate-fade-in w-full max-w-sm mx-auto">
+    <div className="animate-fade-in w-full">
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-1">Create your account</h1>
-      <p className="text-[var(--color-text-muted)] text-sm mb-8">Start your AI-powered exam prep — it's free</p>
+      <p className="text-[var(--color-text-muted)] text-sm mb-7">Start AI-powered exam prep — free forever</p>
 
       <form onSubmit={handleSubmit} className="space-y-4" noValidate>
         <div>
-          <label className="label">Full Name</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Full Name</label>
           <div className="relative">
-            <User size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
-              className={`input pl-9 ${errors.name ? 'border-red-400 focus:ring-red-400' : ''}`}
+              className={`input pl-9 ${errors.name ? 'border-red-400' : ''}`}
               placeholder="John Doe"
               value={form.name}
               onChange={set('name')}
@@ -205,11 +182,11 @@ export default function SignupPage() {
         </div>
 
         <div>
-          <label className="label">Email address</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Email</label>
           <div className="relative">
-            <Mail size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
-              className={`input pl-9 ${errors.email ? 'border-red-400 focus:ring-red-400' : ''}`}
+              className={`input pl-9 ${errors.email ? 'border-red-400' : ''}`}
               type="email"
               placeholder="you@example.com"
               value={form.email}
@@ -221,11 +198,11 @@ export default function SignupPage() {
         </div>
 
         <div>
-          <label className="label">Password</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Password</label>
           <div className="relative">
-            <Lock size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
-              className={`input pl-9 pr-10 ${errors.password ? 'border-red-400 focus:ring-red-400' : ''}`}
+              className={`input pl-9 pr-10 ${errors.password ? 'border-red-400' : ''}`}
               type={showPass ? 'text' : 'password'}
               placeholder="Min. 6 characters"
               value={form.password}
@@ -233,19 +210,18 @@ export default function SignupPage() {
               autoComplete="new-password"
             />
             <button type="button" onClick={() => setShowPass((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-              {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
+              {showPass ? <EyeOff size={15} /> : <Eye size={15} />}
             </button>
           </div>
-
           {form.password.length > 0 && (
             <div className="mt-2">
               <div className="flex gap-1 mb-1">
                 {[1, 2, 3, 4].map((i) => (
-                  <div key={i} className={`h-1.5 flex-1 rounded-full transition-all ${i <= strength ? sc.color : 'bg-[var(--color-border)]'}`} />
+                  <div key={i} className={`h-1 flex-1 rounded-full transition-all ${i <= strength ? sc.color : 'bg-[var(--color-border)]'}`} />
                 ))}
               </div>
               <p className={`text-xs ${strength <= 1 ? 'text-red-500' : strength <= 2 ? 'text-orange-500' : strength === 3 ? 'text-yellow-500' : 'text-green-500'}`}>
-                {sc.label} password {strength === 4 && '✓'}
+                {sc.label} {strength === 4 && '✓'}
               </p>
             </div>
           )}
@@ -253,23 +229,23 @@ export default function SignupPage() {
         </div>
 
         {signup.error && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-red-600 dark:text-red-400 text-sm">
-            {signup.error.response?.data?.message || 'Signup failed. Please try again.'}
-          </div>
+          <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2.5">
+            {signup.error.response?.data?.message || 'Signup failed. Try again.'}
+          </p>
         )}
 
-        <button type="submit" disabled={signup.isPending} className="btn-primary w-full py-3 mt-2">
-          {signup.isPending ? (
-            <span className="flex items-center justify-center gap-2">
-              <span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-              Creating account...
-            </span>
-          ) : 'Create Account'}
+        <button type="submit" disabled={signup.isPending} className="btn-primary w-full py-3 rounded-xl font-semibold mt-1">
+          {signup.isPending
+            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating…</span>
+            : 'Create Account'}
         </button>
       </form>
 
       <p className="text-xs text-center text-[var(--color-text-muted)] mt-4">
-        By signing up, you agree to our Terms of Service and Privacy Policy.
+        By signing up, you agree to our{' '}
+        <Link to="/terms" className="underline hover:text-[var(--color-primary)]">Terms</Link>
+        {' '}and{' '}
+        <Link to="/privacy" className="underline hover:text-[var(--color-primary)]">Privacy Policy</Link>.
       </p>
       <p className="text-sm text-center text-[var(--color-text-muted)] mt-3">
         Already have an account?{' '}

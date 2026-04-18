@@ -50,11 +50,26 @@ export const useAuth = () => {
 };
 
 export const useMe = () => {
-  const { setUser, isAuthenticated } = useAuthStore();
+  const { setUser, isAuthenticated, clearUser } = useAuthStore();
   return useQuery({
     queryKey: ['me'],
-    queryFn: async () => { const res = await authApi.getMe(); setUser(res.data.user); return res.data.user; },
+    queryFn: async () => {
+      try {
+        const res = await authApi.getMe();
+        setUser(res.data.user);
+        return res.data.user;
+      } catch (err) {
+        // Only clear user on definitive auth failures (not network errors)
+        const status = err?.response?.status;
+        if (status === 401 || status === 403) {
+          clearUser();
+        }
+        throw err;
+      }
+    },
     enabled: isAuthenticated,
-    staleTime: 60000,
+    staleTime: 5 * 60 * 1000,    // 5 minutes — don't refetch so aggressively
+    retry: 1,                      // one retry for network hiccups
+    refetchOnWindowFocus: false,   // don't spam on every tab switch
   });
 };

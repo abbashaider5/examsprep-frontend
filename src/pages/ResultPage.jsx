@@ -4,7 +4,7 @@ import { CheckCircle, Clock, Code2, Download, Eye, EyeOff, Lightbulb, MinusCircl
 import { useEffect, useState } from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import { Link, useLocation, useParams } from 'react-router-dom';
-import FeedbackModal, { shouldShowFeedback } from '../components/FeedbackModal.jsx';
+import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
 import { resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -25,9 +25,12 @@ export default function ResultPage() {
   const result = state?.result || data?.result;
 
   useEffect(() => {
-    if (result && isAuthenticated && shouldShowFeedback()) {
-      const t = setTimeout(() => setShowFeedback(true), 2500);
-      return () => clearTimeout(t);
+    if (result && isAuthenticated) {
+      trackFeedbackInteraction(); // count viewing a result as an interaction
+      if (shouldShowFeedback()) {
+        const t = setTimeout(() => setShowFeedback(true), 3000);
+        return () => clearTimeout(t);
+      }
     }
   }, [result, isAuthenticated]);
 

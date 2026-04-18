@@ -15,17 +15,19 @@ import CreateExamPage from './pages/CreateExamPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ExamPage from './pages/ExamPage.jsx';
 import HomePage from './pages/HomePage.jsx';
+import InstructorPage from './pages/InstructorPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MaintenancePage from './pages/MaintenancePage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+import PricingPage from './pages/PricingPage.jsx';
+import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import ResultPage from './pages/ResultPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 import StudyModePage from './pages/StudyModePage.jsx';
+import TermsPage from './pages/TermsPage.jsx';
 import VerifyCertPage from './pages/VerifyCertPage.jsx';
-import PricingPage from './pages/PricingPage.jsx';
-import InstructorPage from './pages/InstructorPage.jsx';
 
 const Guard = ({ children, adminOnly, instructorOnly }) => {
   const { isAuthenticated, user } = useAuthStore();
@@ -50,6 +52,8 @@ export default function App() {
           <Route path="about" element={<AboutPage />} />
           <Route path="contact" element={<ContactPage />} />
           <Route path="pricing" element={<PricingPage />} />
+          <Route path="privacy" element={<PrivacyPolicyPage />} />
+          <Route path="terms" element={<TermsPage />} />
           <Route path="verify/:certId" element={<VerifyCertPage />} />
         </Route>
 
