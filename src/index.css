@@ -57,7 +57,7 @@ body {
     @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm;
   }
   .input {
-    @apply w-full border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all placeholder:text-[var(--color-text-muted)];
+    @apply w-full border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-[var(--color-primary)] transition-all placeholder:text-[var(--color-text-muted)];
   }
   .label {
     @apply block text-sm font-medium text-[var(--color-text)] mb-1.5;
