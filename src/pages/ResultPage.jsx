@@ -1,15 +1,20 @@
 import { useQuery } from '@tanstack/react-query';
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import { CheckCircle, Clock, Code2, Download, Eye, EyeOff, Lightbulb, MinusCircle, Trophy, XCircle } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { Doughnut } from 'react-chartjs-2';
 import { Link, useLocation, useParams } from 'react-router-dom';
+import FeedbackModal, { shouldShowFeedback } from '../components/FeedbackModal.jsx';
 import { resultApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
 export default function ResultPage() {
   const { id } = useParams();
   const { state } = useLocation();
+  const { isAuthenticated } = useAuthStore();
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const { data, isLoading } = useQuery({
     queryKey: ['result', id],
@@ -18,6 +23,13 @@ export default function ResultPage() {
   });
 
   const result = state?.result || data?.result;
+
+  useEffect(() => {
+    if (result && isAuthenticated && shouldShowFeedback()) {
+      const t = setTimeout(() => setShowFeedback(true), 2500);
+      return () => clearTimeout(t);
+    }
+  }, [result, isAuthenticated]);
 
   if (isLoading || !result) {
     return (
@@ -248,6 +260,10 @@ export default function ResultPage() {
         <Link to="/dashboard" className="btn-secondary">Back to Dashboard</Link>
         <Link to="/create-exam" className="btn-primary">Create New Exam</Link>
       </div>
+
+      {showFeedback && (
+        <FeedbackModal trigger="exam_completed" onClose={() => setShowFeedback(false)} />
+      )}
     </div>
   );
 }

@@ -1,7 +1,9 @@
-import { Eye, EyeOff, Lock, Mail, ShieldCheck } from 'lucide-react';
-import { useRef, useState } from 'react';
+import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import { authApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const schema = z.object({
@@ -12,6 +14,14 @@ const schema = z.object({
 function OTPInput({ email, purpose, onVerify, verifyMut }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
+  const [countdown, setCountdown] = useState(30);
+  const [resending, setResending] = useState(false);
+
+  useEffect(() => {
+    if (countdown <= 0) return;
+    const t = setInterval(() => setCountdown((c) => c - 1), 1000);
+    return () => clearInterval(t);
+  }, [countdown]);
 
   const handleChange = (i, val) => {
     if (!/^\d?$/.test(val)) return;
@@ -40,6 +50,22 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
     onVerify({ email, otp: code, purpose });
   };
 
+  const handleResend = async () => {
+    if (countdown > 0 || resending) return;
+    setResending(true);
+    try {
+      await authApi.requestOtp({ email });
+      setCountdown(30);
+      setOtp(['', '', '', '', '', '']);
+      inputs.current[0]?.focus();
+      toast.success('New OTP sent! Check your email.');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to resend OTP');
+    } finally {
+      setResending(false);
+    }
+  };
+
   return (
     <div className="animate-fade-in">
       <div className="flex justify-center mb-4">
@@ -56,13 +82,13 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
           {otp.map((d, i) => (
             <input
               key={i}
-              ref={el => { inputs.current[i] = el; }}
+              ref={(el) => { inputs.current[i] = el; }}
               type="text"
               inputMode="numeric"
               maxLength={1}
               value={d}
-              onChange={e => handleChange(i, e.target.value)}
-              onKeyDown={e => handleKeyDown(i, e)}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
               className="w-11 h-14 text-center text-xl font-bold input rounded-xl"
             />
           ))}
@@ -83,9 +109,24 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
           ) : 'Verify & Sign In'}
         </button>
       </form>
-      <p className="text-xs text-center text-[var(--color-text-muted)] mt-4">
-        Code expires in 10 minutes. Check your spam folder if not received.
-      </p>
+
+      <div className="mt-5 flex flex-col items-center gap-1">
+        {countdown > 0 ? (
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Resend available in <span className="font-semibold tabular-nums">{countdown}s</span>
+          </p>
+        ) : (
+          <button
+            onClick={handleResend}
+            disabled={resending}
+            className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] font-semibold hover:underline disabled:opacity-50"
+          >
+            <RefreshCw size={12} className={resending ? 'animate-spin' : ''} />
+            {resending ? 'Resending…' : 'Resend OTP'}
+          </button>
+        )}
+        <p className="text-xs text-[var(--color-text-muted)]">Code expires in 10 minutes · Check spam if not received</p>
+      </div>
     </div>
   );
 }
@@ -102,7 +143,7 @@ export default function LoginPage() {
     const result = schema.safeParse(form);
     if (!result.success) {
       const fe = {};
-      result.error.errors.forEach(e => { fe[e.path[0]] = e.message; });
+      result.error.errors.forEach((e) => { fe[e.path[0]] = e.message; });
       setErrors(fe);
       return;
     }
@@ -114,7 +155,7 @@ export default function LoginPage() {
     });
   };
 
-  const set = (key) => (e) => setForm(f => ({ ...f, [key]: e.target.value }));
+  const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
   if (otpEmail) {
     return (
@@ -161,7 +202,7 @@ export default function LoginPage() {
               onChange={set('password')}
               autoComplete="current-password"
             />
-            <button type="button" onClick={() => setShowPass(s => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <button type="button" onClick={() => setShowPass((s) => !s)} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
               {showPass ? <EyeOff size={16} /> : <Eye size={16} />}
             </button>
           </div>

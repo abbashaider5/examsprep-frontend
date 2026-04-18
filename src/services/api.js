@@ -44,7 +44,12 @@ api.interceptors.response.use(
       }
     }
     if (err.response?.status === 401 && !original._retry) {
-      useAuthStore.getState().clearUser();
+      // Only clear user if it's NOT a token-expiry (which has its own retry path above)
+      // and the endpoint is one that should always be authenticated (not permission-check 401s)
+      const code = err.response?.data?.code;
+      if (code !== 'TOKEN_EXPIRED' && !original.url?.includes('/auth/')) {
+        useAuthStore.getState().clearUser();
+      }
     }
     return Promise.reject(err);
   }
@@ -139,6 +144,12 @@ export const instructorApi = {
   rejectInvite: (token) => api.post(`/instructor/invite/${token}/reject`),
   getMyInvites: () => api.get('/instructor/my-invites'),
   getMyAcceptedInvites: () => api.get('/instructor/my-accepted-invites'),
+};
+
+export const feedbackApi = {
+  submit: (data) => api.post('/feedback', data),
+  getAdmin: () => api.get('/feedback/admin'),
+  reply: (id, reply) => api.patch(`/feedback/admin/${id}/reply`, { reply }),
 };
 
 export default api;

@@ -4,6 +4,7 @@ import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+import FeedbackModal, { shouldShowFeedback } from '../components/FeedbackModal.jsx';
 import { examApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -166,6 +167,7 @@ export default function CreateExamPage() {
   });
   const [errors, setErrors] = useState({});
   const [createdExam, setCreatedExam] = useState(null);
+  const [showFeedback, setShowFeedback] = useState(false);
 
   const createMut = useMutation({
     mutationFn: (data) => examApi.create(data),
@@ -176,6 +178,7 @@ export default function CreateExamPage() {
       toast.success('Exam created!');
       if (isInstructor) {
         setCreatedExam(res.data.exam);
+        if (shouldShowFeedback()) setTimeout(() => setShowFeedback(true), 3000);
       } else {
         navigate(`/exam/${res.data.exam._id}`);
       }
@@ -608,6 +611,10 @@ export default function CreateExamPage() {
 
       {createdExam && (
         <InstructorPostCreationModal exam={createdExam} onClose={() => { setCreatedExam(null); navigate('/dashboard'); }} />
+      )}
+
+      {showFeedback && (
+        <FeedbackModal trigger="exam_created" onClose={() => setShowFeedback(false)} />
       )}
     </div>
   );

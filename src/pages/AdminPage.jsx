@@ -21,10 +21,12 @@ import {
   CreditCard,
   DollarSign,
   Layers,
+  MessageSquare,
   RefreshCw,
   Search,
   Settings,
   Shield,
+  Star,
   Trash2,
   Users,
   Zap,
@@ -34,17 +36,18 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, logsApi, settingsApi } from '../services/api.js';
+import { adminApi, feedbackApi, logsApi, settingsApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
 const TABS = [
-  { id: 'overview', label: 'Overview', icon: BarChart2 },
-  { id: 'users', label: 'Users', icon: Users },
-  { id: 'plans', label: 'Plan Management', icon: Layers },
-  { id: 'logs', label: 'Activity Logs', icon: Activity },
-  { id: 'settings', label: 'Settings', icon: Settings },
-  { id: 'payments', label: 'Payments', icon: CreditCard },
+  { id: 'overview',  label: 'Overview',         icon: BarChart2 },
+  { id: 'users',     label: 'Users',             icon: Users },
+  { id: 'plans',     label: 'Plan Management',   icon: Layers },
+  { id: 'logs',      label: 'Activity Logs',     icon: Activity },
+  { id: 'settings',  label: 'Settings',          icon: Settings },
+  { id: 'payments',  label: 'Payments',          icon: CreditCard },
+  { id: 'feedback',  label: 'Feedback',          icon: MessageSquare },
 ];
 
 const SEVERITY_COLORS = { info: 'bg-blue-100 text-blue-700', warning: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
@@ -886,6 +889,160 @@ function PlansTab() {
   );
 }
 
+// ── Feedback ─────────────────────────────────────────────────────────────────
+function FeedbackTab() {
+  const [replyingId, setReplyingId] = useState(null);
+  const [replyText, setReplyText] = useState('');
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminFeedback'],
+    queryFn: () => feedbackApi.getAdmin().then(r => r.data),
+  });
+
+  const replyMut = useMutation({
+    mutationFn: ({ id, reply }) => feedbackApi.reply(id, reply),
+    onSuccess: () => {
+      toast.success('Reply saved');
+      qc.invalidateQueries({ queryKey: ['adminFeedback'] });
+      setReplyingId(null);
+      setReplyText('');
+    },
+    onError: () => toast.error('Failed to save reply'),
+  });
+
+  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>;
+
+  const { feedback = [], stats = { avg: '0.0', total: 0, distribution: [0, 0, 0, 0, 0] } } = data || {};
+
+  const ratingChartData = {
+    labels: ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'],
+    datasets: [{
+      data: stats.distribution,
+      backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'],
+      borderWidth: 0,
+    }],
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Stats row */}
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+        <div className="card flex items-center gap-4">
+          <div className="bg-amber-100 dark:bg-amber-900/30 p-3 rounded-xl">
+            <Star size={20} className="text-amber-500" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-[var(--color-text)]">{stats.avg}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">Average Rating</div>
+          </div>
+        </div>
+        <div className="card flex items-center gap-4">
+          <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-xl">
+            <MessageSquare size={20} className="text-[var(--color-primary)]" />
+          </div>
+          <div>
+            <div className="text-2xl font-bold text-[var(--color-text)]">{stats.total}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">Total Responses</div>
+          </div>
+        </div>
+        {/* Rating distribution chart */}
+        <div className="card flex items-center gap-4">
+          <div className="w-16 h-16 shrink-0">
+            <Doughnut data={ratingChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }} />
+          </div>
+          <div>
+            <div className="text-sm font-semibold text-[var(--color-text)]">Distribution</div>
+            <div className="flex gap-1 mt-1 flex-wrap">
+              {['1★', '2★', '3★', '4★', '5★'].map((l, i) => (
+                <span key={l} className="text-[10px] text-[var(--color-text-muted)]">{l}:{stats.distribution[i]}</span>
+              ))}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Feedback list */}
+      {feedback.length === 0 ? (
+        <div className="text-center py-12 text-[var(--color-text-muted)] text-sm">No feedback yet.</div>
+      ) : (
+        <div className="space-y-3">
+          {feedback.map((fb) => (
+            <div key={fb._id} className="card p-4">
+              <div className="flex items-start justify-between gap-3 mb-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-xs font-bold text-[var(--color-primary)]">
+                    {fb.user?.name?.[0]?.toUpperCase() || '?'}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-[var(--color-text)]">{fb.user?.name || 'Anonymous'}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">{fb.user?.email} · {new Date(fb.createdAt).toLocaleDateString()}</p>
+                  </div>
+                </div>
+                <div className="flex gap-0.5 shrink-0">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} size={13} className={s <= fb.rating ? 'fill-amber-400 text-amber-400' : 'text-[var(--color-border)]'} />
+                  ))}
+                </div>
+              </div>
+
+              {fb.message && (
+                <p className="text-sm text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] rounded-lg px-3 py-2 mb-2 italic">
+                  "{fb.message}"
+                </p>
+              )}
+
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full capitalize">
+                  {fb.trigger?.replace('_', ' ')}
+                </span>
+                {fb.adminReply && (
+                  <span className="text-xs text-green-600 dark:text-green-400">✓ Replied</span>
+                )}
+                <button
+                  onClick={() => { setReplyingId(fb._id); setReplyText(fb.adminReply || ''); }}
+                  className="text-xs text-[var(--color-primary)] hover:underline ml-auto"
+                >
+                  {fb.adminReply ? 'Edit reply' : 'Reply'}
+                </button>
+              </div>
+
+              {fb.adminReply && replyingId !== fb._id && (
+                <div className="mt-2 pl-3 border-l-2 border-[var(--color-primary)]/30 text-xs text-[var(--color-text-muted)]">
+                  <span className="font-semibold text-[var(--color-primary)]">Admin: </span>{fb.adminReply}
+                </div>
+              )}
+
+              {replyingId === fb._id && (
+                <div className="mt-3 space-y-2">
+                  <textarea
+                    value={replyText}
+                    onChange={e => setReplyText(e.target.value)}
+                    rows={2}
+                    maxLength={500}
+                    placeholder="Write a reply..."
+                    className="input text-xs resize-none"
+                  />
+                  <div className="flex gap-2">
+                    <button onClick={() => setReplyingId(null)} className="text-xs text-[var(--color-text-muted)] hover:underline">Cancel</button>
+                    <button
+                      onClick={() => replyMut.mutate({ id: fb._id, reply: replyText })}
+                      disabled={replyMut.isPending || !replyText.trim()}
+                      className="btn-primary text-xs py-1.5 px-3"
+                    >
+                      {replyMut.isPending ? 'Saving…' : 'Save Reply'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -926,6 +1083,7 @@ export default function AdminPage() {
       {activeTab === 'logs' && <LogsTab />}
       {activeTab === 'settings' && <SettingsTab />}
       {activeTab === 'payments' && <PaymentsTab />}
+      {activeTab === 'feedback' && <FeedbackTab />}
     </div>
   );
 }

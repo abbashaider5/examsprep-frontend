@@ -1,17 +1,18 @@
 import {
   ArrowRight, Award, BarChart2, BookOpen, Brain, Briefcase,
-  Camera, CheckCircle, ChevronRight, Clock, Code2, Crown, FileText,
+  Camera, Check, CheckCircle, ChevronRight, Clock, Code2, Crown, FileText,
   GraduationCap, LayoutDashboard, Mail, Monitor,
   PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users, Zap,
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/index.js';
+import { PLANS } from './PricingPage.jsx';
 
 const FEATURES = [
   {
     icon: Sparkles,
     title: 'AI Question Generation',
-    desc: 'Generate high-quality MCQs on any topic in seconds using Groq AI. Choose difficulty, subject, and number of questions.',
+    desc: 'Generate high-quality MCQs on any topic in seconds using advanced AI. Choose difficulty, subject, and number of questions.',
     color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600',
   },
   {
@@ -121,39 +122,6 @@ const BENEFITS = [
   { text: 'Detailed per-topic accuracy reports', icon: BarChart2 },
 ];
 
-const PLANS = [
-  {
-    name: 'Free',
-    price: '₹0',
-    period: 'forever',
-    icon: Zap,
-    color: 'text-slate-600',
-    bg: 'bg-slate-100 dark:bg-slate-800',
-    features: ['3 AI exams / month', 'Up to 20 questions/exam', 'Study mode & flashcards', 'Basic analytics', 'PDF certificate on passing'],
-  },
-  {
-    name: 'Pro',
-    price: '₹149',
-    originalPrice: '₹999',
-    period: '/month',
-    icon: ShieldCheck,
-    color: 'text-[var(--color-primary)]',
-    bg: 'bg-blue-100 dark:bg-blue-900/30',
-    badge: 'Most Popular',
-    features: ['10 AI exams / month', 'Up to 50 questions/exam', 'AI proctoring & face detection', 'Screenshot capture', 'Advanced analytics', 'PDF certificates with verification'],
-  },
-  {
-    name: 'Enterprise',
-    price: '₹349',
-    originalPrice: '₹2500',
-    period: '/month',
-    icon: Crown,
-    color: 'text-purple-600',
-    bg: 'bg-purple-100 dark:bg-purple-900/30',
-    features: ['30 AI exams / month', 'Up to 100 questions/exam', 'AI proctoring & face detection', 'Coding questions with AI evaluation', 'Full analytics suite', 'Priority support'],
-  },
-];
-
 const STATS = [
   { value: '50K+', label: 'Exams Generated', icon: Sparkles },
   { value: '10K+', label: 'Students', icon: Users },
@@ -174,7 +142,7 @@ export default function HomePage() {
           <div className="max-w-4xl mx-auto text-center">
             <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
               <Sparkles size={13} />
-              Powered by Groq AI — Blazing-Fast LLM Inference
+              Powered by Advanced AI — Fast & Accurate
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold text-[var(--color-text)] mb-6 leading-tight tracking-tight">
               The Smartest Way to<br />
@@ -448,43 +416,64 @@ export default function HomePage() {
             <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Simple, transparent pricing</h2>
             <p className="text-[var(--color-text-muted)] max-w-xl mx-auto">Start free, upgrade when you need more. Cancel any time.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-4xl mx-auto">
-            {PLANS.map((plan) => (
-              <div
-                key={plan.name}
-                className={`card relative flex flex-col ${plan.badge ? 'border-[var(--color-primary)] border-2 shadow-lg' : ''}`}
-              >
-                {plan.badge && (
-                  <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
-                    <span className="bg-[var(--color-primary)] text-white text-xs font-bold px-4 py-1 rounded-full">{plan.badge}</span>
-                  </div>
-                )}
-                <div className="flex items-center gap-2.5 mb-4">
-                  <div className={`w-9 h-9 rounded-xl ${plan.bg} flex items-center justify-center`}>
-                    <plan.icon size={18} className={plan.color} />
-                  </div>
-                  <span className="font-bold text-[var(--color-text)]">{plan.name}</span>
-                </div>
-                <div className="mb-5">
-                  {plan.originalPrice && <div className="text-xs text-[var(--color-text-muted)] line-through">{plan.originalPrice}/month</div>}
-                  <span className="text-3xl font-bold text-[var(--color-text)]">{plan.price}</span>
-                  <span className="text-[var(--color-text-muted)] text-sm ml-1">{plan.period}</span>
-                </div>
-                <ul className="space-y-2 mb-6 flex-1">
-                  {plan.features.map(f => (
-                    <li key={f} className="flex items-center gap-2 text-sm text-[var(--color-text)]">
-                      <CheckCircle size={14} className="text-green-500 shrink-0" /> {f}
-                    </li>
-                  ))}
-                </ul>
-                <Link
-                  to={isAuthenticated ? '/pricing' : '/signup'}
-                  className={`text-center text-sm font-semibold py-2.5 rounded-xl transition-all ${plan.badge ? 'btn-primary' : 'border border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-text)] hover:text-[var(--color-primary)]'}`}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
+            {PLANS.map((plan) => {
+              const Icon = plan.icon;
+              return (
+                <div
+                  key={plan.id}
+                  className={`relative flex flex-col rounded-2xl border-2 p-8 transition-all ${plan.borderColor} ${plan.badge ? 'shadow-xl scale-[1.02]' : 'shadow-sm hover:shadow-md'} bg-[var(--color-surface)]`}
                 >
-                  {plan.name === 'Free' ? 'Get Started' : 'Subscribe'}
-                </Link>
-              </div>
-            ))}
+                  {plan.badge && (
+                    <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                      <span className="bg-[var(--color-primary)] text-white text-xs font-bold px-4 py-1 rounded-full shadow">{plan.badge}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-3 mb-5">
+                    <div className={`w-10 h-10 rounded-xl ${plan.bgColor} flex items-center justify-center`}>
+                      <Icon size={20} className={plan.color} />
+                    </div>
+                    <div>
+                      <h3 className="font-bold text-[var(--color-text)] text-lg">{plan.name}</h3>
+                      <p className="text-xs text-[var(--color-text-muted)]">{plan.testsPerMonth} exams · {plan.maxQuestions} questions max</p>
+                    </div>
+                  </div>
+                  <div className="mb-6">
+                    {plan.originalPrice && (
+                      <div className="text-sm text-[var(--color-text-muted)] line-through mb-0.5">₹{plan.originalPrice}/month</div>
+                    )}
+                    <div className="flex items-end gap-1">
+                      <span className="text-4xl font-bold text-[var(--color-text)]">{plan.price === 0 ? 'Free' : `₹${plan.price}`}</span>
+                      {plan.price > 0 && <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>}
+                    </div>
+                    {plan.originalPrice && (
+                      <div className="mt-1 inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        Save {Math.round((1 - plan.price / plan.originalPrice) * 100)}% — Limited time
+                      </div>
+                    )}
+                  </div>
+                  <Link
+                    to={isAuthenticated ? '/pricing' : '/signup'}
+                    className={`w-full py-3 rounded-xl font-semibold text-sm text-center transition-all flex items-center justify-center gap-2 mb-6 ${
+                      plan.badge
+                        ? 'btn-primary hover:opacity-90'
+                        : 'border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] text-[var(--color-text)]'
+                    }`}
+                  >
+                    {plan.price === 0 ? 'Get Started Free' : `Upgrade to ${plan.name}`}
+                  </Link>
+                  <div className="border-t border-[var(--color-border)] mb-5" />
+                  <ul className="space-y-2.5 flex-1">
+                    {plan.features.map((f) => (
+                      <li key={f} className="flex items-start gap-2.5 text-sm">
+                        <Check size={15} className="text-green-500 mt-0.5 shrink-0" />
+                        <span className="text-[var(--color-text)]">{f}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              );
+            })}
           </div>
           <div className="text-center mt-8">
             <Link to="/pricing" className="text-[var(--color-primary)] text-sm font-medium hover:underline inline-flex items-center gap-1">

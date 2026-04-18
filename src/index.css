@@ -1,4 +1,4 @@
-@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Inter:ital,opsz,wght@0,14..32,300;0,14..32,400;0,14..32,500;0,14..32,600;0,14..32,700;0,14..32,800;0,14..32,900;1,14..32,400&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
@@ -12,6 +12,9 @@
   --color-border: #e5e7eb;
   --color-text: #111827;
   --color-text-muted: #6b7280;
+  --radius-lg: 14px;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
 }
 
 .dark {
@@ -27,11 +30,17 @@
   box-sizing: border-box;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
 body {
-  font-family: "Inter", system-ui, sans-serif;
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   background-color: var(--color-bg);
   color: var(--color-text);
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition:
     background-color 0.2s,
     color 0.2s;
@@ -39,16 +48,16 @@ body {
 
 @layer components {
   .btn-primary {
-    @apply bg-[var(--color-primary)] hover:opacity-90 text-white font-semibold px-5 py-2.5 rounded-lg transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed;
+    @apply bg-[var(--color-primary)] hover:opacity-90 active:scale-[0.98] text-white font-semibold px-5 py-2.5 rounded-xl transition-all duration-200 disabled:opacity-50 disabled:cursor-not-allowed shadow-sm;
   }
   .btn-secondary {
-    @apply border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg-alt)] font-medium px-5 py-2.5 rounded-lg transition-all duration-200;
+    @apply border border-[var(--color-border)] text-[var(--color-text)] hover:bg-[var(--color-bg-alt)] font-medium px-5 py-2.5 rounded-xl transition-all duration-200;
   }
   .card {
-    @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-6 shadow-sm;
+    @apply bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm;
   }
   .input {
-    @apply w-full border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent transition-all placeholder:text-[var(--color-text-muted)];
+    @apply w-full border border-[var(--color-border)] bg-[var(--color-bg)] text-[var(--color-text)] rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30 focus:border-[var(--color-primary)] transition-all placeholder:text-[var(--color-text-muted)];
   }
   .label {
     @apply block text-sm font-medium text-[var(--color-text)] mb-1.5;
@@ -58,6 +67,7 @@ body {
   }
 }
 
+/* Skeleton loader */
 .skeleton {
   background: linear-gradient(
     90deg,
@@ -67,26 +77,26 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
-  border-radius: 6px;
+  border-radius: 10px;
 }
 
 @keyframes shimmer {
-  0% {
-    background-position: 200% 0;
-  }
-  100% {
-    background-position: -200% 0;
-  }
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Fade in animation */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
-::-webkit-scrollbar-track {
-  background: transparent;
+
+.animate-fade-in {
+  animation: fadeIn 0.25s ease-out both;
 }
-::-webkit-scrollbar-thumb {
-  background: var(--color-border);
-  border-radius: 3px;
-}
+
+/* Scrollbar */
+::-webkit-scrollbar       { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--color-text-muted); }
