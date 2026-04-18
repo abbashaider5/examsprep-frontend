@@ -157,6 +157,7 @@ export const contactApi = {
 
 export const feedbackApi = {
   submit: (data) => api.post('/feedback', data),
+  getLimits: () => api.get('/feedback/limits'),
   getAdmin: () => api.get('/feedback/admin'),
   reply: (id, reply) => api.patch(`/feedback/admin/${id}/reply`, { reply }),
 };

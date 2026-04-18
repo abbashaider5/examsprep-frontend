@@ -123,26 +123,31 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-6 space-y-6 animate-fade-in">
-      {/* Welcome */}
-      <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-3">
-        <div>
-          <h2 className="text-xl font-bold text-[var(--color-text)]">
-            Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]}
-          </h2>
-          <p className="text-[var(--color-text-muted)] text-sm mt-0.5">Here's your learning overview</p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-          <Link to="/create-exam" className="btn-primary flex items-center gap-2 text-sm whitespace-nowrap">
-            <Sparkles size={15} /> Generate AI Exam
-          </Link>
-          {user?.role === 'user' && (
-            <button
-              onClick={() => setShowInstructorModal(true)}
-              className="btn-secondary text-sm flex items-center gap-1.5"
-            >
-              <BookmarkCheck size={14} /> Become Instructor
-            </button>
-          )}
+      {/* Welcome hero */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/60 to-violet-50/40 dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-violet-900/10 border border-blue-100 dark:border-blue-900/30 px-5 py-5">
+        {/* subtle radial blob */}
+        <div className="absolute -top-10 -right-10 w-48 h-48 bg-blue-200/30 dark:bg-blue-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-6 left-0 w-36 h-36 bg-violet-200/20 dark:bg-violet-800/10 rounded-full blur-2xl pointer-events-none" />
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-bold text-[var(--color-text)]">
+              Good {new Date().getHours() < 12 ? 'morning' : new Date().getHours() < 18 ? 'afternoon' : 'evening'}, {user?.name?.split(' ')[0]} 👋
+            </h2>
+            <p className="text-[var(--color-text-muted)] text-sm mt-0.5">Here's your learning overview</p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+            <Link to="/create-exam" className="btn-primary flex items-center gap-2 text-sm whitespace-nowrap">
+              <Sparkles size={15} /> Generate AI Exam
+            </Link>
+            {user?.role === 'user' && (
+              <button
+                onClick={() => setShowInstructorModal(true)}
+                className="btn-secondary text-sm flex items-center gap-1.5"
+              >
+                <BookmarkCheck size={14} /> Become Instructor
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

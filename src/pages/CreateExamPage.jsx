@@ -217,9 +217,13 @@ export default function CreateExamPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in max-w-6xl">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">Create New Exam</h1>
-        <p className="text-[var(--color-text-muted)] text-sm mt-1">AI will generate your questions instantly.</p>
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/50 to-violet-50/30 dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-violet-900/5 border border-blue-100 dark:border-blue-900/30 px-6 py-5 mb-8">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-indigo-200/30 dark:bg-indigo-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative">
+          <h1 className="text-2xl font-bold text-[var(--color-text)]">Create New Exam</h1>
+          <p className="text-[var(--color-text-muted)] text-sm mt-1">AI will generate your questions instantly.</p>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">

@@ -26,6 +26,7 @@ import ProfilePage from './pages/ProfilePage.jsx';
 import ResultPage from './pages/ResultPage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 import StudyModePage from './pages/StudyModePage.jsx';
+import StudyPerformancePage from './pages/StudyPerformancePage.jsx';
 import TermsPage from './pages/TermsPage.jsx';
 import VerifyCertPage from './pages/VerifyCertPage.jsx';
 
@@ -75,6 +76,7 @@ export default function App() {
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
           <Route path="study" element={<StudyModePage />} />
+          <Route path="performance" element={<StudyPerformancePage />} />
           <Route path="admin" element={<Guard adminOnly><AdminPage /></Guard>} />
           <Route path="instructor" element={<Guard instructorOnly><InstructorPage /></Guard>} />
         </Route>

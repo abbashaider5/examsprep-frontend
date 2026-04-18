@@ -1,9 +1,10 @@
 import {
   Award, BookmarkCheck, BookOpen,
   GraduationCap, LayoutDashboard, LogOut, Menu,
-  Moon, Plus, RefreshCw, Shield, Sun, Trophy, User, X, Zap
+  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, Trophy, User, X, Zap
 } from 'lucide-react';
 import { useState } from 'react';
+import FeedbackModal from '../components/FeedbackModal.jsx';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth.js';
@@ -13,6 +14,7 @@ const NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   { to: '/create-exam', icon: Plus, label: 'Generate AI Exam' },
   { to: '/study', icon: GraduationCap, label: 'Study Mode' },
+  { to: '/performance', icon: BarChart2, label: 'Performance' },
   { to: '/certificates', icon: Award, label: 'Certificates' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
   { to: '/profile', icon: User, label: 'Profile' },
@@ -54,6 +56,7 @@ export default function DashboardLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showFeedback, setShowFeedback] = useState(false);
   const [bannerDismissed, setBannerDismissed] = useState(() => {
     try { return localStorage.getItem('upgrade-banner-dismissed') === '1'; } catch { return false; }
   });
@@ -67,7 +70,7 @@ export default function DashboardLayout() {
 
   const allNav = [...NAV];
   const pageTitle = allNav.find(n => n.to === pathname)?.label
-    || (pathname === '/admin' ? 'Admin Panel' : pathname === '/instructor' ? 'Instructor Dashboard' : pathname === '/profile' ? 'Profile' : 'Dashboard');
+    || (pathname === '/admin' ? 'Admin Panel' : pathname === '/instructor' ? 'Instructor Dashboard' : pathname === '/profile' ? 'Profile' : pathname === '/performance' ? 'Performance' : 'Dashboard');
 
   const isFreePlan = !user?.plan || user.plan === 'free';
   const remaining = user?.remaining ?? null;
@@ -199,6 +202,13 @@ export default function DashboardLayout() {
               <span className="font-bold text-[var(--color-primary)]">{user?.xp || 0}</span>
             </div>
             <button
+              onClick={() => setShowFeedback(true)}
+              className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
+              title="Give feedback"
+            >
+              <MessageSquare size={18} />
+            </button>
+            <button
               onClick={handleRefresh}
               className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
               title="Refresh data"
@@ -244,6 +254,10 @@ export default function DashboardLayout() {
           <Outlet />
         </main>
       </div>
+
+      {showFeedback && (
+        <FeedbackModal mode="direct" trigger="general" onClose={() => setShowFeedback(false)} />
+      )}
     </div>
   );
 }

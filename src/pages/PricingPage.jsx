@@ -176,8 +176,13 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="py-16 px-4 sm:px-6 lg:px-8 bg-[var(--color-bg)] min-h-screen">
-      <div className="max-w-6xl mx-auto">
+    <div className="relative py-16 px-4 sm:px-6 lg:px-8 bg-[var(--color-bg)] min-h-screen overflow-hidden">
+      {/* Apple-style radial background */}
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-gradient-radial from-blue-100/50 via-indigo-50/25 to-transparent dark:from-blue-900/15 dark:via-indigo-900/8 dark:to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-32 right-0 w-56 h-56 bg-violet-100/30 dark:bg-violet-900/10 rounded-full blur-3xl" />
+      </div>
+      <div className="relative max-w-6xl mx-auto">
         {/* Header */}
         <div className="text-center mb-14">
           <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">

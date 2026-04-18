@@ -143,12 +143,12 @@ export default function StudyModePage() {
 
   const allExams = [...ownExams, ...invitedEntries];
 
-  const q = search.trim().toLowerCase();
-  const filteredExams = q
+  const searchQuery = search.trim().toLowerCase();
+  const filteredExams = searchQuery
     ? allExams.filter(e =>
-        e.title?.toLowerCase().includes(q) ||
-        e.subject?.toLowerCase().includes(q) ||
-        e.difficulty?.toLowerCase().includes(q)
+        e.title?.toLowerCase().includes(searchQuery) ||
+        e.subject?.toLowerCase().includes(searchQuery) ||
+        e.difficulty?.toLowerCase().includes(searchQuery)
       )
     : allExams;
 
@@ -348,7 +348,7 @@ export default function StudyModePage() {
 
   // ── Study view ────────────────────────────────────────────────────────────
   const questions = examData?.questions || [];
-  // const q = questions[cardIndex];
+  const q = questions[cardIndex];
 
   // Determine available modes based on invite settings
   const isInvitedExam = !!selectedExam._isInvited;
