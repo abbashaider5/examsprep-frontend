@@ -4,7 +4,7 @@ import {
   GraduationCap, LayoutDashboard, Mail, Monitor,
   PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users
 } from 'lucide-react';
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/index.js';
 import { PLANS } from './PricingPage.jsx';
