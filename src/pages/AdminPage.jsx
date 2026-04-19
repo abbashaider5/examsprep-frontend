@@ -915,134 +915,303 @@ function FeedbackTab() {
     onError: () => toast.error('Failed to save reply'),
   });
 
-  if (isLoading) return <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}</div>;
+  if (isLoading) return (
+    <div className="space-y-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        {[1,2,3,4].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}
+      </div>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        <div className="skeleton h-52 rounded-xl" />
+        <div className="skeleton h-52 rounded-xl" />
+      </div>
+    </div>
+  );
 
-  const { feedback = [], stats = { avg: '0.0', total: 0, distribution: [0, 0, 0, 0, 0] } } = data || {};
+  const { feedback = [], stats = { avg: '0.0', total: 0, distribution: [0,0,0,0,0], categoryAvg: {}, trend: [], repliedCount: 0 } } = data || {};
+  const { avg, total, distribution, categoryAvg = {}, trend = [], repliedCount = 0 } = stats;
+  const replyRate = total > 0 ? Math.round((repliedCount / total) * 100) : 0;
 
-  const ratingChartData = {
+  // ── Chart: Distribution doughnut ─────────────────────────────────────────
+  const distChart = {
     labels: ['1 ★', '2 ★', '3 ★', '4 ★', '5 ★'],
     datasets: [{
-      data: stats.distribution,
+      data: distribution,
       backgroundColor: ['#ef4444', '#f97316', '#eab308', '#22c55e', '#3b82f6'],
       borderWidth: 0,
+      hoverOffset: 4,
     }],
+  };
+  const distOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'right', labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed} responses` } } },
+    cutout: '65%',
+  };
+
+  // ── Chart: Category averages horizontal bar ───────────────────────────────
+  const catLabels = ['UI & Design', 'Performance', 'Features'];
+  const catValues = [categoryAvg.ui || 0, categoryAvg.performance || 0, categoryAvg.features || 0];
+  const catChart = {
+    labels: catLabels,
+    datasets: [{
+      data: catValues,
+      backgroundColor: ['rgba(99,102,241,0.75)', 'rgba(59,130,246,0.75)', 'rgba(16,185,129,0.75)'],
+      borderRadius: 6,
+      borderSkipped: false,
+    }],
+  };
+  const catOpts = {
+    indexAxis: 'y',
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { callbacks: { label: ctx => ` ${ctx.parsed.x.toFixed(1)} / 5` } } },
+    scales: {
+      x: { min: 0, max: 5, ticks: { font: { size: 10 }, callback: v => `${v}★` }, grid: { color: 'rgba(0,0,0,0.05)' } },
+      y: { ticks: { font: { size: 11 } }, grid: { display: false } },
+    },
+  };
+
+  // ── Chart: 30-day submission trend ───────────────────────────────────────
+  const trendLabels = trend.map(t => { const d = new Date(t.date); return `${d.getDate()}/${d.getMonth()+1}`; });
+  const trendChart = {
+    labels: trendLabels,
+    datasets: [
+      {
+        label: 'Submissions',
+        data: trend.map(t => t.count),
+        borderColor: '#3b82f6',
+        backgroundColor: 'rgba(59,130,246,0.08)',
+        tension: 0.4, fill: true, pointRadius: 3, pointBackgroundColor: '#3b82f6',
+        yAxisID: 'y',
+      },
+      {
+        label: 'Avg Rating',
+        data: trend.map(t => t.avgRating),
+        borderColor: '#f59e0b',
+        backgroundColor: 'transparent',
+        tension: 0.4, pointRadius: 3, pointBackgroundColor: '#f59e0b',
+        borderDash: [4, 2],
+        yAxisID: 'y2',
+      },
+    ],
+  };
+  const trendOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { position: 'top', labels: { boxWidth: 10, font: { size: 11 } } }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+      x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+      y: { position: 'left', ticks: { font: { size: 10 }, stepSize: 1 }, grid: { color: 'rgba(0,0,0,0.05)' }, title: { display: true, text: 'Count', font: { size: 10 } } },
+      y2: { position: 'right', min: 0, max: 5, ticks: { font: { size: 10 }, callback: v => `${v}★` }, grid: { display: false }, title: { display: true, text: 'Rating', font: { size: 10 } } },
+    },
   };
 
   return (
-    <div className="space-y-6">
-      {/* Stats row */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <div className="card flex items-center gap-4">
-          <div className="bg-amber-100 dark:bg-amber-900/30 p-3 rounded-xl">
-            <Star size={20} className="text-amber-500" />
+    <div className="space-y-5">
+      {/* ── Row 1: Stat cards ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <div className="card flex items-center gap-3 p-4">
+          <div className="bg-amber-100 dark:bg-amber-900/30 p-2.5 rounded-xl shrink-0">
+            <Star size={18} className="text-amber-500" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--color-text)]">{stats.avg}</div>
-            <div className="text-xs text-[var(--color-text-muted)]">Average Rating</div>
+            <div className="text-xl font-extrabold text-[var(--color-text)]">{avg} <span className="text-sm font-normal text-[var(--color-text-muted)]">/ 5</span></div>
+            <div className="text-xs text-[var(--color-text-muted)]">Avg Rating</div>
           </div>
         </div>
-        <div className="card flex items-center gap-4">
-          <div className="bg-blue-100 dark:bg-blue-900/30 p-3 rounded-xl">
-            <MessageSquare size={20} className="text-[var(--color-primary)]" />
+        <div className="card flex items-center gap-3 p-4">
+          <div className="bg-blue-100 dark:bg-blue-900/30 p-2.5 rounded-xl shrink-0">
+            <MessageSquare size={18} className="text-[var(--color-primary)]" />
           </div>
           <div>
-            <div className="text-2xl font-bold text-[var(--color-text)]">{stats.total}</div>
+            <div className="text-xl font-extrabold text-[var(--color-text)]">{total}</div>
             <div className="text-xs text-[var(--color-text-muted)]">Total Responses</div>
           </div>
         </div>
-        {/* Rating distribution chart */}
-        <div className="card flex items-center gap-4">
-          <div className="w-16 h-16 shrink-0">
-            <Doughnut data={ratingChartData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: false } }, cutout: '70%' }} />
+        <div className="card flex items-center gap-3 p-4">
+          <div className="bg-green-100 dark:bg-green-900/30 p-2.5 rounded-xl shrink-0">
+            <CheckCircle size={18} className="text-green-600" />
           </div>
           <div>
-            <div className="text-sm font-semibold text-[var(--color-text)]">Distribution</div>
-            <div className="flex gap-1 mt-1 flex-wrap">
-              {['1★', '2★', '3★', '4★', '5★'].map((l, i) => (
-                <span key={l} className="text-[10px] text-[var(--color-text-muted)]">{l}:{stats.distribution[i]}</span>
-              ))}
-            </div>
+            <div className="text-xl font-extrabold text-[var(--color-text)]">{repliedCount}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">Replied · {replyRate}%</div>
+          </div>
+        </div>
+        <div className="card flex items-center gap-3 p-4">
+          <div className="bg-purple-100 dark:bg-purple-900/30 p-2.5 rounded-xl shrink-0">
+            <BarChart2 size={18} className="text-purple-600" />
+          </div>
+          <div>
+            <div className="text-xl font-extrabold text-[var(--color-text)]">{categoryAvg.count || 0}</div>
+            <div className="text-xs text-[var(--color-text-muted)]">Multi-rated</div>
           </div>
         </div>
       </div>
 
-      {/* Feedback list */}
-      {feedback.length === 0 ? (
-        <div className="text-center py-12 text-[var(--color-text-muted)] text-sm">No feedback yet.</div>
-      ) : (
-        <div className="space-y-3">
-          {feedback.map((fb) => (
-            <div key={fb._id} className="card p-4">
-              <div className="flex items-start justify-between gap-3 mb-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-xs font-bold text-[var(--color-primary)]">
-                    {fb.user?.name?.[0]?.toUpperCase() || '?'}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-[var(--color-text)]">{fb.user?.name || 'Anonymous'}</p>
-                    <p className="text-xs text-[var(--color-text-muted)]">{fb.user?.email} · {new Date(fb.createdAt).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <div className="flex gap-0.5 shrink-0">
-                  {[1, 2, 3, 4, 5].map(s => (
-                    <Star key={s} size={13} className={s <= fb.rating ? 'fill-amber-400 text-amber-400' : 'text-[var(--color-border)]'} />
-                  ))}
-                </div>
+      {/* ── Row 2: Distribution + Category breakdown ── */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Distribution doughnut */}
+        <div className="card p-5">
+          <h3 className="text-sm font-bold text-[var(--color-text)] mb-1">Rating Distribution</h3>
+          <p className="text-xs text-[var(--color-text-muted)] mb-4">Overall star breakdown across all submissions</p>
+          {total > 0 ? (
+            <div className="flex items-center gap-4">
+              <div style={{ height: 160, width: 160, flexShrink: 0 }}>
+                <Doughnut data={distChart} options={distOpts} />
               </div>
-
-              {fb.message && (
-                <p className="text-sm text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] rounded-lg px-3 py-2 mb-2 italic">
-                  "{fb.message}"
-                </p>
-              )}
-
-              <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full capitalize">
-                  {fb.trigger?.replace('_', ' ')}
-                </span>
-                {fb.adminReply && (
-                  <span className="text-xs text-green-600 dark:text-green-400">✓ Replied</span>
-                )}
-                <button
-                  onClick={() => { setReplyingId(fb._id); setReplyText(fb.adminReply || ''); }}
-                  className="text-xs text-[var(--color-primary)] hover:underline ml-auto"
-                >
-                  {fb.adminReply ? 'Edit reply' : 'Reply'}
-                </button>
+              <div className="space-y-1.5 flex-1 min-w-0">
+                {['5 ★', '4 ★', '3 ★', '2 ★', '1 ★'].map((l, ri) => {
+                  const idx = 4 - ri;
+                  const pct = total > 0 ? Math.round((distribution[idx] / total) * 100) : 0;
+                  const colors = ['bg-blue-400', 'bg-green-400', 'bg-yellow-400', 'bg-orange-400', 'bg-red-400'];
+                  return (
+                    <div key={l} className="flex items-center gap-2">
+                      <span className="text-[10px] text-[var(--color-text-muted)] w-5 shrink-0">{l}</span>
+                      <div className="flex-1 bg-[var(--color-bg-alt)] rounded-full h-1.5">
+                        <div className={`h-1.5 rounded-full ${colors[idx]}`} style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-[10px] text-[var(--color-text-muted)] w-6 text-right shrink-0">{distribution[idx]}</span>
+                    </div>
+                  );
+                })}
               </div>
-
-              {fb.adminReply && replyingId !== fb._id && (
-                <div className="mt-2 pl-3 border-l-2 border-[var(--color-primary)]/30 text-xs text-[var(--color-text-muted)]">
-                  <span className="font-semibold text-[var(--color-primary)]">Admin: </span>{fb.adminReply}
-                </div>
-              )}
-
-              {replyingId === fb._id && (
-                <div className="mt-3 space-y-2">
-                  <textarea
-                    value={replyText}
-                    onChange={e => setReplyText(e.target.value)}
-                    rows={2}
-                    maxLength={500}
-                    placeholder="Write a reply..."
-                    className="input text-xs resize-none"
-                  />
-                  <div className="flex gap-2">
-                    <button onClick={() => setReplyingId(null)} className="text-xs text-[var(--color-text-muted)] hover:underline">Cancel</button>
-                    <button
-                      onClick={() => replyMut.mutate({ id: fb._id, reply: replyText })}
-                      disabled={replyMut.isPending || !replyText.trim()}
-                      className="btn-primary text-xs py-1.5 px-3"
-                    >
-                      {replyMut.isPending ? 'Saving…' : 'Save Reply'}
-                    </button>
-                  </div>
-                </div>
-              )}
             </div>
-          ))}
+          ) : (
+            <div className="flex items-center justify-center h-40 text-[var(--color-text-muted)] text-sm">No data yet</div>
+          )}
+        </div>
+
+        {/* Category bar chart */}
+        <div className="card p-5">
+          <h3 className="text-sm font-bold text-[var(--color-text)] mb-1">Category Averages</h3>
+          <p className="text-xs text-[var(--color-text-muted)] mb-4">Average rating per feedback category (out of 5)</p>
+          {categoryAvg.count > 0 ? (
+            <div style={{ height: 160 }}>
+              <Bar data={catChart} options={catOpts} />
+            </div>
+          ) : (
+            <div className="flex items-center justify-center h-40">
+              <div className="text-center">
+                <p className="text-sm text-[var(--color-text-muted)]">No category data yet</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">Category data is collected from new multi-rated feedback</p>
+              </div>
+            </div>
+          )}
+          {categoryAvg.count > 0 && (
+            <div className="grid grid-cols-3 gap-2 mt-4">
+              {[
+                { label: 'UI & Design', val: categoryAvg.ui, color: 'text-indigo-600' },
+                { label: 'Performance', val: categoryAvg.performance, color: 'text-blue-600' },
+                { label: 'Features', val: categoryAvg.features, color: 'text-emerald-600' },
+              ].map(c => (
+                <div key={c.label} className="text-center p-2 bg-[var(--color-bg-alt)] rounded-lg">
+                  <p className={`text-base font-extrabold ${c.color}`}>{c.val ?? '—'}</p>
+                  <p className="text-[9px] text-[var(--color-text-muted)] mt-0.5">{c.label}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Row 3: 30-day trend ── */}
+      {trend.length > 1 && (
+        <div className="card p-5">
+          <h3 className="text-sm font-bold text-[var(--color-text)] mb-1">Submission Trend — Last 30 Days</h3>
+          <p className="text-xs text-[var(--color-text-muted)] mb-4">Daily submissions count + average rating</p>
+          <div style={{ height: 160 }}>
+            <Line data={trendChart} options={trendOpts} />
+          </div>
         </div>
       )}
+
+      {/* ── Row 4: Feedback list ── */}
+      <div>
+        <h3 className="text-sm font-bold text-[var(--color-text)] mb-3">All Feedback ({total})</h3>
+        {feedback.length === 0 ? (
+          <div className="text-center py-12 text-[var(--color-text-muted)] text-sm card">No feedback yet.</div>
+        ) : (
+          <div className="space-y-3">
+            {feedback.map((fb) => (
+              <div key={fb._id} className="card p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[var(--color-primary)]/10 flex items-center justify-center text-xs font-bold text-[var(--color-primary)] shrink-0">
+                      {fb.user?.name?.[0]?.toUpperCase() || '?'}
+                    </div>
+                    <div>
+                      <p className="text-sm font-semibold text-[var(--color-text)]">{fb.user?.name || 'Anonymous'}</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{fb.user?.email} · {new Date(fb.createdAt).toLocaleDateString()}</p>
+                    </div>
+                  </div>
+                  {/* Overall stars */}
+                  <div className="flex items-center gap-1 shrink-0">
+                    <div className="flex gap-0.5">
+                      {[1,2,3,4,5].map(s => (
+                        <Star key={s} size={12} className={s <= fb.rating ? 'fill-amber-400 text-amber-400' : 'text-[var(--color-border)]'} />
+                      ))}
+                    </div>
+                    <span className="text-xs font-bold text-amber-500">{fb.rating}</span>
+                  </div>
+                </div>
+
+                {/* Category breakdown if present */}
+                {fb.ratings && (fb.ratings.ui || fb.ratings.performance || fb.ratings.features) && (
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {[
+                      { label: 'UI', val: fb.ratings.ui, color: 'bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400' },
+                      { label: 'Perf', val: fb.ratings.performance, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400' },
+                      { label: 'Features', val: fb.ratings.features, color: 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400' },
+                    ].filter(c => c.val).map(c => (
+                      <span key={c.label} className={`inline-flex items-center gap-0.5 text-[10px] font-semibold px-2 py-0.5 rounded-full ${c.color}`}>
+                        {c.label} <Star size={9} className="fill-current" /> {c.val}
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                {fb.message && (
+                  <p className="text-sm text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] rounded-lg px-3 py-2 mb-3 italic border-l-2 border-[var(--color-primary)]/20">
+                    "{fb.message}"
+                  </p>
+                )}
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full capitalize">
+                    {fb.trigger?.replace('_', ' ')}
+                  </span>
+                  {fb.adminReply && (
+                    <span className="text-xs text-green-600 dark:text-green-400 flex items-center gap-1">
+                      <CheckCircle size={10} /> Replied
+                    </span>
+                  )}
+                  <button
+                    onClick={() => { setReplyingId(fb._id); setReplyText(fb.adminReply || ''); }}
+                    className="text-xs text-[var(--color-primary)] hover:underline ml-auto flex items-center gap-1"
+                  >
+                    <Reply size={11} /> {fb.adminReply ? 'Edit reply' : 'Reply'}
+                  </button>
+                </div>
+
+                {fb.adminReply && replyingId !== fb._id && (
+                  <div className="mt-2 pl-3 border-l-2 border-[var(--color-primary)]/30 text-xs text-[var(--color-text-muted)]">
+                    <span className="font-semibold text-[var(--color-primary)]">Admin: </span>{fb.adminReply}
+                  </div>
+                )}
+
+                {replyingId === fb._id && (
+                  <div className="mt-3 space-y-2">
+                    <textarea value={replyText} onChange={e => setReplyText(e.target.value)} rows={2} maxLength={500} placeholder="Write a reply…" className="input text-xs resize-none" />
+                    <div className="flex gap-2">
+                      <button onClick={() => setReplyingId(null)} className="text-xs text-[var(--color-text-muted)] hover:underline">Cancel</button>
+                      <button onClick={() => replyMut.mutate({ id: fb._id, reply: replyText })} disabled={replyMut.isPending || !replyText.trim()} className="btn-primary text-xs py-1.5 px-3">
+                        {replyMut.isPending ? 'Saving…' : 'Save Reply'}
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
