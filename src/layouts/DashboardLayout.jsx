@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
+import NotificationDropdown from '../components/NotificationDropdown.jsx';
+import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth.js';
@@ -208,6 +210,7 @@ export default function DashboardLayout() {
             >
               <MessageSquare size={18} />
             </button>
+            <NotificationDropdown />
             <button
               onClick={handleRefresh}
               className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
@@ -248,6 +251,9 @@ export default function DashboardLayout() {
             </button>
           </div>
         )}
+
+        {/* Announcement banners */}
+        <AnnouncementBanner />
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">

@@ -10,11 +10,11 @@ import { useAuthStore } from '../store/index.js';
 import { PLANS } from './PricingPage.jsx';
 
 // Screenshot imports — Vite hashes these filenames for automatic cache-busting
-import ssCreate from '../assets/screenshots/user-or-instructor-will-create-exams-here.png';
 import ssDashboard from '../assets/screenshots/dashboard-for-instructor-or-user-also-show-ai-recommendation-based-on-previous-exams.png';
 import ssStudy from '../assets/screenshots/flashcards-reviews.png';
 import ssInstructor from '../assets/screenshots/instructor-can-invite-others-or-can-attempt-exams-himself.png';
 import ssReport from '../assets/screenshots/instructor-will-check-the-report-of-all-inviteds-users.png';
+import ssCreate from '../assets/screenshots/user-or-instructor-will-create-exams-here.png';
 import ssAnalytics from '../assets/screenshots/user-performance.png';
 
 const FEATURES = [

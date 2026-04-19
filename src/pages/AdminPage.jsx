@@ -13,6 +13,7 @@ import {
 import {
   Activity,
   BarChart2,
+  Bell,
   BookOpen,
   CheckCircle,
   ChevronLeft,
@@ -20,10 +21,14 @@ import {
   Clock,
   CreditCard,
   DollarSign,
+  Edit3,
   Inbox,
+  Info,
   Layers,
   Mail,
+  Megaphone,
   MessageSquare,
+  Plus,
   RefreshCw,
   Reply,
   Search,
@@ -31,7 +36,10 @@ import {
   Shield,
   Star,
   Trash2,
+  ToggleLeft,
+  ToggleRight,
   Users,
+  X,
   Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
@@ -39,19 +47,20 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, feedbackApi, logsApi, settingsApi, contactApi } from '../services/api.js';
+import { adminApi, announcementApi, feedbackApi, logsApi, settingsApi, contactApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
 const TABS = [
-  { id: 'overview',  label: 'Overview',         icon: BarChart2 },
-  { id: 'users',     label: 'Users',             icon: Users },
-  { id: 'plans',     label: 'Plan Management',   icon: Layers },
-  { id: 'contacts',  label: 'Contact Queries',   icon: Inbox },
-  { id: 'logs',      label: 'Activity Logs',     icon: Activity },
-  { id: 'settings',  label: 'Settings',          icon: Settings },
-  { id: 'payments',  label: 'Payments',          icon: CreditCard },
-  { id: 'feedback',  label: 'Feedback',          icon: MessageSquare },
+  { id: 'overview',       label: 'Overview',         icon: BarChart2 },
+  { id: 'users',          label: 'Users',             icon: Users },
+  { id: 'plans',          label: 'Plan Management',   icon: Layers },
+  { id: 'announcements',  label: 'Announcements',     icon: Megaphone },
+  { id: 'contacts',       label: 'Contact Queries',   icon: Inbox },
+  { id: 'logs',           label: 'Activity Logs',     icon: Activity },
+  { id: 'settings',       label: 'Settings',          icon: Settings },
+  { id: 'payments',       label: 'Payments',          icon: CreditCard },
+  { id: 'feedback',       label: 'Feedback',          icon: MessageSquare },
 ];
 
 const SEVERITY_COLORS = { info: 'bg-blue-100 text-blue-700', warning: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
@@ -1389,6 +1398,312 @@ function ContactsTab() {
   );
 }
 
+// ── Announcements Tab ─────────────────────────────────────────────────────────
+
+const TYPE_OPTS = [
+  { value: 'info',    label: 'Info',    color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300' },
+  { value: 'warning', label: 'Warning', color: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300' },
+  { value: 'success', label: 'Success', color: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' },
+  { value: 'error',   label: 'Error',   color: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300' },
+];
+
+const AUD_OPTS = [
+  { value: 'all',        label: 'All Users' },
+  { value: 'free',       label: 'Free Plan Only' },
+  { value: 'pro',        label: 'Pro Plan Only' },
+  { value: 'enterprise', label: 'Enterprise Only' },
+];
+
+const EMPTY_FORM = { title: '', message: '', type: 'info', targetAudience: 'all', isActive: true, expiresAt: '' };
+
+function AnnouncementFormModal({ initial, onClose, onSaved }) {
+  const [form, setForm] = useState(initial || EMPTY_FORM);
+  const qc = useQueryClient();
+  const isEdit = !!initial?._id;
+
+  const mut = useMutation({
+    mutationFn: (data) => isEdit
+      ? announcementApi.adminUpdate(initial._id, data)
+      : announcementApi.adminCreate(data),
+    onSuccess: (res) => {
+      toast.success(isEdit ? 'Announcement updated!' : 'Announcement created!');
+      qc.invalidateQueries({ queryKey: ['adminAnnouncements'] });
+      onSaved?.(res.data.announcement);
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const f = (k) => (e) => setForm(s => ({ ...s, [k]: e.target ? e.target.value : e }));
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    if (!form.title.trim() || !form.message.trim()) return toast.error('Title and message are required');
+    mut.mutate({ ...form, expiresAt: form.expiresAt || null });
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-lg animate-slide-up" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+          <h3 className="font-semibold text-[var(--color-text)] flex items-center gap-2">
+            <Megaphone size={15} className="text-[var(--color-primary)]" />
+            {isEdit ? 'Edit Announcement' : 'New Announcement'}
+          </h3>
+          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)]">
+            <X size={16} className="text-[var(--color-text-muted)]" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-5 space-y-4">
+          {/* Title */}
+          <div>
+            <label className="label">Title *</label>
+            <input value={form.title} onChange={f('title')} className="input" placeholder="e.g. System Maintenance Tonight" maxLength={120} />
+          </div>
+
+          {/* Message */}
+          <div>
+            <label className="label">Message *</label>
+            <textarea
+              value={form.message}
+              onChange={f('message')}
+              className="input resize-none"
+              rows={3}
+              placeholder="Enter the announcement details..."
+              maxLength={1000}
+            />
+            <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 text-right">{form.message.length}/1000</p>
+          </div>
+
+          {/* Type + Audience row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Type</label>
+              <select value={form.type} onChange={f('type')} className="input">
+                {TYPE_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Audience</label>
+              <select value={form.targetAudience} onChange={f('targetAudience')} className="input">
+                {AUD_OPTS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* Expiry + Active row */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="label">Expires At (optional)</label>
+              <input
+                type="datetime-local"
+                value={form.expiresAt}
+                onChange={f('expiresAt')}
+                className="input"
+                min={new Date().toISOString().slice(0, 16)}
+              />
+            </div>
+            <div className="flex flex-col justify-end pb-0.5">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <div className={`relative w-9 h-5 rounded-full transition-colors ${form.isActive ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
+                  onClick={() => setForm(s => ({ ...s, isActive: !s.isActive }))}>
+                  <div className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${form.isActive ? 'translate-x-4' : 'translate-x-0.5'}`} />
+                </div>
+                <span className="text-sm font-medium text-[var(--color-text)]">Active</span>
+              </label>
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button type="button" onClick={onClose} className="btn-secondary flex-1 text-sm py-2.5">Cancel</button>
+            <button type="submit" disabled={mut.isPending} className="btn-primary flex-1 text-sm py-2.5">
+              {mut.isPending ? 'Saving...' : isEdit ? 'Save Changes' : 'Create Announcement'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+function AnnouncementsTab() {
+  const [showForm, setShowForm] = useState(false);
+  const [editItem, setEditItem] = useState(null);
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminAnnouncements'],
+    queryFn: () => announcementApi.adminGetAll().then(r => r.data),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => announcementApi.adminDelete(id),
+    onSuccess: () => {
+      toast.success('Deleted');
+      qc.invalidateQueries({ queryKey: ['adminAnnouncements'] });
+    },
+    onError: () => toast.error('Delete failed'),
+  });
+
+  const toggleMut = useMutation({
+    mutationFn: (id) => announcementApi.adminToggle(id),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['adminAnnouncements'] }),
+    onError: () => toast.error('Toggle failed'),
+  });
+
+  const announcements = data?.announcements || [];
+  const active   = announcements.filter(a => a.isActive && (!a.expiresAt || new Date(a.expiresAt) > new Date()));
+  const inactive = announcements.filter(a => !a.isActive || (a.expiresAt && new Date(a.expiresAt) <= new Date()));
+
+  const typeOpt = (t) => TYPE_OPTS.find(o => o.value === t) || TYPE_OPTS[0];
+
+  const renderCard = (a) => {
+    const expired = a.expiresAt && new Date(a.expiresAt) <= new Date();
+    const t = typeOpt(a.type);
+    return (
+      <div key={a._id} className={`card p-4 flex flex-col gap-3 transition-all ${!a.isActive || expired ? 'opacity-60' : ''}`}>
+        {/* Header row */}
+        <div className="flex items-start gap-3">
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap mb-1">
+              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${t.color}`}>{t.label}</span>
+              <span className="text-[10px] font-medium bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full capitalize">
+                {a.targetAudience === 'all' ? 'All Users' : `${a.targetAudience} plan`}
+              </span>
+              {expired && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 px-2 py-0.5 rounded-full">Expired</span>}
+              {!a.isActive && !expired && <span className="text-[10px] font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 px-2 py-0.5 rounded-full">Disabled</span>}
+            </div>
+            <h3 className="text-sm font-semibold text-[var(--color-text)] truncate">{a.title}</h3>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5 line-clamp-2">{a.message}</p>
+          </div>
+          {/* Toggle */}
+          <button
+            onClick={() => toggleMut.mutate(a._id)}
+            className="shrink-0 transition-colors"
+            title={a.isActive ? 'Disable' : 'Enable'}
+          >
+            {a.isActive
+              ? <ToggleRight size={22} className="text-[var(--color-primary)]" />
+              : <ToggleLeft size={22} className="text-[var(--color-text-muted)]" />}
+          </button>
+        </div>
+
+        {/* Meta row */}
+        <div className="flex items-center gap-3 text-[10px] text-[var(--color-text-muted)] flex-wrap">
+          <span className="flex items-center gap-1"><Clock size={9} /> {new Date(a.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+          {a.expiresAt && <span className="flex items-center gap-1"><Bell size={9} /> Expires {new Date(a.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>}
+          {a.stats && (
+            <>
+              <span className="flex items-center gap-1"><CheckCircle size={9} className="text-green-500" /> {a.stats.readCount} read</span>
+              <span className="flex items-center gap-1"><X size={9} className="text-slate-400" /> {a.stats.dismissCount} dismissed</span>
+            </>
+          )}
+        </div>
+
+        {/* Action row */}
+        <div className="flex items-center gap-2 pt-0.5 border-t border-[var(--color-border)]">
+          <button
+            onClick={() => { setEditItem(a); setShowForm(true); }}
+            className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline"
+          >
+            <Edit3 size={11} /> Edit
+          </button>
+          <button
+            onClick={() => { if (window.confirm('Delete this announcement?')) deleteMut.mutate(a._id); }}
+            className="flex items-center gap-1.5 text-xs text-red-500 hover:underline ml-auto"
+          >
+            <Trash2 size={11} /> Delete
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-50 via-purple-50/60 to-indigo-50/40 dark:from-violet-900/20 dark:via-purple-900/10 dark:to-indigo-900/5 border border-violet-100 dark:border-violet-900/30 px-6 py-5">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-violet-200/30 dark:bg-violet-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0">
+              <Megaphone size={18} className="text-violet-600 dark:text-violet-400" />
+            </div>
+            <div>
+              <h2 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Announcements</h2>
+              <p className="text-xs text-[var(--color-text-muted)]">Manage platform-wide announcements and notifications.</p>
+            </div>
+          </div>
+          <button
+            onClick={() => { setEditItem(null); setShowForm(true); }}
+            className="btn-primary flex items-center gap-1.5 text-sm shrink-0"
+          >
+            <Plus size={15} /> New Announcement
+          </button>
+        </div>
+      </div>
+
+      {/* Stats strip */}
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          { label: 'Total', value: announcements.length, color: 'text-[var(--color-primary)]', bg: 'bg-[var(--color-primary)]/10' },
+          { label: 'Active', value: active.length, color: 'text-green-600', bg: 'bg-green-100 dark:bg-green-900/20' },
+          { label: 'Inactive/Expired', value: inactive.length, color: 'text-slate-500', bg: 'bg-slate-100 dark:bg-slate-800' },
+        ].map(s => (
+          <div key={s.label} className="card py-3 text-center">
+            <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
+            <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{s.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="skeleton h-28 rounded-xl" />)}</div>
+      ) : announcements.length === 0 ? (
+        <div className="card text-center py-16">
+          <Megaphone size={36} className="mx-auto mb-3 text-[var(--color-border)]" />
+          <p className="font-medium text-[var(--color-text)]">No announcements yet</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">Create your first announcement to notify users.</p>
+          <button
+            onClick={() => { setEditItem(null); setShowForm(true); }}
+            className="btn-primary mt-4 text-sm flex items-center gap-1.5 mx-auto"
+          >
+            <Plus size={14} /> Create Announcement
+          </button>
+        </div>
+      ) : (
+        <>
+          {active.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Active ({active.length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {active.map(renderCard)}
+              </div>
+            </div>
+          )}
+          {inactive.length > 0 && (
+            <div>
+              <h3 className="text-xs font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Inactive / Expired ({inactive.length})</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {inactive.map(renderCard)}
+              </div>
+            </div>
+          )}
+        </>
+      )}
+
+      {showForm && (
+        <AnnouncementFormModal
+          initial={editItem}
+          onClose={() => { setShowForm(false); setEditItem(null); }}
+        />
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -1423,14 +1738,15 @@ export default function AdminPage() {
         })}
       </div>
 
-      {activeTab === 'overview' && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
-      {activeTab === 'users' && <UsersTab />}
-      {activeTab === 'plans' && <PlansTab />}
-      {activeTab === 'contacts' && <ContactsTab />}
-      {activeTab === 'logs' && <LogsTab />}
-      {activeTab === 'settings' && <SettingsTab />}
-      {activeTab === 'payments' && <PaymentsTab />}
-      {activeTab === 'feedback' && <FeedbackTab />}
+      {activeTab === 'overview'      && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
+      {activeTab === 'users'         && <UsersTab />}
+      {activeTab === 'plans'         && <PlansTab />}
+      {activeTab === 'announcements' && <AnnouncementsTab />}
+      {activeTab === 'contacts'      && <ContactsTab />}
+      {activeTab === 'logs'          && <LogsTab />}
+      {activeTab === 'settings'      && <SettingsTab />}
+      {activeTab === 'payments'      && <PaymentsTab />}
+      {activeTab === 'feedback'      && <FeedbackTab />}
     </div>
   );
 }

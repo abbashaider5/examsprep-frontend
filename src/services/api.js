@@ -162,4 +162,17 @@ export const feedbackApi = {
   reply: (id, reply) => api.patch(`/feedback/admin/${id}/reply`, { reply }),
 };
 
+export const announcementApi = {
+  // User
+  getAll:   ()   => api.get('/announcements'),
+  markRead: (id) => api.post(`/announcements/${id}/read`),
+  dismiss:  (id) => api.post(`/announcements/${id}/dismiss`),
+  // Admin
+  adminGetAll: ()         => api.get('/announcements/admin'),
+  adminCreate: (data)     => api.post('/announcements/admin', data),
+  adminUpdate: (id, data) => api.put(`/announcements/admin/${id}`, data),
+  adminDelete: (id)       => api.delete(`/announcements/admin/${id}`),
+  adminToggle: (id)       => api.patch(`/announcements/admin/${id}/toggle`),
+};
+
 export default api;
