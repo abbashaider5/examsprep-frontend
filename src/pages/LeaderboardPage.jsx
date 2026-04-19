@@ -60,7 +60,7 @@ export default function LeaderboardPage() {
   const myRank = board.findIndex(u => u.name === me?.name);
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-3xl mx-auto animate-fade-in">
+    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
       {/* Header */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-yellow-50/50 to-orange-50/30 dark:from-amber-900/20 dark:via-yellow-900/10 dark:to-orange-900/5 border border-amber-100 dark:border-amber-900/30 px-6 py-5 mb-8">
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-amber-200/30 dark:bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />

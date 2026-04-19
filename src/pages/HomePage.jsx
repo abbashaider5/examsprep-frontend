@@ -9,6 +9,14 @@ import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/index.js';
 import { PLANS } from './PricingPage.jsx';
 
+// Screenshot imports — Vite hashes these filenames for automatic cache-busting
+import ssCreate from '../assets/screenshots/user-or-instructor-will-create-exams-here.png';
+import ssDashboard from '../assets/screenshots/dashboard-for-instructor-or-user-also-show-ai-recommendation-based-on-previous-exams.png';
+import ssStudy from '../assets/screenshots/flashcards-reviews.png';
+import ssInstructor from '../assets/screenshots/instructor-can-invite-others-or-can-attempt-exams-himself.png';
+import ssReport from '../assets/screenshots/instructor-will-check-the-report-of-all-inviteds-users.png';
+import ssAnalytics from '../assets/screenshots/user-performance.png';
+
 const FEATURES = [
   { icon: Sparkles, title: 'AI Question Generation', desc: 'Generate high-quality MCQs on any topic in seconds using advanced AI. Choose difficulty, subject, and number of questions.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
   { icon: ShieldCheck, title: 'AI Proctoring', desc: 'Real-time face detection, tab-switch monitoring, and fullscreen enforcement ensure exam integrity automatically.', color: 'bg-red-100 dark:bg-red-900/30 text-red-600' },
@@ -52,7 +60,7 @@ const STATS = [
 
 const DEMO_SCREENSHOTS = [
   {
-    src: '/demo-ss/user-or-instructor-will-create-exams-here.png',
+    src: ssCreate,
     tag: 'AI Exam Creator',
     accentColor: 'blue',
     tabBg: 'bg-blue-500',
@@ -61,7 +69,7 @@ const DEMO_SCREENSHOTS = [
     bullets: ['Works for any subject or topic', 'MCQ and coding questions supported', 'Instant generation — under 10 seconds'],
   },
   {
-    src: '/demo-ss/dashboard-for-instructor-or-user-also-show-ai-recommendation-based-on-previous-exams.png',
+    src: ssDashboard,
     tag: 'Smart Dashboard',
     accentColor: 'indigo',
     tabBg: 'bg-indigo-500',
@@ -70,8 +78,8 @@ const DEMO_SCREENSHOTS = [
     bullets: ['AI recommends what to study next', 'Track streaks and level progress', 'See all past results at a glance'],
   },
   {
-    src: '/demo-ss/study-mode-where-user-will-find-all-exams.png',
-    tag: 'Study Mode',
+    src: ssStudy,
+    tag: 'Flashcards',
     accentColor: 'purple',
     tabBg: 'bg-purple-500',
     heading: 'Study smarter with flashcards',
@@ -79,22 +87,31 @@ const DEMO_SCREENSHOTS = [
     bullets: ['Flashcard mode for every exam', 'Attempt, reattempt, or just review', 'Works on any device'],
   },
   {
-    src: '/demo-ss/instructor-will-check-the-report-of-all-inviteds-users.png',
-    tag: 'Instructor Reports',
+    src: ssInstructor,
+    tag: 'Instructor Tools',
     accentColor: 'teal',
     tabBg: 'bg-teal-500',
+    heading: 'Invite candidates effortlessly',
+    desc: 'As an instructor you can create exams, invite candidates by email, set exam controls, and attempt exams yourself.',
+    bullets: ['Email-based invite system', 'Per-exam settings & proctoring controls', 'Take exams yourself before sending'],
+  },
+  {
+    src: ssReport,
+    tag: 'Reports',
+    accentColor: 'rose',
+    tabBg: 'bg-rose-500',
     heading: 'See how every candidate performed',
-    desc: 'As an instructor you get a full breakdown — who attempted, what they scored, how long they took, and which questions they got wrong.',
+    desc: 'Get a full breakdown — who attempted, what they scored, how long they took, and which questions they got wrong.',
     bullets: ['Per-candidate score and time', 'Question-level accuracy breakdown', 'Proctoring screenshots included'],
   },
   {
-    src: '/demo-ss/report-for-instructor-of-all-invited-users.png',
-    tag: 'Analytics Overview',
+    src: ssAnalytics,
+    tag: 'Your Analytics',
     accentColor: 'amber',
     tabBg: 'bg-amber-500',
-    heading: 'Full analytics for all your invites',
-    desc: "Get a bird's-eye view across all invited users — pass rates, average scores, top performers, and those who need extra support.",
-    bullets: ['Overall pass rate and avg score', 'Identify who needs help fast', 'Export or share with stakeholders'],
+    heading: 'Track your progress over time',
+    desc: "See your personal performance analytics — topic accuracy, exam history, XP growth, and AI-powered recommendations.",
+    bullets: ['Accuracy per topic over time', 'AI study recommendations', 'Full exam history at a glance'],
   },
 ];
 

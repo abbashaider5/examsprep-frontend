@@ -110,7 +110,7 @@ export default function StudyPerformancePage() {
 
   if (totalExams === 0) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 py-10 max-w-6xl mx-auto animate-fade-in text-center">
+      <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in text-center">
         <BookOpen size={48} className="mx-auto mb-4 text-[var(--color-text-muted)] opacity-30" />
         <h2 className="text-xl font-bold text-[var(--color-text)] mb-2">No data yet</h2>
         <p className="text-[var(--color-text-muted)] text-sm mb-6">Complete at least one exam to see your performance insights.</p>

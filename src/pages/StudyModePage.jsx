@@ -187,30 +187,36 @@ export default function StudyModePage() {
 
   if (!selectedExam) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-6">
-          <div>
+      <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+        {/* Header */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-violet-50/60 to-blue-50/40 dark:from-purple-900/20 dark:via-violet-900/10 dark:to-blue-900/5 border border-purple-100 dark:border-purple-900/30 px-6 py-5 mb-6">
+          <div className="absolute -top-8 -right-8 w-40 h-40 bg-purple-200/30 dark:bg-purple-700/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
             <div className="flex items-center gap-3">
-              <BookOpen size={24} className="text-[var(--color-primary)]" />
-              <h1 className="text-2xl font-bold text-[var(--color-text)]">Study Mode</h1>
+              <div className="w-9 h-9 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
+                <BookOpen size={18} className="text-purple-600 dark:text-purple-400" />
+              </div>
+              <div>
+                <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Study Mode</h1>
+                <p className="text-xs text-[var(--color-text-muted)]">Choose an exam to study with flashcards or review mode.</p>
+              </div>
             </div>
-            <p className="text-[var(--color-text-muted)] text-sm mt-1">Choose an exam to study with flashcards or review mode.</p>
-          </div>
-          {/* Search bar */}
-          <div className="relative w-full sm:w-72">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-            <input
-              type="text"
-              placeholder="Search by title, subject..."
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input pl-9 pr-8 text-sm w-full"
-            />
-            {search && (
-              <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-                <X size={14} />
-              </button>
-            )}
+            {/* Search bar */}
+            <div className="relative w-full sm:w-72">
+              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <input
+                type="text"
+                placeholder="Search by title, subject..."
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                className="input pl-9 pr-8 text-sm w-full"
+              />
+              {search && (
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

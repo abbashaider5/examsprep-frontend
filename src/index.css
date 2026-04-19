@@ -105,6 +105,16 @@ body {
   animation: fadeIn 0.25s ease-out both;
 }
 
+/* Slide up animation (for modals) */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(16px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.animate-slide-up {
+  animation: slideUp 0.2s ease-out both;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

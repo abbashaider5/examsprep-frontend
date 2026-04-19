@@ -100,9 +100,9 @@ function EditExamModal({ exam, onClose }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-[var(--color-bg)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col"
+        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col animate-slide-up"
         style={{ maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
@@ -216,8 +216,8 @@ function ReportPanel({ examId, onClose }) {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="bg-[var(--color-bg)] rounded-2xl p-8 w-full max-w-4xl">
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 w-full max-w-4xl">
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="skeleton h-12" />)}</div>
         </div>
       </div>
@@ -226,8 +226,8 @@ function ReportPanel({ examId, onClose }) {
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-        <div className="bg-[var(--color-bg)] rounded-2xl p-8 text-center" onClick={e => e.stopPropagation()}>
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 text-center" onClick={e => e.stopPropagation()}>
           <AlertCircle size={40} className="mx-auto mb-3 text-red-500" />
           <p className="text-[var(--color-text-muted)]">Failed to load report.</p>
           <button onClick={onClose} className="btn-secondary mt-4 text-sm">Close</button>
@@ -240,9 +240,9 @@ function ReportPanel({ examId, onClose }) {
   const screenshotsEnabled = exam?.screenshotEnabled;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
       <div
-        className="bg-[var(--color-bg)] rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col"
+        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col animate-slide-up"
         style={{ maxHeight: '90vh' }}
         onClick={e => e.stopPropagation()}
       >
@@ -476,44 +476,54 @@ export default function InstructorPage() {
 
   if (isLoading) {
     return (
-      <div className="px-4 sm:px-6 lg:px-8 py-10">
+      <div className="px-4 sm:px-6 lg:px-8 py-8">
         <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="skeleton h-24" />)}</div>
       </div>
     );
   }
 
-  const { totalExams = 0, totalInvites = 0, acceptedInvites = 0, avgScore = 0, exams = [] } = analyticsData || {};
+  const { totalExams = 0, totalInvites = 0, acceptedInvites = 0, totalAttempts = 0, avgScore = 0, exams = [] } = analyticsData || {};
+  const pendingInvites = totalInvites - acceptedInvites;
+  const totalPassCount = exams.reduce((a, e) => a + (e.stats?.passCount || 0), 0);
+  const passRate = totalAttempts > 0 ? Math.round((totalPassCount / totalAttempts) * 100) : 0;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
       {/* Header */}
-      <div className="flex items-center justify-between mb-8">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <BookmarkCheck size={22} className="text-[var(--color-primary)]" />
-            <h1 className="text-2xl font-bold text-[var(--color-text)]">Instructor Dashboard</h1>
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-50 via-blue-50/60 to-indigo-50/40 dark:from-teal-900/20 dark:via-blue-900/10 dark:to-indigo-900/5 border border-teal-100 dark:border-teal-900/30 px-6 py-5 mb-6">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-teal-200/30 dark:bg-teal-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0">
+              <BookmarkCheck size={18} className="text-teal-600 dark:text-teal-400" />
+            </div>
+            <div>
+              <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Instructor Dashboard</h1>
+              <p className="text-xs text-[var(--color-text-muted)]">Manage tests, track candidates, view analytics.</p>
+            </div>
           </div>
-          <p className="text-sm text-[var(--color-text-muted)]">Manage tests, track candidates, view analytics.</p>
+          <Link to="/create-exam" className="btn-primary flex items-center gap-1.5 text-sm shrink-0">
+            <Zap size={14} /> Create Test
+          </Link>
         </div>
-        <Link to="/create-exam" className="btn-primary flex items-center gap-1.5 text-sm">
-          <Zap size={14} /> Create Test
-        </Link>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+      {/* Stats — compact 6-card grid */}
+      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
         {[
-          { label: 'Total Tests', value: totalExams, icon: BookmarkCheck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { label: 'Invites Sent', value: totalInvites, icon: Mail, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+          { label: 'Tests', value: totalExams, icon: BookmarkCheck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
+          { label: 'Invites', value: totalInvites, icon: Mail, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
           { label: 'Accepted', value: acceptedInvites, icon: Users, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' },
-          { label: 'Avg Score', value: `${avgScore}%`, icon: Trophy, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { label: 'Pending', value: pendingInvites, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
+          { label: 'Attempts', value: totalAttempts, icon: BarChart2, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
+          { label: 'Pass Rate', value: `${passRate}%`, icon: Trophy, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
         ].map(s => (
-          <div key={s.label} className="card">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center mb-3 ${s.bg}`}>
-              <s.icon size={18} className={s.color} />
+          <div key={s.label} className="card p-3 flex flex-col gap-1.5">
+            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${s.bg}`}>
+              <s.icon size={14} className={s.color} />
             </div>
-            <div className="text-2xl font-bold text-[var(--color-text)]">{s.value}</div>
-            <div className="text-xs text-[var(--color-text-muted)] mt-0.5">{s.label}</div>
+            <div className="text-lg font-bold text-[var(--color-text)] leading-none">{s.value}</div>
+            <div className="text-[10px] text-[var(--color-text-muted)]">{s.label}</div>
           </div>
         ))}
       </div>
@@ -551,6 +561,10 @@ export default function InstructorPage() {
                       <div className="text-center">
                         <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count || exam.timesAttempted || 0}</div>
                         <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
+                      </div>
+                      <div className="text-center hidden md:block">
+                        <div className="text-xs font-bold text-teal-600">{exam.stats?.avgScore ? `${Math.round(exam.stats.avgScore)}%` : '—'}</div>
+                        <div className="text-[10px] text-[var(--color-text-muted)]">Avg</div>
                       </div>
                       <button
                         onClick={(e) => { e.stopPropagation(); setEditExam(exam); }}
@@ -640,31 +654,33 @@ export default function InstructorPage() {
 
       {/* Invite Modal */}
       {showInviteModal && selectedExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-          <div className="card max-w-sm w-full animate-slide-up">
-            <div className="flex items-center justify-between mb-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowInviteModal(false)}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl max-w-sm w-full animate-slide-up" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
               <h3 className="font-semibold text-[var(--color-text)]">Send Test Invite</h3>
-              <button onClick={() => setShowInviteModal(false)}><X size={18} className="text-[var(--color-text-muted)]" /></button>
+              <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg hover:bg-[var(--color-bg-alt)]"><X size={18} className="text-[var(--color-text-muted)]" /></button>
             </div>
-            <p className="text-sm text-[var(--color-text-muted)] mb-4">
-              Inviting to: <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>
-            </p>
-            <input
-              type="email"
-              placeholder="candidate@email.com"
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              className="input w-full mb-4"
-            />
-            <div className="flex gap-3">
-              <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
-              <button
-                onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
-                disabled={!inviteEmail || inviteMut.isPending}
-                className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-              >
-                <Send size={14} /> {inviteMut.isPending ? 'Sending...' : 'Send Invite'}
-              </button>
+            <div className="p-5">
+              <p className="text-sm text-[var(--color-text-muted)] mb-4">
+                Inviting to: <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>
+              </p>
+              <input
+                type="email"
+                placeholder="candidate@email.com"
+                value={inviteEmail}
+                onChange={e => setInviteEmail(e.target.value)}
+                className="input w-full mb-4"
+              />
+              <div className="flex gap-3">
+                <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                <button
+                  onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
+                  disabled={!inviteEmail || inviteMut.isPending}
+                  className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                >
+                  <Send size={14} /> {inviteMut.isPending ? 'Sending...' : 'Send Invite'}
+                </button>
+              </div>
             </div>
           </div>
         </div>
