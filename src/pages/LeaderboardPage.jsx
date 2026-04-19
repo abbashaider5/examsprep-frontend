@@ -62,12 +62,17 @@ export default function LeaderboardPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-3xl mx-auto animate-fade-in">
       {/* Header */}
-      <div className="text-center mb-8">
-        <div className="inline-flex items-center gap-2 bg-[var(--color-primary)]/10 text-[var(--color-primary)] px-4 py-1.5 rounded-full text-xs font-semibold mb-3">
-          <Trophy size={13} /> Monthly Rankings
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-yellow-50/50 to-orange-50/30 dark:from-amber-900/20 dark:via-yellow-900/10 dark:to-orange-900/5 border border-amber-100 dark:border-amber-900/30 px-6 py-5 mb-8">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-amber-200/30 dark:bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+            <Trophy size={18} className="text-amber-600 dark:text-amber-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Leaderboard</h1>
+            <p className="text-xs text-[var(--color-text-muted)]">Top learners ranked by XP earned this month</p>
+          </div>
         </div>
-        <h1 className="text-2xl font-extrabold text-[var(--color-text)]">Leaderboard</h1>
-        <p className="text-[var(--color-text-muted)] mt-1 text-sm">Top learners ranked by XP earned</p>
       </div>
 
       {isLoading ? (

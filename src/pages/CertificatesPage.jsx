@@ -14,9 +14,20 @@ export default function CertificatesPage() {
   if (isLoading) return <div className="min-h-screen flex items-center justify-center"><div className="w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>;
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-      <h1 className="text-2xl font-bold text-[var(--color-text)] mb-2">My Certificates</h1>
-      <p className="text-[var(--color-text-muted)] text-sm mb-8">Certificates earned by passing exams with 75% or above.</p>
+    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+      {/* Page header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-green-50 via-emerald-50/50 to-teal-50/30 dark:from-green-900/20 dark:via-emerald-900/10 dark:to-teal-900/5 border border-green-100 dark:border-green-900/30 px-6 py-5 mb-6">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-green-200/30 dark:bg-green-700/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0">
+            <Award size={18} className="text-green-600 dark:text-green-400" />
+          </div>
+          <div>
+            <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">My Certificates</h1>
+            <p className="text-xs text-[var(--color-text-muted)]">Earned by passing exams with 75% or above</p>
+          </div>
+        </div>
+      </div>
 
       {certs.length === 0 ? (
         <div className="card text-center py-16">

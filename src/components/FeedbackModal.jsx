@@ -1,11 +1,11 @@
 import { MessageSquare, Star, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { feedbackApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
-// ── Storage helpers (for auto-show logic) ─────────────────────────────────────
+// ── Storage helpers ───────────────────────────────────────────────────────────
 const LAST_SHOWN_KEY = 'feedback_last_shown';
 const INTERACTION_KEY = 'feedback_interactions';
 const COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
@@ -31,13 +31,42 @@ export function markFeedbackShown() {
   try { localStorage.setItem(LAST_SHOWN_KEY, String(Date.now())); } catch {}
 }
 
-// ── Labels ────────────────────────────────────────────────────────────────────
+// ── Mini star row ─────────────────────────────────────────────────────────────
 const LABELS = ['', 'Poor', 'Fair', 'Good', 'Great', 'Excellent'];
+
+function StarRow({ label, value, onChange }) {
+  const [hovered, setHovered] = useState(0);
+  const active = hovered || value;
+  return (
+    <div className="flex items-center justify-between gap-2">
+      <span className="text-xs text-[var(--color-text)] w-28 shrink-0">{label}</span>
+      <div className="flex items-center gap-0.5">
+        {[1, 2, 3, 4, 5].map((s) => (
+          <button
+            key={s}
+            type="button"
+            onMouseEnter={() => setHovered(s)}
+            onMouseLeave={() => setHovered(0)}
+            onClick={() => onChange(s)}
+            className="focus:outline-none p-0.5"
+          >
+            <Star
+              size={20}
+              className={`transition-all duration-75 ${active >= s ? 'fill-[var(--color-primary)] text-[var(--color-primary)] scale-110' : 'text-[var(--color-border)] hover:text-[var(--color-primary)]/50'}`}
+            />
+          </button>
+        ))}
+      </div>
+      <span className={`text-[10px] font-semibold w-14 text-right transition-all ${active > 0 ? 'text-[var(--color-primary)]' : 'text-transparent'}`}>
+        {LABELS[active]}
+      </span>
+    </div>
+  );
+}
 
 // ── Full Modal ────────────────────────────────────────────────────────────────
 function FeedbackForm({ trigger, onClose, limitsData }) {
-  const [rating, setRating] = useState(0);
-  const [hovered, setHovered] = useState(0);
+  const [ratings, setRatings] = useState({ ui: 0, performance: 0, features: 0 });
   const [message, setMessage] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [done, setDone] = useState(false);
@@ -46,11 +75,13 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
   const totalRemaining = limitsData ? (limitsData.totalLimit - limitsData.totalUsed) : null;
   const todayRemaining = limitsData ? (limitsData.todayLimit - limitsData.todayUsed) : null;
 
+  const allRated = ratings.ui > 0 && ratings.performance > 0 && ratings.features > 0;
+
   const handleSubmit = async () => {
-    if (!rating) { toast.error('Please select a rating'); return; }
+    if (!allRated) { toast.error('Please rate all three categories'); return; }
     setSubmitting(true);
     try {
-      await feedbackApi.submit({ rating, message: message.trim(), trigger });
+      await feedbackApi.submit({ ratings, message: message.trim(), trigger });
       markFeedbackShown();
       setDone(true);
       setTimeout(onClose, 2200);
@@ -62,18 +93,17 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
   };
 
   const handleSkip = () => { markFeedbackShown(); onClose(); };
-  const active = hovered || rating;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-sm bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 bg-gradient-to-r from-[var(--color-primary)] to-blue-600 flex items-start justify-between">
+        <div className="px-5 py-4 bg-gradient-to-r from-[var(--color-primary)] to-blue-500 flex items-start justify-between">
           <div>
             <p className="text-white font-bold text-sm">
-              {trigger === 'exam_completed' ? 'How was your exam?' : trigger === 'exam_created' ? 'How was the creation experience?' : 'We value your feedback'}
+              {trigger === 'exam_completed' ? 'How was your exam experience?' : trigger === 'exam_created' ? 'How was the creation experience?' : 'We value your feedback'}
             </p>
-            <p className="text-white/70 text-xs mt-0.5">Your honest opinion helps us improve for everyone.</p>
+            <p className="text-white/70 text-xs mt-0.5">Rate your experience — takes only a moment.</p>
           </div>
           <button onClick={handleSkip} className="text-white/60 hover:text-white transition-colors mt-0.5 shrink-0">
             <X size={16} />
@@ -104,31 +134,40 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
           ) : (
             <>
               {(todayRemaining !== null || totalRemaining !== null) && (
-                <p className="text-center text-xs text-[var(--color-text-muted)] mb-3">
+                <p className="text-center text-[10px] text-[var(--color-text-muted)] mb-3">
                   {todayRemaining !== null && `${todayRemaining} left today`}
                   {todayRemaining !== null && totalRemaining !== null && ' · '}
                   {totalRemaining !== null && `${totalRemaining} total remaining`}
                 </p>
               )}
 
-              {/* Stars */}
-              <div className="flex justify-center gap-1.5 mb-1">
-                {[1, 2, 3, 4, 5].map((s) => (
-                  <button key={s} onMouseEnter={() => setHovered(s)} onMouseLeave={() => setHovered(0)} onClick={() => setRating(s)} className="focus:outline-none">
-                    <Star size={32} className={`transition-all duration-100 ${active >= s ? 'fill-amber-400 text-amber-400 scale-110' : 'text-[var(--color-border)] hover:text-amber-300'}`} />
-                  </button>
-                ))}
+              {/* Multi-category star ratings */}
+              <div className="space-y-3 mb-4 p-3 bg-[var(--color-bg-alt)] rounded-xl">
+                <StarRow
+                  label="UI & Design"
+                  value={ratings.ui}
+                  onChange={(v) => setRatings(r => ({ ...r, ui: v }))}
+                />
+                <div className="border-t border-[var(--color-border)]" />
+                <StarRow
+                  label="Performance"
+                  value={ratings.performance}
+                  onChange={(v) => setRatings(r => ({ ...r, performance: v }))}
+                />
+                <div className="border-t border-[var(--color-border)]" />
+                <StarRow
+                  label="Features"
+                  value={ratings.features}
+                  onChange={(v) => setRatings(r => ({ ...r, features: v }))}
+                />
               </div>
-              <p className={`text-center text-xs font-semibold mb-4 h-4 transition-all ${active > 0 ? 'text-[var(--color-primary)]' : 'text-transparent'}`}>
-                {LABELS[active]}
-              </p>
 
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
                 maxLength={300}
                 rows={2}
-                placeholder="What could we improve? (optional)"
+                placeholder="Any additional thoughts? (optional)"
                 className="input text-xs resize-none"
               />
               <p className="text-right text-[10px] text-[var(--color-text-muted)] mt-0.5">{message.length}/300</p>
@@ -137,7 +176,7 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
                 <button onClick={handleSkip} className="flex-1 text-xs text-[var(--color-text-muted)] hover:text-[var(--color-text)] py-2 rounded-lg transition-colors">
                   Later
                 </button>
-                <button onClick={handleSubmit} disabled={!rating || submitting} className="btn-primary flex-1 py-2 text-xs rounded-lg disabled:opacity-50">
+                <button onClick={handleSubmit} disabled={!allRated || submitting} className="btn-primary flex-1 py-2 text-xs rounded-lg disabled:opacity-50">
                   {submitting ? 'Sending…' : 'Submit Feedback'}
                 </button>
               </div>
@@ -149,7 +188,7 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
   );
 }
 
-// ── Notification Banner (shown for auto-trigger) ──────────────────────────────
+// ── Notification Banner ───────────────────────────────────────────────────────
 function FeedbackBanner({ onAccept, onDismiss }) {
   return (
     <div className="fixed bottom-5 right-5 z-50 animate-fade-in">
@@ -159,7 +198,7 @@ function FeedbackBanner({ onAccept, onDismiss }) {
         </div>
         <div className="flex-1 min-w-0">
           <p className="text-sm font-semibold text-[var(--color-text)] leading-tight">Enjoying ExamPrep AI?</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">It only takes 5 seconds.</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Rate us — it only takes 5 seconds.</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
           <button onClick={onAccept} className="text-xs bg-[var(--color-primary)] text-white font-semibold px-3 py-1.5 rounded-lg hover:opacity-90 transition-opacity">
@@ -175,7 +214,6 @@ function FeedbackBanner({ onAccept, onDismiss }) {
 }
 
 // ── Main export ───────────────────────────────────────────────────────────────
-// mode: 'auto' = banner first, then modal | 'direct' = skip straight to modal
 export default function FeedbackModal({ trigger = 'general', onClose, mode = 'auto' }) {
   const { isAuthenticated } = useAuthStore();
   const [phase, setPhase] = useState(mode === 'direct' ? 'modal' : 'banner');
