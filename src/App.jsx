@@ -15,6 +15,8 @@ import CreateExamPage from './pages/CreateExamPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
 import ExamPage from './pages/ExamPage.jsx';
 import HomePage from './pages/HomePage.jsx';
+import GroupsPage, { GroupInviteAcceptPage } from './pages/GroupsPage.jsx';
+import InstructorAnalyticsPage from './pages/InstructorAnalyticsPage.jsx';
 import InstructorPage from './pages/InstructorPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
@@ -79,7 +81,12 @@ export default function App() {
           <Route path="performance" element={<StudyPerformancePage />} />
           <Route path="admin" element={<Guard adminOnly><AdminPage /></Guard>} />
           <Route path="instructor" element={<Guard instructorOnly><InstructorPage /></Guard>} />
+          <Route path="instructor/analytics" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
+          <Route path="groups" element={<GroupsPage />} />
         </Route>
+
+        {/* Group invite accept (needs auth but no layout) */}
+        <Route path="groups/invite/:token" element={<Guard><GroupInviteAcceptPage /></Guard>} />
 
         <Route path="maintenance" element={<MaintenancePage />} />
         <Route path="*" element={<NotFoundPage />} />

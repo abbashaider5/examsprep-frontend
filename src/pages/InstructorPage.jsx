@@ -13,7 +13,8 @@ import {
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { examApi, instructorApi } from '../services/api.js';
+import Modal from '../components/Modal.jsx';
+import { examApi, groupApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 function fmtTime(secs) {
@@ -100,11 +101,10 @@ function EditExamModal({ exam, onClose }) {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <Modal onClose={onClose}>
       <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col animate-slide-up"
+        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col"
         style={{ maxHeight: '90vh' }}
-        onClick={e => e.stopPropagation()}
       >
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)] shrink-0">
           <h2 className="font-bold text-[var(--color-text)] flex items-center gap-2">
@@ -193,11 +193,9 @@ function EditExamModal({ exam, onClose }) {
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
-}
-
-// ── Report Panel ──────────────────────────────────────────────────────────────
+} 
 function ReportPanel({ examId, onClose }) {
   const [expandedRow, setExpandedRow] = useState(null);
   const [tab, setTab] = useState('candidates'); // 'candidates' | 'screenshots'
@@ -216,23 +214,23 @@ function ReportPanel({ examId, onClose }) {
 
   if (isLoading) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+      <Modal onClose={onClose}>
         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 w-full max-w-4xl">
           <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="skeleton h-12" />)}</div>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   if (error) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 text-center" onClick={e => e.stopPropagation()}>
+      <Modal onClose={onClose}>
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 text-center">
           <AlertCircle size={40} className="mx-auto mb-3 text-red-500" />
           <p className="text-[var(--color-text-muted)]">Failed to load report.</p>
           <button onClick={onClose} className="btn-secondary mt-4 text-sm">Close</button>
         </div>
-      </div>
+      </Modal>
     );
   }
 
@@ -240,11 +238,10 @@ function ReportPanel({ examId, onClose }) {
   const screenshotsEnabled = exam?.screenshotEnabled;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={onClose}>
+    <Modal onClose={onClose}>
       <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col animate-slide-up"
+        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col"
         style={{ maxHeight: '90vh' }}
-        onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)] shrink-0">
@@ -437,7 +434,7 @@ function ReportPanel({ examId, onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -447,6 +444,8 @@ export default function InstructorPage() {
   const qc = useQueryClient();
   const [selectedExam, setSelectedExam] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteMode, setInviteMode] = useState('email'); // 'email' | 'group'
+  const [inviteGroupId, setInviteGroupId] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [reportExamId, setReportExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
@@ -472,6 +471,24 @@ export default function InstructorPage() {
       qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to send invite'),
+  });
+
+  const groupInviteMut = useMutation({
+    mutationFn: ({ examId, groupId }) => instructorApi.sendGroupInvite(examId, groupId),
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      setShowInviteModal(false);
+      setInviteGroupId('');
+      qc.invalidateQueries({ queryKey: ['examInvites', selectedExam?._id] });
+      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to invite group'),
+  });
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => groupApi.getAll().then(r => r.data),
+    enabled: showInviteModal,
   });
 
   if (isLoading) {
@@ -502,9 +519,17 @@ export default function InstructorPage() {
               <p className="text-xs text-[var(--color-text-muted)]">Manage tests, track candidates, view analytics.</p>
             </div>
           </div>
-          <Link to="/create-exam" className="btn-primary flex items-center gap-1.5 text-sm shrink-0">
-            <Zap size={14} /> Create Test
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              to="/instructor/analytics"
+              className="btn-secondary flex items-center gap-1.5 text-sm shrink-0"
+            >
+              <BarChart2 size={14} /> Analytics
+            </Link>
+            <Link to="/create-exam" className="btn-primary flex items-center gap-1.5 text-sm shrink-0">
+              <Zap size={14} /> Create Test
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -654,8 +679,8 @@ export default function InstructorPage() {
 
       {/* Invite Modal */}
       {showInviteModal && selectedExam && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" onClick={() => setShowInviteModal(false)}>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl max-w-sm w-full animate-slide-up" onClick={e => e.stopPropagation()}>
+        <Modal onClose={() => setShowInviteModal(false)}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl max-w-sm w-full">
             <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
               <h3 className="font-semibold text-[var(--color-text)]">Send Test Invite</h3>
               <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg hover:bg-[var(--color-bg-alt)]"><X size={18} className="text-[var(--color-text-muted)]" /></button>
@@ -664,26 +689,74 @@ export default function InstructorPage() {
               <p className="text-sm text-[var(--color-text-muted)] mb-4">
                 Inviting to: <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>
               </p>
-              <input
-                type="email"
-                placeholder="candidate@email.com"
-                value={inviteEmail}
-                onChange={e => setInviteEmail(e.target.value)}
-                className="input w-full mb-4"
-              />
-              <div className="flex gap-3">
-                <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+
+              {/* Mode toggle */}
+              <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl mb-4">
                 <button
-                  onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
-                  disabled={!inviteEmail || inviteMut.isPending}
-                  className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  onClick={() => setInviteMode('email')}
+                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${inviteMode === 'email' ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)]'}`}
                 >
-                  <Send size={14} /> {inviteMut.isPending ? 'Sending...' : 'Send Invite'}
+                  By Email
+                </button>
+                <button
+                  onClick={() => setInviteMode('group')}
+                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${inviteMode === 'group' ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)]'}`}
+                >
+                  By Group
                 </button>
               </div>
+
+              {inviteMode === 'email' ? (
+                <>
+                  <input
+                    type="email"
+                    placeholder="candidate@email.com"
+                    value={inviteEmail}
+                    onChange={e => setInviteEmail(e.target.value)}
+                    className="input w-full mb-4"
+                  />
+                  <div className="flex gap-3">
+                    <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                    <button
+                      onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
+                      disabled={!inviteEmail || inviteMut.isPending}
+                      className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Send size={14} /> {inviteMut.isPending ? 'Sending...' : 'Send Invite'}
+                    </button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  {(groupsData?.groups || []).length === 0 ? (
+                    <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No groups yet. Create one in the <Link to="/groups" className="text-[var(--color-primary)] hover:underline">Groups</Link> page.</p>
+                  ) : (
+                    <select
+                      className="input w-full mb-4 text-sm"
+                      value={inviteGroupId}
+                      onChange={e => setInviteGroupId(e.target.value)}
+                    >
+                      <option value="">Select a group…</option>
+                      {(groupsData?.groups || []).map(g => (
+                        <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
+                      ))}
+                    </select>
+                  )}
+                  <div className="flex gap-3">
+                    <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                    <button
+                      onClick={() => groupInviteMut.mutate({ examId: selectedExam._id, groupId: inviteGroupId })}
+                      disabled={!inviteGroupId || groupInviteMut.isPending}
+                      className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                    >
+                      <Users size={14} /> {groupInviteMut.isPending ? 'Sending...' : 'Invite Group'}
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Edit Exam Modal */}

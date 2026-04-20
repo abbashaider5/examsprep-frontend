@@ -47,7 +47,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, announcementApi, feedbackApi, logsApi, settingsApi, contactApi } from '../services/api.js';
+import { adminApi, announcementApi, feedbackApi, groupApi, logsApi, settingsApi, contactApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -56,6 +56,7 @@ const TABS = [
   { id: 'users',          label: 'Users',             icon: Users },
   { id: 'plans',          label: 'Plan Management',   icon: Layers },
   { id: 'announcements',  label: 'Announcements',     icon: Megaphone },
+  { id: 'groups',         label: 'Groups',             icon: Users },
   { id: 'contacts',       label: 'Contact Queries',   icon: Inbox },
   { id: 'logs',           label: 'Activity Logs',     icon: Activity },
   { id: 'settings',       label: 'Settings',          icon: Settings },
@@ -1704,6 +1705,87 @@ function AnnouncementsTab() {
   );
 }
 
+// ── Groups Tab ────────────────────────────────────────────────────────────────
+function GroupsTab() {
+  const qc = useQueryClient();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminGroups'],
+    queryFn: () => groupApi.adminGetAll().then(r => r.data),
+  });
+  const groups = data?.groups || [];
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => groupApi.adminDelete(id),
+    onSuccess: () => {
+      toast.success('Group deleted');
+      qc.invalidateQueries({ queryKey: ['adminGroups'] });
+    },
+    onError: () => toast.error('Failed to delete group'),
+  });
+
+  return (
+    <div className="p-6">
+      {/* Header */}
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-bold text-[var(--color-text)]">All Groups</h2>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{groups.length} group{groups.length !== 1 ? 's' : ''} total</p>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="space-y-3">
+          {[1,2,3,4].map(i => <div key={i} className="skeleton h-16 rounded-xl" />)}
+        </div>
+      ) : groups.length === 0 ? (
+        <div className="text-center py-20">
+          <Users size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
+          <p className="font-semibold text-[var(--color-text)]">No groups yet</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">Groups created by instructors will appear here.</p>
+        </div>
+      ) : (
+        <div className="space-y-3">
+          {groups.map(g => (
+            <div key={g._id} className="card flex items-center gap-4">
+              {/* Avatar */}
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${g.isActive ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' : 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]'}`}>
+                {g.name?.[0]?.toUpperCase()}
+              </div>
+
+              {/* Info */}
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <p className="text-sm font-semibold text-[var(--color-text)] truncate">{g.name}</p>
+                  {!g.isActive && <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full font-medium">Deleted</span>}
+                </div>
+                {g.description && <p className="text-xs text-[var(--color-text-muted)] truncate">{g.description}</p>}
+                <div className="flex items-center gap-3 mt-1">
+                  <span className="text-[10px] text-[var(--color-text-muted)]">
+                    Instructor: <span className="font-medium text-[var(--color-text)]">{g.instructor?.name || '—'}</span>
+                  </span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">{g.memberCount} member{g.memberCount !== 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">{g.msgCount} message{g.msgCount !== 1 ? 's' : ''}</span>
+                  <span className="text-[10px] text-[var(--color-text-muted)]">Created {new Date(g.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</span>
+                </div>
+              </div>
+
+              {/* Delete */}
+              <button
+                onClick={() => { if (window.confirm(`Delete group "${g.name}" and all its messages?`)) deleteMut.mutate(g._id); }}
+                className="p-2 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 transition-colors shrink-0"
+                title="Delete group"
+              >
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
@@ -1742,6 +1824,7 @@ export default function AdminPage() {
       {activeTab === 'users'         && <UsersTab />}
       {activeTab === 'plans'         && <PlansTab />}
       {activeTab === 'announcements' && <AnnouncementsTab />}
+      {activeTab === 'groups'        && <GroupsTab />}
       {activeTab === 'contacts'      && <ContactsTab />}
       {activeTab === 'logs'          && <LogsTab />}
       {activeTab === 'settings'      && <SettingsTab />}

@@ -115,6 +115,16 @@ body {
   animation: slideUp 0.2s ease-out both;
 }
 
+/* Slide left animation (for drawers) */
+@keyframes slideLeft {
+  from { transform: translateX(100%); opacity: 0; }
+  to   { transform: translateX(0);    opacity: 1; }
+}
+
+.animate-slide-left {
+  animation: slideLeft 0.25s ease-out both;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

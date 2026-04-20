@@ -136,15 +136,48 @@ export const instructorApi = {
   become: () => api.post('/instructor/become'),
   getMyExams: () => api.get('/instructor/exams'),
   sendInvite: (examId, email) => api.post(`/instructor/exams/${examId}/invite`, { email }),
+  sendGroupInvite: (examId, groupId) => api.post(`/instructor/exams/${examId}/invite-group`, { groupId }),
   getExamInvites: (examId) => api.get(`/instructor/exams/${examId}/invites`),
   getExamReport: (examId) => api.get(`/instructor/exams/${examId}/report`),
   getExamScreenshots: (examId) => api.get(`/instructor/exams/${examId}/screenshots`),
   getAnalytics: () => api.get('/instructor/analytics'),
+  getDetailedAnalytics: () => api.get('/instructor/analytics/detailed'),
   validateInvite: (token) => api.get(`/instructor/invite/${token}/validate`),
   acceptInvite: (token) => api.post(`/instructor/invite/${token}/accept`),
   rejectInvite: (token) => api.post(`/instructor/invite/${token}/reject`),
   getMyInvites: () => api.get('/instructor/my-invites'),
   getMyAcceptedInvites: () => api.get('/instructor/my-accepted-invites'),
+};
+
+export const groupApi = {
+  // Group CRUD
+  getAll:           ()           => api.get('/groups'),
+  getOne:           (id)         => api.get(`/groups/${id}`),
+  create:           (data)       => api.post('/groups', data),
+  update:           (id, data)   => api.put(`/groups/${id}`, data),
+  updateSettings:   (id, data)   => api.patch(`/groups/${id}/settings`, data),
+  remove:           (id)         => api.delete(`/groups/${id}`),
+  leave:            (id)         => api.post(`/groups/${id}/leave`),
+  // Invite flow
+  inviteMember:     (id, email)  => api.post(`/groups/${id}/invite`, { email }),
+  getInvites:       (id)         => api.get(`/groups/${id}/invites`),
+  cancelInvite:     (id, invId)  => api.delete(`/groups/${id}/invites/${invId}`),
+  removeMember:     (id, userId) => api.delete(`/groups/${id}/members/${userId}`),
+  // My invites
+  getMyInvites:     ()           => api.get('/groups/my-invites'),
+  validateInvite:   (token)      => api.get(`/groups/invite/${token}/validate`),
+  acceptInvite:     (token)      => api.post(`/groups/invite/${token}/accept`),
+  declineInvite:    (token)      => api.post(`/groups/invite/${token}/decline`),
+  // Shared exams
+  shareExam:        (id, examId) => api.post(`/groups/${id}/share-exam`, { examId }),
+  unshareExam:      (id, examId) => api.delete(`/groups/${id}/share-exam/${examId}`),
+  // Chat
+  getMessages:      (id, params) => api.get(`/groups/${id}/messages`, { params }),
+  sendMessage:      (id, data)   => api.post(`/groups/${id}/messages`, data),
+  deleteMessage:    (id, msgId)  => api.delete(`/groups/${id}/messages/${msgId}`),
+  // Admin
+  adminGetAll:      ()           => api.get('/groups/admin'),
+  adminDelete:      (id)         => api.delete(`/groups/admin/${id}`),
 };
 
 export const contactApi = {

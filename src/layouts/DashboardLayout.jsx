@@ -1,7 +1,7 @@
 import {
   Award, BookmarkCheck, BookOpen,
   GraduationCap, LayoutDashboard, LogOut, Menu,
-  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, Trophy, User, X, Zap
+  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, TrendingUp, Trophy, User, Users, X, Zap
 } from 'lucide-react';
 import { useState } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
@@ -19,6 +19,7 @@ const NAV = [
   { to: '/performance', icon: BarChart2, label: 'Performance' },
   { to: '/certificates', icon: Award, label: 'Certificates' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
+  { to: '/groups', icon: Users, label: 'Groups' },
   { to: '/profile', icon: User, label: 'Profile' },
 ];
 
@@ -72,7 +73,7 @@ export default function DashboardLayout() {
 
   const allNav = [...NAV];
   const pageTitle = allNav.find(n => n.to === pathname)?.label
-    || (pathname === '/admin' ? 'Admin Panel' : pathname === '/instructor' ? 'Instructor Dashboard' : pathname === '/profile' ? 'Profile' : pathname === '/performance' ? 'Performance' : 'Dashboard');
+    || (pathname === '/admin' ? 'Admin Panel' : pathname === '/instructor' ? 'Instructor Dashboard' : pathname === '/instructor/analytics' ? 'Analytics' : pathname === '/profile' ? 'Profile' : pathname === '/performance' ? 'Performance' : pathname === '/groups' ? 'Groups' : 'Dashboard');
 
   const isFreePlan = !user?.plan || user.plan === 'free';
   const remaining = user?.remaining ?? null;
@@ -129,6 +130,9 @@ export default function DashboardLayout() {
           ))}
           {isInstructor && (
             <SidebarLink to="/instructor" icon={BookmarkCheck} label="Instructor Dashboard" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+          )}
+          {isInstructor && (
+            <SidebarLink to="/instructor/analytics" icon={TrendingUp} label="Analytics" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
           )}
           {isAdmin && (
             <SidebarLink to="/admin" icon={Shield} label="Admin Panel" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
