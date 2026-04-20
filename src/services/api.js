@@ -174,6 +174,7 @@ export const groupApi = {
   // Chat
   getMessages:      (id, params) => api.get(`/groups/${id}/messages`, { params }),
   sendMessage:      (id, data)   => api.post(`/groups/${id}/messages`, data),
+  editMessage:      (id, msgId, text) => api.patch(`/groups/${id}/messages/${msgId}`, { text }),
   deleteMessage:    (id, msgId)  => api.delete(`/groups/${id}/messages/${msgId}`),
   // Admin
   adminGetAll:      ()           => api.get('/groups/admin'),

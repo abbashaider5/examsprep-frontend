@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, Check, ChevronLeft, ChevronRight, Edit3, FileText,
-  Image, Info, LogOut, MessageSquare, Paperclip, Plus,
+  Image, Info, LogOut, Mail, MessageSquare, Paperclip, Plus,
   Send, Settings, Shield, Trash2, UserCheck, UserPlus, Users,
   X, Zap,
 } from 'lucide-react';
@@ -61,6 +61,30 @@ function fileToBase64(file) {
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
+}
+
+// URL auto-linkify component
+function Linkified({ text, isMine }) {
+  if (!text) return null;
+  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+  const parts = [];
+  let lastIndex = 0;
+  let m;
+  while ((m = urlRegex.exec(text)) !== null) {
+    if (m.index > lastIndex) parts.push({ t: 'text', v: text.slice(lastIndex, m.index) });
+    parts.push({ t: 'link', v: m[0] });
+    lastIndex = urlRegex.lastIndex;
+  }
+  if (lastIndex < text.length) parts.push({ t: 'text', v: text.slice(lastIndex) });
+  return (
+    <p className="leading-relaxed whitespace-pre-wrap break-words">
+      {parts.map((p, i) =>
+        p.t === 'link'
+          ? <a key={i} href={p.v} target="_blank" rel="noreferrer" className={`underline break-all ${isMine ? 'opacity-80 hover:opacity-100' : 'text-[var(--color-primary)]'}`}>{p.v}</a>
+          : p.v
+      )}
+    </p>
+  );
 }
 
 // ── Toggle Switch ─────────────────────────────────────────────────────────────
@@ -312,6 +336,8 @@ function ChatPanel({ group, isOwner }) {
   const [text, setText] = useState('');
   const [replyTo, setReplyTo] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [editingMsgId, setEditingMsgId] = useState(null);
+  const [editText, setEditText] = useState('');
   const bottomRef = useRef(null);
   const fileInputRef = useRef(null);
 
@@ -338,6 +364,16 @@ function ChatPanel({ group, isOwner }) {
   const deleteMut = useMutation({
     mutationFn: (msgId) => groupApi.deleteMessage(group._id, msgId),
     onSuccess: () => qc.invalidateQueries({ queryKey: ['groupMessages', group._id] }),
+  });
+
+  const editMut = useMutation({
+    mutationFn: ({ msgId, text }) => groupApi.editMessage(group._id, msgId, text),
+    onSuccess: () => {
+      setEditingMsgId(null);
+      setEditText('');
+      qc.invalidateQueries({ queryKey: ['groupMessages', group._id] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to edit'),
   });
 
   const handleSend = () => {
@@ -514,13 +550,44 @@ function ChatPanel({ group, isOwner }) {
                           </div>
                         </a>
                       )}
-                      {msg.text && <p className="mt-2 text-sm">{msg.text}</p>}
+                      {msg.text && <Linkified text={msg.text} isMine={isMine} />}
                     </div>
                   )}
 
                   {/* Text */}
                   {msg.type === 'text' && (
-                    <p className="leading-relaxed whitespace-pre-wrap break-words">{msg.text}</p>
+                    editingMsgId === msg._id ? (
+                      <div className="flex flex-col gap-1.5 min-w-[200px]">
+                        <textarea
+                          value={editText}
+                          onChange={e => setEditText(e.target.value)}
+                          onKeyDown={e => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editMut.mutate({ msgId: msg._id, text: editText }); }
+                            if (e.key === 'Escape') setEditingMsgId(null);
+                          }}
+                          className="input text-sm resize-none py-1.5 bg-white/10 border-white/20 text-inherit placeholder-white/50"
+                          rows={2}
+                          autoFocus
+                        />
+                        <div className="flex items-center gap-1.5 justify-end">
+                          <button onClick={() => setEditingMsgId(null)} className="text-[10px] px-2.5 py-1 rounded-lg bg-black/10 hover:bg-black/20 transition-colors">Cancel</button>
+                          <button
+                            onClick={() => editMut.mutate({ msgId: msg._id, text: editText })}
+                            disabled={!editText.trim() || editMut.isPending}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 font-semibold transition-colors disabled:opacity-50"
+                          >
+                            {editMut.isPending ? 'Saving…' : 'Save'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <Linkified text={msg.text} isMine={isMine} />
+                        {msg.edited && (
+                          <span className={`text-[9px] italic ${isMine ? 'opacity-50' : 'text-[var(--color-text-muted)]'}`}>edited</span>
+                        )}
+                      </>
+                    )
                   )}
 
                   {/* Timestamp inside bubble */}
@@ -534,6 +601,14 @@ function ChatPanel({ group, isOwner }) {
                   {!isSystem && !isExam && (
                     <button onClick={() => setReplyTo(msg)} className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)]">
                       Reply
+                    </button>
+                  )}
+                  {isMine && msg.type === 'text' && !isSystem && (
+                    <button
+                      onClick={() => { setEditingMsgId(msg._id); setEditText(msg.text); }}
+                      className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)]"
+                    >
+                      Edit
                     </button>
                   )}
                   {(isMine || isOwner) && (
@@ -608,25 +683,17 @@ function ChatPanel({ group, isOwner }) {
 // ── Members Tab ───────────────────────────────────────────────────────────────
 function MembersTab({ group, isOwner }) {
   const qc = useQueryClient();
-  const [inviteEmail, setInviteEmail] = useState('');
+  const [emailInput, setEmailInput] = useState('');
+  const [emailList, setEmailList] = useState([]);
+  const [inviting, setInviting] = useState(false);
 
-  const { data: invitesData, isLoading: loadingInvites } = useQuery({
+  const { data: invitesData } = useQuery({
     queryKey: ['groupInvites', group._id],
     queryFn:  () => groupApi.getInvites(group._id).then(r => r.data),
     enabled:  isOwner,
   });
   const invites = invitesData?.invites || [];
   const pendingInvites = invites.filter(i => i.status === 'pending');
-
-  const inviteMut = useMutation({
-    mutationFn: (email) => groupApi.inviteMember(group._id, email),
-    onSuccess: (res) => {
-      toast.success(res.data.message);
-      setInviteEmail('');
-      qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
-    },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to send invite'),
-  });
 
   const cancelMut = useMutation({
     mutationFn: (invId) => groupApi.cancelInvite(group._id, invId),
@@ -640,6 +707,27 @@ function MembersTab({ group, isOwner }) {
       qc.invalidateQueries({ queryKey: ['group', group._id] });
     },
   });
+
+  const addEmail = () => {
+    const e = emailInput.trim().toLowerCase();
+    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast.error('Enter a valid email'); return; }
+    if (emailList.includes(e)) { toast.error('Already added'); return; }
+    setEmailList(prev => [...prev, e]);
+    setEmailInput('');
+  };
+
+  const sendInvites = async () => {
+    if (!emailList.length) return;
+    setInviting(true);
+    let sent = 0, failed = 0;
+    for (const email of emailList) {
+      try { await groupApi.inviteMember(group._id, email); sent++; }
+      catch (err) { failed++; toast.error(`${email}: ${err.response?.data?.message || 'Failed'}`); }
+    }
+    setInviting(false);
+    if (sent) { toast.success(`${sent} invite${sent !== 1 ? 's' : ''} sent`); setEmailList([]); }
+    qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
+  };
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-5">
@@ -716,24 +804,43 @@ function MembersTab({ group, isOwner }) {
       {isOwner && (
         <div className="pt-2 border-t border-[var(--color-border)]">
           <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Invite by Email</p>
-          <div className="flex gap-2">
+          <div className="flex gap-2 mb-2">
             <input
               type="email"
               placeholder="student@email.com"
-              value={inviteEmail}
-              onChange={e => setInviteEmail(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && inviteEmail && inviteMut.mutate(inviteEmail)}
+              value={emailInput}
+              onChange={e => setEmailInput(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
               className="input flex-1 text-sm"
             />
             <button
-              onClick={() => inviteMut.mutate(inviteEmail)}
-              disabled={!inviteEmail || inviteMut.isPending}
-              className="btn-primary px-4 py-2 text-sm flex items-center gap-1.5 disabled:opacity-50 shrink-0"
+              onClick={addEmail}
+              disabled={!emailInput}
+              className="btn-secondary px-3 py-2 text-sm disabled:opacity-50 shrink-0 flex items-center gap-1"
+              title="Add email"
             >
-              <UserPlus size={14} /> {inviteMut.isPending ? 'Sending…' : 'Invite'}
+              <Plus size={14} />
             </button>
           </div>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">An email invite will be sent. They must accept to join.</p>
+          {emailList.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 mb-3">
+              {emailList.map(e => (
+                <span key={e} className="flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
+                  <Mail size={10} /> {e}
+                  <button onClick={() => setEmailList(prev => prev.filter(x => x !== e))} className="ml-0.5 hover:text-red-500 transition-colors"><X size={10} /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <button
+            onClick={sendInvites}
+            disabled={emailList.length === 0 || inviting}
+            className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-50"
+          >
+            <UserPlus size={14} />
+            {inviting ? 'Sending…' : `Send ${emailList.length > 0 ? emailList.length + ' ' : ''}Invite${emailList.length !== 1 ? 's' : ''}`}
+          </button>
+          <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">Press Enter or + to add emails. They must accept to join.</p>
         </div>
       )}
     </div>

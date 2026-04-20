@@ -1,7 +1,7 @@
 import {
   Award, BookmarkCheck, BookOpen,
   GraduationCap, LayoutDashboard, LogOut, Menu,
-  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, TrendingUp, Trophy, User, Users, X, Zap
+  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, Trophy, User, Users, X, Zap
 } from 'lucide-react';
 import { useState } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
@@ -130,9 +130,6 @@ export default function DashboardLayout() {
           ))}
           {isInstructor && (
             <SidebarLink to="/instructor" icon={BookmarkCheck} label="Instructor Dashboard" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
-          )}
-          {isInstructor && (
-            <SidebarLink to="/instructor/analytics" icon={TrendingUp} label="Analytics" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
           )}
           {isAdmin && (
             <SidebarLink to="/admin" icon={Shield} label="Admin Panel" collapsed={collapsed} onClick={() => setMobileOpen(false)} />

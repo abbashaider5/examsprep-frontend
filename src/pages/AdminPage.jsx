@@ -1708,12 +1708,16 @@ function AnnouncementsTab() {
 // ── Groups Tab ────────────────────────────────────────────────────────────────
 function GroupsTab() {
   const qc = useQueryClient();
+  const [search, setSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['adminGroups'],
     queryFn: () => groupApi.adminGetAll().then(r => r.data),
   });
   const groups = data?.groups || [];
+  const filtered = groups.filter(g =>
+    !search || g.name?.toLowerCase().includes(search.toLowerCase()) || g.instructor?.name?.toLowerCase().includes(search.toLowerCase())
+  );
 
   const deleteMut = useMutation({
     mutationFn: (id) => groupApi.adminDelete(id),
@@ -1727,29 +1731,36 @@ function GroupsTab() {
   return (
     <div className="p-6">
       {/* Header */}
-      <div className="flex items-center justify-between mb-6">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-6">
         <div>
           <h2 className="text-lg font-bold text-[var(--color-text)]">All Groups</h2>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{groups.length} group{groups.length !== 1 ? 's' : ''} total</p>
         </div>
+        <input
+          type="text"
+          placeholder="Search by name or instructor…"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          className="input text-sm py-2 w-full sm:w-56"
+        />
       </div>
 
       {isLoading ? (
         <div className="space-y-3">
           {[1,2,3,4].map(i => <div key={i} className="skeleton h-16 rounded-xl" />)}
         </div>
-      ) : groups.length === 0 ? (
+      ) : filtered.length === 0 ? (
         <div className="text-center py-20">
           <Users size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
-          <p className="font-semibold text-[var(--color-text)]">No groups yet</p>
-          <p className="text-sm text-[var(--color-text-muted)] mt-1">Groups created by instructors will appear here.</p>
+          <p className="font-semibold text-[var(--color-text)]">{groups.length === 0 ? 'No groups yet' : 'No results found'}</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">{groups.length === 0 ? 'Groups created by instructors will appear here.' : 'Try a different search term.'}</p>
         </div>
       ) : (
         <div className="space-y-3">
-          {groups.map(g => (
+          {filtered.map(g => (
             <div key={g._id} className="card flex items-center gap-4">
               {/* Avatar */}
-              <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${g.isActive ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]' : 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]'}`}>
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 bg-[var(--color-primary)]/10 text-[var(--color-primary)]">
                 {g.name?.[0]?.toUpperCase()}
               </div>
 
@@ -1757,10 +1768,10 @@ function GroupsTab() {
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2 flex-wrap">
                   <p className="text-sm font-semibold text-[var(--color-text)] truncate">{g.name}</p>
-                  {!g.isActive && <span className="text-[10px] bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full font-medium">Deleted</span>}
+                  {g.settings?.isPrivate && <span className="text-[10px] bg-slate-100 dark:bg-slate-800 text-slate-500 px-1.5 py-0.5 rounded-full">Private</span>}
                 </div>
                 {g.description && <p className="text-xs text-[var(--color-text-muted)] truncate">{g.description}</p>}
-                <div className="flex items-center gap-3 mt-1">
+                <div className="flex flex-wrap items-center gap-3 mt-1">
                   <span className="text-[10px] text-[var(--color-text-muted)]">
                     Instructor: <span className="font-medium text-[var(--color-text)]">{g.instructor?.name || '—'}</span>
                   </span>

@@ -9,15 +9,28 @@ import {
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { examApi, instructorApi, resultApi } from '../services/api.js';
+import Modal from '../components/Modal.jsx';
+import { examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 // ── Invite modal ──────────────────────────────────────────────────────────────
-function InviteModal({ exam, onClose }) {
+function InviteModal({ exam, onClose, isInstructor }) {
+  const { user } = useAuthStore();
+  const [mode, setMode] = useState('email'); // 'email' | 'group'
   const [emailInput, setEmailInput] = useState('');
   const [emails, setEmails] = useState([]);
   const [sending, setSending] = useState(false);
   const [results, setResults] = useState(null);
+  const [selectedGroupId, setSelectedGroupId] = useState('');
+
+  const { data: groupsData } = useQuery({
+    queryKey: ['myGroups'],
+    queryFn: () => groupApi.getAll().then(r => r.data),
+    enabled: isInstructor,
+  });
+  const myGroups = (groupsData?.groups || []).filter(
+    g => g.instructor?._id === user?._id || g.instructor === user?._id
+  );
 
   const addEmail = () => {
     const e = emailInput.trim().toLowerCase();
@@ -27,7 +40,7 @@ function InviteModal({ exam, onClose }) {
     setEmailInput('');
   };
 
-  const sendAll = async () => {
+  const sendEmails = async () => {
     if (emails.length === 0) { toast.error('Add at least one email'); return; }
     setSending(true);
     const out = [];
@@ -45,67 +58,125 @@ function InviteModal({ exam, onClose }) {
     if (ok) toast.success(`${ok} invite${ok !== 1 ? 's' : ''} sent`);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={onClose}>
-      <div className="bg-[var(--color-bg)] rounded-2xl shadow-2xl p-6 w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between mb-1">
-          <h3 className="font-bold text-[var(--color-text)] text-base">Invite to Exam</h3>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={18} /></button>
-        </div>
-        <p className="text-xs text-[var(--color-text-muted)] mb-4">{exam.title}</p>
+  const sendGroup = async () => {
+    if (!selectedGroupId) { toast.error('Select a group'); return; }
+    setSending(true);
+    try {
+      const res = await instructorApi.sendGroupInvite(exam._id, selectedGroupId);
+      toast.success(res.data.message || 'Group invited');
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to invite group');
+    } finally {
+      setSending(false);
+    }
+  };
 
-        {results ? (
-          <>
-            <div className="space-y-2 mb-5">
-              {results.map(r => (
-                <div key={r.email} className={`flex items-center gap-2 text-sm ${r.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                  {r.ok ? <CheckCircle size={14} /> : <X size={14} />}
-                  <span className="flex-1 truncate">{r.email}</span>
-                  <span className="text-xs shrink-0">{r.ok ? 'Sent' : r.msg}</span>
-                </div>
+  return (
+    <Modal onClose={onClose}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-md">
+        {/* Header */}
+        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
+          <div>
+            <h3 className="font-bold text-[var(--color-text)]">Invite to Exam</h3>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate max-w-[280px]">{exam.title}</p>
+          </div>
+          <button onClick={onClose} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={18} /></button>
+        </div>
+
+        <div className="p-5">
+          {/* Mode toggle (only for instructors with groups) */}
+          {isInstructor && myGroups.length > 0 && (
+            <div className="flex gap-1 mb-4 p-1 bg-[var(--color-bg-alt)] rounded-xl">
+              {[{ id: 'email', label: 'By Email' }, { id: 'group', label: 'By Group' }].map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => { setMode(m.id); setResults(null); }}
+                  className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-all ${mode === m.id ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
+                >
+                  {m.label}
+                </button>
               ))}
             </div>
-            <button onClick={onClose} className="btn-secondary w-full text-sm py-2">Done</button>
-          </>
-        ) : (
-          <>
-            <div className="flex gap-2 mb-3">
-              <input
-                className="input flex-1 text-sm"
-                type="email"
-                placeholder="user@example.com"
-                value={emailInput}
-                onChange={e => setEmailInput(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addEmail())}
-              />
-              <button onClick={addEmail} className="btn-secondary p-2 shrink-0"><Plus size={16} /></button>
-            </div>
+          )}
 
-            {emails.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {emails.map(e => (
-                  <span key={e} className="flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
-                    <Mail size={10} /> {e}
-                    <button onClick={() => setEmails(prev => prev.filter(x => x !== e))} className="ml-0.5 hover:text-red-500"><X size={10} /></button>
-                  </span>
+          {mode === 'email' ? (
+            results ? (
+              <>
+                <div className="space-y-2 mb-4">
+                  {results.map(r => (
+                    <div key={r.email} className={`flex items-center gap-2 text-sm ${r.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+                      {r.ok ? <CheckCircle size={14} /> : <X size={14} />}
+                      <span className="flex-1 truncate">{r.email}</span>
+                      <span className="text-xs shrink-0">{r.ok ? 'Sent' : r.msg}</span>
+                    </div>
+                  ))}
+                </div>
+                <button onClick={onClose} className="btn-secondary w-full text-sm py-2">Done</button>
+              </>
+            ) : (
+              <>
+                <div className="flex gap-2 mb-3">
+                  <input
+                    className="input flex-1 text-sm"
+                    type="email"
+                    placeholder="user@example.com"
+                    value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addEmail())}
+                  />
+                  <button onClick={addEmail} className="btn-secondary p-2 shrink-0"><Plus size={16} /></button>
+                </div>
+                {emails.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 mb-4">
+                    {emails.map(e => (
+                      <span key={e} className="flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
+                        <Mail size={10} /> {e}
+                        <button onClick={() => setEmails(prev => prev.filter(x => x !== e))} className="ml-0.5 hover:text-red-500"><X size={10} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button
+                  onClick={sendEmails}
+                  disabled={sending || emails.length === 0}
+                  className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-60"
+                >
+                  {sending
+                    ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
+                    : <><Mail size={14} /> Send {emails.length > 0 ? `${emails.length} ` : ''}Invite{emails.length !== 1 ? 's' : ''}</>
+                  }
+                </button>
+              </>
+            )
+          ) : (
+            <>
+              <p className="text-xs text-[var(--color-text-muted)] mb-3">Invite all members of one of your groups to this exam.</p>
+              <select
+                value={selectedGroupId}
+                onChange={e => setSelectedGroupId(e.target.value)}
+                className="input w-full text-sm mb-4"
+              >
+                <option value="">— Select a group —</option>
+                {myGroups.map(g => (
+                  <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
                 ))}
-              </div>
-            )}
-
-            <button
-              onClick={sendAll}
-              disabled={sending || emails.length === 0}
-              className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-60"
-            >
-              {sending
-                ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
-                : <><Mail size={14} /> Send {emails.length > 0 ? `${emails.length} ` : ''}Invite{emails.length !== 1 ? 's' : ''}</>
-              }
-            </button>
-          </>
-        )}
+              </select>
+              <button
+                onClick={sendGroup}
+                disabled={sending || !selectedGroupId}
+                className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-60"
+              >
+                {sending
+                  ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
+                  : <><Users size={14} /> Invite Group</>
+                }
+              </button>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -347,7 +418,7 @@ export default function StudyModePage() {
           </div>
         )}
 
-        {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} />}
+        {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} isInstructor={isInstructor} />}
       </div>
     );
   }
