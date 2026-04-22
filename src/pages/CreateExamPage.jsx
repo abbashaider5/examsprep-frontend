@@ -1,10 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, Camera, CheckCircle, Code2, Eye, EyeOff, FlipHorizontal, Lock, Mail, Percent, Plus, RefreshCw, Shield, Sparkles, Users, X } from 'lucide-react';
+import { AlertCircle, Award, Camera, CheckCircle, Code2, Edit3, Eye, EyeOff, FlipHorizontal, Lock, Mail, Percent, Plus, RefreshCw, Shield, Sparkles, Timer, Users, X } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
+import Modal from '../components/Modal.jsx';
 import { examApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -62,8 +63,8 @@ function InstructorPostCreationModal({ exam, onClose }) {
 
   if (sent.length > 0) {
     return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-        <div className="bg-[var(--color-bg)] rounded-2xl shadow-2xl p-6 w-full max-w-md">
+      <Modal onClose={onClose}>
+        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-6 w-full max-w-md">
           <h3 className="font-bold text-[var(--color-text)] text-lg mb-4">Invites Sent</h3>
           <div className="space-y-2 mb-5">
             {sent.map(r => (
@@ -79,13 +80,13 @@ function InstructorPostCreationModal({ exam, onClose }) {
             <button onClick={onClose} className="btn-secondary flex-1 text-sm py-2">Dashboard</button>
           </div>
         </div>
-      </div>
+      </Modal>
     );
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-[var(--color-bg)] rounded-2xl shadow-2xl p-6 w-full max-w-md">
+    <Modal onClose={onClose}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl p-6 w-full max-w-md">
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-bold text-[var(--color-text)] text-lg">Exam Created!</h3>
           <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={18} /></button>
@@ -94,16 +95,36 @@ function InstructorPostCreationModal({ exam, onClose }) {
           <span className="font-medium text-[var(--color-text)]">{exam.title}</span> is ready. What would you like to do?
         </p>
         {mode === null && (
-          <div className="grid grid-cols-2 gap-3">
-            <button onClick={() => setMode('invite')} className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all">
-              <Users size={22} className="text-[var(--color-primary)]" />
-              <span className="font-semibold text-sm text-[var(--color-text)]">Invite Users</span>
-              <span className="text-xs text-[var(--color-text-muted)] text-center">Send email invites</span>
+          <div className="space-y-3">
+            {/* Primary action: review questions */}
+            <button
+              onClick={() => navigate(`/exam/${exam._id}/edit-questions`)}
+              className="w-full flex items-center gap-3 p-4 rounded-xl border-2 border-[var(--color-primary)] bg-blue-50/50 dark:bg-blue-900/10 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all text-left"
+            >
+              <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)] flex items-center justify-center shrink-0">
+                <Edit3 size={18} className="text-white" />
+              </div>
+              <div>
+                <p className="font-semibold text-sm text-[var(--color-text)]">Review & Edit Questions</p>
+                <p className="text-xs text-[var(--color-text-muted)]">View all generated questions and make edits</p>
+              </div>
             </button>
-            <button onClick={() => navigate(`/exam/${exam._id}`)} className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all">
-              <Sparkles size={22} className="text-[var(--color-primary)]" />
-              <span className="font-semibold text-sm text-[var(--color-text)]">Attempt Exam</span>
-              <span className="text-xs text-[var(--color-text-muted)] text-center">Take the exam now</span>
+
+            <div className="grid grid-cols-2 gap-3">
+              <button onClick={() => setMode('invite')} className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all">
+                <Users size={22} className="text-[var(--color-primary)]" />
+                <span className="font-semibold text-sm text-[var(--color-text)]">Invite Users</span>
+                <span className="text-xs text-[var(--color-text-muted)] text-center">Send email invites</span>
+              </button>
+              <button onClick={() => navigate(`/exam/${exam._id}`)} className="flex flex-col items-center gap-2 p-4 rounded-xl border-2 border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-blue-50/50 dark:hover:bg-blue-900/10 transition-all">
+                <Sparkles size={22} className="text-[var(--color-primary)]" />
+                <span className="font-semibold text-sm text-[var(--color-text)]">Attempt Exam</span>
+                <span className="text-xs text-[var(--color-text-muted)] text-center">Take the exam now</span>
+              </button>
+            </div>
+
+            <button onClick={onClose} className="btn-secondary w-full text-sm py-2">
+              Close — go to Dashboard
             </button>
           </div>
         )}
@@ -135,7 +156,7 @@ function InstructorPostCreationModal({ exam, onClose }) {
           </div>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }
 
@@ -164,6 +185,7 @@ export default function CreateExamPage() {
     allowCodeExecution: false,
     showResultToUser: false,
     showAnswersToUser: false,
+    expiryDate: '',
   });
   const [errors, setErrors] = useState({});
   const [createdExam, setCreatedExam] = useState(null);
@@ -209,7 +231,7 @@ export default function CreateExamPage() {
     setErrors({});
     const topics = form.topics.split(',').map(t => t.trim()).filter(Boolean);
     const payload = { ...form, numQuestions: numQ, topics };
-    if (isInstructor) Object.assign(payload, { ...advanced, passingPercentage: pp });
+    if (isInstructor) Object.assign(payload, { ...advanced, passingPercentage: pp, expiryDate: advanced.expiryDate || null });
     createMut.mutate(payload);
   };
 
@@ -218,11 +240,11 @@ export default function CreateExamPage() {
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in max-w-6xl">
       {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/50 to-violet-50/30 dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-violet-900/5 border border-blue-100 dark:border-blue-900/30 px-6 py-5 mb-8">
-        <div className="absolute -top-8 -right-8 w-40 h-40 bg-indigo-200/30 dark:bg-indigo-700/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-5 mb-8 shadow-md">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative">
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">Create New Exam</h1>
-          <p className="text-[var(--color-text-muted)] text-sm mt-1">AI will generate your questions instantly.</p>
+          <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles size={20} /> Create New Exam</h1>
+          <p className="text-teal-100 text-sm mt-1">AI will generate your questions instantly.</p>
         </div>
       </div>
 
@@ -344,7 +366,7 @@ export default function CreateExamPage() {
               <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1 flex items-center gap-2">
                 <Shield size={14} className="text-[var(--color-primary)]" />
                 Advanced Settings
-                <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] px-2 py-0.5 rounded-full font-semibold">Instructor</span>
+                {/* <span className="text-[10px] bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] px-2 py-0.5 rounded-full font-semibold">Instructor</span> */}
               </h3>
               <p className="text-xs text-[var(--color-text-muted)] mb-4">Control candidate experience for this exam.</p>
 
@@ -467,7 +489,7 @@ export default function CreateExamPage() {
                 </div>
 
                 {/* Passing Percentage */}
-                <div className="flex items-center justify-between py-2">
+                <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-teal-100 dark:bg-teal-900/30 flex items-center justify-center shrink-0">
                       <Percent size={12} className="text-teal-600 dark:text-teal-400" />
@@ -481,6 +503,34 @@ export default function CreateExamPage() {
                     <input type="number" min={1} max={100} value={advanced.passingPercentage} onChange={e => adv('passingPercentage')(e.target.value)} className="input w-14 text-xs text-center py-1" />
                     <span className="text-xs text-[var(--color-text-muted)]">%</span>
                   </div>
+                </div>
+
+                {/* Expiry Date */}
+                <div className="pt-2">
+                  <div className="flex items-center justify-between py-2">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-rose-100 dark:bg-rose-900/30 flex items-center justify-center shrink-0">
+                        <Timer size={12} className="text-rose-600 dark:text-rose-400" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium text-[var(--color-text)]">Set Expiry Date</p>
+                        <p className="text-[10px] text-[var(--color-text-muted)]">{advanced.expiryDate ? 'Test expires at set time' : 'Lifetime (no expiry)'}</p>
+                      </div>
+                    </div>
+                    <ToggleSwitch
+                      checked={!!advanced.expiryDate}
+                      onChange={e => adv('expiryDate')(e.target.checked ? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 16) : '')}
+                    />
+                  </div>
+                  {advanced.expiryDate && (
+                    <input
+                      type="datetime-local"
+                      className="input w-full text-xs mt-1"
+                      value={advanced.expiryDate}
+                      min={new Date().toISOString().slice(0, 16)}
+                      onChange={e => adv('expiryDate')(e.target.value)}
+                    />
+                  )}
                 </div>
               </div>
             </div>

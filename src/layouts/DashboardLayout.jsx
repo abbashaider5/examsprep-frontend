@@ -1,9 +1,11 @@
 import {
-  Award, BookmarkCheck, BookOpen,
+  Award, BookmarkCheck, BookOpen, Brain,
+  ChevronDown,
   GraduationCap, LayoutDashboard, LogOut, Menu,
-  MessageSquare, Moon, Plus, RefreshCw, Shield, Sun, BarChart2, Trophy, User, Users, X, Zap
+  MessageSquare, Plus, RefreshCw, Shield, Sun, Moon,
+  BarChart2, Trophy, User, Users, X, Zap, Settings
 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
@@ -12,22 +14,48 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 
-const NAV = [
+// Instructor nav — items may have `children` for submenus
+const INSTRUCTOR_SIDEBAR_NAV = [
+  { to: '/instructor-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  {
+    id: 'tests', icon: BookmarkCheck, label: 'Tests',
+    children: [
+      { to: '/tests', icon: BookOpen, label: 'All Tests' },
+      { to: '/create-exam', icon: Plus, label: 'Create Test' },
+    ],
+  },
+  { to: '/batches', icon: Users, label: 'Batches' },
+  {
+    id: 'reports', icon: BarChart2, label: 'Reports',
+    children: [
+      { to: '/instructor/analytics', icon: BarChart2, label: 'Analytics' },
+      { to: '/instructor/performance', icon: Brain, label: 'AI Insights' },
+      { to: '/test-reports', icon: BookmarkCheck, label: 'Test Reports' },
+    ],
+  },
+  { to: '/certificates', icon: Award, label: 'Certificates' },
+  { to: '/profile', icon: Settings, label: 'Settings' },
+];
+
+// Student nav
+const STUDENT_NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/create-exam', icon: Plus, label: 'Generate AI Exam' },
-  { to: '/study', icon: GraduationCap, label: 'Study Mode' },
+  { to: '/tests', icon: GraduationCap, label: 'My Tests' },
   { to: '/performance', icon: BarChart2, label: 'Performance' },
   { to: '/certificates', icon: Award, label: 'Certificates' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
-  { to: '/groups', icon: Users, label: 'Groups' },
+  { to: '/batches', icon: Users, label: 'Batches' },
   { to: '/profile', icon: User, label: 'Profile' },
 ];
 
-const PLAN_COLORS = {
-  free: 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300',
-  pro: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300',
-  enterprise: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300',
-};
+// For pageTitle lookup
+const ALL_NAV_FLAT = [
+  ...STUDENT_NAV,
+  { to: '/instructor-dashboard', label: 'Dashboard' },
+  { to: '/instructor/analytics', label: 'Reports' },
+  { to: '/instructor/performance', label: 'AI Insights' },
+  { to: '/test-reports', label: 'Test Reports' },
+];
 
 const ROLE_COLORS = {
   user: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
@@ -35,35 +63,107 @@ const ROLE_COLORS = {
   admin: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
 };
 
-function SidebarLink({ to, icon: Icon, label, collapsed, onClick }) {
+// ── Flat sidebar link ─────────────────────────────────────────────────────────
+function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false }) {
   const { pathname } = useLocation();
-  const active = pathname === to;
+  const active = pathname === to
+    || (to === '/instructor/analytics' && (pathname === '/instructor/analytics' || pathname.startsWith('/instructor/report')))
+    || (to === '/instructor/performance' && pathname === '/instructor/performance');
   return (
     <Link
       to={to}
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all ${active ? 'bg-[var(--color-primary)] text-white' : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)]'}`}
+      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${indent ? 'pl-4' : ''} ${active
+        ? 'bg-gradient-to-r from-[var(--color-primary)]/15 to-[var(--color-primary)]/5 text-[var(--color-primary)] font-semibold border border-[var(--color-primary)]/20'
+        : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)]'
+      }`}
       title={collapsed ? label : ''}
     >
-      <Icon size={18} className="shrink-0" />
+      <Icon size={indent ? 14 : 18} className="shrink-0" />
       {!collapsed && <span>{label}</span>}
     </Link>
   );
 }
 
+// ── Submenu group ─────────────────────────────────────────────────────────────
+function NavGroup({ id, icon: Icon, label, children, collapsed, openMenus, setOpenMenus, onChildClick }) {
+  const { pathname } = useLocation();
+  const isChildActive = children.some(c => pathname === c.to || pathname.startsWith(c.to + '/'));
+  // isOpen is ONLY driven by openMenus — so user can always toggle open/close
+  const isOpen = openMenus.includes(id);
+
+  const toggle = () => {
+    setOpenMenus(prev =>
+      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
+    );
+  };
+
+  return (
+    <div>
+      <button
+        onClick={toggle}
+        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium w-full transition-all ${
+          isChildActive
+            ? 'bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 text-[var(--color-primary)] font-semibold'
+            : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)]'
+        }`}
+        title={collapsed ? label : ''}
+      >
+        <Icon size={18} className="shrink-0" />
+        {!collapsed && (
+          <>
+            <span className="flex-1 text-left">{label}</span>
+            <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
+          </>
+        )}
+      </button>
+
+      {/* Children — shown when expanded and not collapsed */}
+      {!collapsed && isOpen && (
+        <div className="mt-0.5 ml-3 pl-3 border-l border-[var(--color-border)] space-y-0.5">
+          {children.map(child => (
+            <SidebarLink
+              key={child.to + child.label}
+              to={child.to}
+              icon={child.icon}
+              label={child.label}
+              collapsed={false}
+              indent
+              onClick={onChildClick}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Layout ────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
-  const { user, setUser } = useAuthStore();
+  const { user } = useAuthStore();
   const { dark, toggle } = useThemeStore();
   const { logout } = useAuth();
   const qc = useQueryClient();
+  const { pathname } = useLocation();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [bannerDismissed, setBannerDismissed] = useState(() => {
-    try { return localStorage.getItem('upgrade-banner-dismissed') === '1'; } catch { return false; }
-  });
-  const { pathname } = useLocation();
+  const [openMenus, setOpenMenus] = useState(['tests']); // tests open by default
+
+  // Auto-open submenu groups when navigating to a child route
+  useEffect(() => {
+    const activeGroups = INSTRUCTOR_SIDEBAR_NAV
+      .filter(item => item.children?.some(c => pathname === c.to || pathname.startsWith(c.to + '/')))
+      .map(item => item.id);
+    if (activeGroups.length > 0) {
+      setOpenMenus(prev => {
+        const next = [...prev];
+        activeGroups.forEach(id => { if (!next.includes(id)) next.push(id); });
+        return next;
+      });
+    }
+  }, [pathname]);
 
   const handleRefresh = async () => {
     setRefreshing(true);
@@ -71,21 +171,26 @@ export default function DashboardLayout() {
     setTimeout(() => setRefreshing(false), 600);
   };
 
-  const allNav = [...NAV];
-  const pageTitle = allNav.find(n => n.to === pathname)?.label
-    || (pathname === '/admin' ? 'Admin Panel' : pathname === '/instructor' ? 'Instructor Dashboard' : pathname === '/instructor/analytics' ? 'Analytics' : pathname === '/profile' ? 'Profile' : pathname === '/performance' ? 'Performance' : pathname === '/groups' ? 'Groups' : 'Dashboard');
+  const pageTitle =
+    ALL_NAV_FLAT.find(n => n.to === pathname)?.label
+    || (pathname === '/admin' ? 'Admin Panel'
+      : pathname.startsWith('/instructor/report') ? 'Exam Report'
+      : pathname === '/instructor/analytics' ? 'Reports'
+      : pathname === '/instructor/performance' ? 'AI Insights'
+      : pathname === '/create-exam' ? 'Create Test'
+      : pathname === '/batches' ? 'Batches'
+      : pathname === '/instructor-dashboard' ? 'Dashboard'
+      : pathname === '/tests' ? isInstructorRole(user) ? 'All Tests' : 'My Tests'
+      : 'Dashboard');
+
+  function isInstructorRole(u) {
+    return u?.role === 'instructor' || u?.role === 'admin';
+  }
 
   const isFreePlan = !user?.plan || user.plan === 'free';
   const remaining = user?.remaining ?? null;
-  const monthlyLimit = user?.monthlyLimit ?? 3;
   const isAdmin = user?.role === 'admin';
   const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
-  const showUpgradeBanner = isFreePlan && !isAdmin && !bannerDismissed;
-
-  const dismissBanner = () => {
-    setBannerDismissed(true);
-    try { localStorage.setItem('upgrade-banner-dismissed', '1'); } catch {}
-  };
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
@@ -93,65 +198,75 @@ export default function DashboardLayout() {
         <div className="fixed inset-0 z-20 bg-black/50 lg:hidden" onClick={() => setMobileOpen(false)} />
       )}
 
-      {/* Sidebar */}
+      {/* ── Sidebar ── */}
       <aside className={`fixed lg:relative z-30 flex flex-col h-full bg-[var(--color-surface)] border-r border-[var(--color-border)] transition-all duration-300
         ${collapsed ? 'w-16' : 'w-64'}
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo */}
         <div className={`flex items-center gap-2.5 p-4 border-b border-[var(--color-border)] min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
-          <BookOpen size={22} className="text-[var(--color-primary)] shrink-0" />
-          {!collapsed && <span className="font-bold text-[var(--color-primary)] text-base">ExamPrep AI</span>}
-        </div>
-
-        {/* Plan badge */}
-        {/* {!collapsed && user && (
-          <div className="mx-3 mt-3 mb-1 px-3 py-2 rounded-lg bg-[var(--color-bg-alt)] flex items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
-              <div className={`text-xs font-bold px-2 py-0.5 rounded-full capitalize ${PLAN_COLORS[user.plan] || PLAN_COLORS.free}`}>
-                {user.plan || 'free'}
-              </div>
-              {remaining !== null && (
-                <span className="text-xs text-[var(--color-text-muted)] truncate">{remaining}/{monthlyLimit}</span>
-              )}
-            </div>
-            {isFreePlan && !isAdmin && (
-              <Link to="/pricing" className="text-xs text-[var(--color-primary)] font-semibold hover:underline shrink-0">
-                Upgrade
-              </Link>
-            )}
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center shrink-0 shadow-sm">
+            <BookOpen size={16} className="text-white" />
           </div>
-        )} */}
+          {!collapsed && <span className="font-extrabold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent text-base">ExamPrep AI</span>}
+        </div>
 
         {/* Nav */}
         <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {NAV.map(n => (
-            <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
-          ))}
-          {isInstructor && (
-            <SidebarLink to="/instructor" icon={BookmarkCheck} label="Instructor Dashboard" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+          {isInstructor ? (
+            <>
+              {/* Instructor navigation with submenus */}
+              {INSTRUCTOR_SIDEBAR_NAV.map(item =>
+                item.children ? (
+                  <NavGroup
+                    key={item.id}
+                    id={item.id}
+                    icon={item.icon}
+                    label={item.label}
+                    children={item.children}
+                    collapsed={collapsed}
+                    openMenus={openMenus}
+                    setOpenMenus={setOpenMenus}
+                    onChildClick={() => setMobileOpen(false)}
+                  />
+                ) : (
+                  <SidebarLink key={item.to} {...item} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+                )
+              )}
+
+              {/* Quick create button */}
+              {!collapsed && (
+                <div className="pt-2">
+                  <Link
+                    to="/create-exam"
+                    onClick={() => setMobileOpen(false)}
+                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs font-semibold transition-colors border border-[var(--color-primary)]/20"
+                  >
+                    <Zap size={13} /> + Create Test
+                  </Link>
+                </div>
+              )}
+            </>
+          ) : (
+            /* Student navigation */
+            STUDENT_NAV.map(n => (
+              <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+            ))
           )}
+
+          {/* Admin section */}
           {isAdmin && (
-            <SidebarLink to="/admin" icon={Shield} label="Admin Panel" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+            <>
+              {!collapsed && (
+                <div className="pt-3 pb-1 px-1">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] opacity-60">Admin</span>
+                </div>
+              )}
+              {collapsed && <div className="my-2 border-t border-[var(--color-border)]" />}
+              <SidebarLink to="/admin" icon={Shield} label="Admin Panel" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+            </>
           )}
         </nav>
-
-        {/* Upgrade CTA for free users (not admin) */}
-        {!collapsed && isFreePlan && !isAdmin && (
-          <div className="mx-3 mb-3 p-3 rounded-xl btn-primary text-white">
-            <div className="flex items-center gap-2 mb-1.5">
-              <Zap size={14} />
-              <span className="text-xs font-bold">Unlock Pro Features</span>
-            </div>
-            <p className="text-xs opacity-80 mb-2.5 leading-relaxed">AI proctoring, instructor tools, 10 exams/month.</p>
-            <Link
-              to="/pricing"
-              className="block text-center text-xs font-semibold bg-white text-blue-700 rounded-lg py-1.5 hover:bg-blue-50 transition-colors"
-            >
-              Upgrade from ₹149/mo
-            </Link>
-          </div>
-        )}
 
         {/* Sidebar logout */}
         <div className="p-3 border-t border-[var(--color-border)]">
@@ -166,7 +281,7 @@ export default function DashboardLayout() {
         </div>
       </aside>
 
-      {/* Main area */}
+      {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
         <header className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
@@ -186,7 +301,6 @@ export default function DashboardLayout() {
                 <Zap size={11} /> {remaining} exam{remaining !== 1 ? 's' : ''} left
               </Link>
             )}
-            {/* Plan badge for paid users */}
             {!isFreePlan && !isAdmin && (
               <Link
                 to="/pricing"
@@ -200,10 +314,13 @@ export default function DashboardLayout() {
                 {user?.plan?.toUpperCase()}
               </Link>
             )}
-            <div className="hidden sm:flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-full px-3 py-1 text-xs">
-              <span className="text-[var(--color-text-muted)]">XP</span>
-              <span className="font-bold text-[var(--color-primary)]">{user?.xp || 0}</span>
-            </div>
+            {/* XP (students only) */}
+            {!isInstructor && (
+              <div className="hidden sm:flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-full px-3 py-1 text-xs">
+                <span className="text-[var(--color-text-muted)]">XP</span>
+                <span className="font-bold text-[var(--color-primary)]">{user?.xp || 0}</span>
+              </div>
+            )}
             <button
               onClick={() => setShowFeedback(true)}
               className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
@@ -222,9 +339,9 @@ export default function DashboardLayout() {
             <button onClick={toggle} className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">
               {dark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            {/* User info in topbar */}
+            {/* User avatar */}
             <Link to="/profile" className="flex items-center gap-2 hover:bg-[var(--color-bg-alt)] rounded-xl px-2 py-1 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-xs font-bold shrink-0">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
                 {user?.name?.[0]?.toUpperCase()}
               </div>
               <div className="hidden md:block text-left">
@@ -236,22 +353,6 @@ export default function DashboardLayout() {
             </Link>
           </div>
         </header>
-
-        {/* Dismissible upgrade banner for free users */}
-        {showUpgradeBanner && (
-          <div className="bg-gradient-to-r btn-primary text-white px-4 py-2.5 flex items-center justify-between text-sm shrink-0">
-            <div className="flex items-center gap-2">
-              <Zap size={14} />
-              <span className="font-medium">Upgrade to Pro — Get AI proctoring, 10 exams/month & instructor tools from ₹149/mo</span>
-              <Link to="/pricing" className="ml-2 bg-white text-blue-700 font-semibold text-xs px-3 py-1 rounded-full hover:bg-blue-50 transition-colors">
-                View Plans
-              </Link>
-            </div>
-            <button onClick={dismissBanner} className="p-1 hover:bg-blue-500 rounded transition-colors">
-              <X size={15} />
-            </button>
-          </div>
-        )}
 
         {/* Announcement banners */}
         <AnnouncementBanner />

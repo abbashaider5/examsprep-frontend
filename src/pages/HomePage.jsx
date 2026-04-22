@@ -2,7 +2,7 @@ import {
   ArrowRight, Award, BarChart2, BookOpen, Brain, Briefcase,
   Camera, Check, CheckCircle, ChevronRight, Clock, Code2, Crown, FileText,
   GraduationCap, LayoutDashboard, Mail, Monitor,
-  PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users
+  PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users, Zap, TrendingUp, Target, BookmarkCheck
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -10,108 +10,131 @@ import { useAuthStore } from '../store/index.js';
 import { PLANS } from './PricingPage.jsx';
 
 // Screenshot imports — Vite hashes these filenames for automatic cache-busting
-import ssDashboard from '../assets/screenshots/dashboard-for-instructor-or-user-also-show-ai-recommendation-based-on-previous-exams.png';
-import ssStudy from '../assets/screenshots/flashcards-reviews.png';
-import ssInstructor from '../assets/screenshots/instructor-can-invite-others-or-can-attempt-exams-himself.png';
-import ssReport from '../assets/screenshots/instructor-will-check-the-report-of-all-inviteds-users.png';
-import ssCreate from '../assets/screenshots/user-or-instructor-will-create-exams-here.png';
-import ssAnalytics from '../assets/screenshots/user-performance.png';
+import ss1 from '../assets/screenshots/demo-screenshots/1.png';
+import ss2 from '../assets/screenshots/demo-screenshots/2.png';
+import ss3 from '../assets/screenshots/demo-screenshots/3.png';
+import ss4 from '../assets/screenshots/demo-screenshots/4.png';
+import ss5 from '../assets/screenshots/demo-screenshots/5.png';
+import ss6 from '../assets/screenshots/demo-screenshots/6.png';
+import ss7 from '../assets/screenshots/demo-screenshots/7.png';
+import ss8 from '../assets/screenshots/demo-screenshots/8.png';
 
 const FEATURES = [
-  { icon: Sparkles, title: 'AI Question Generation', desc: 'Generate high-quality MCQs on any topic in seconds using advanced AI. Choose difficulty, subject, and number of questions.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
-  { icon: ShieldCheck, title: 'AI Proctoring', desc: 'Real-time face detection, tab-switch monitoring, and fullscreen enforcement ensure exam integrity automatically.', color: 'bg-red-100 dark:bg-red-900/30 text-red-600' },
-  { icon: Code2, title: 'Coding Assessments', desc: 'Create coding questions evaluated by AI. Candidates write and run code in a sandboxed browser environment.', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' },
-  { icon: BarChart2, title: 'Smart Analytics', desc: 'Track progress over time, identify weak topics, and get personalized AI study recommendations.', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' },
-  { icon: Trophy, title: 'Gamification', desc: 'Earn XP, level up, unlock achievement badges, and compete with others on the global leaderboard.', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' },
-  { icon: Award, title: 'Verified Certificates', desc: 'Score 75%+ to earn a verifiable PDF certificate with a unique QR code. Share with employers instantly.', color: 'bg-green-100 dark:bg-green-900/30 text-green-600' },
-  { icon: BookOpen, title: 'Study Mode', desc: 'Interactive flashcards and review mode to reinforce learning. Flashcard through any exam at your own pace.', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600' },
-  { icon: Users, title: 'Instructor Tools', desc: 'Create exams, invite candidates by email, control settings per-exam, and view detailed performance reports.', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600' },
-  { icon: Camera, title: 'Screenshot Capture', desc: 'Automatically capture random webcam snapshots during proctored exams. Evidence stored securely for review.', color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600' },
+  { icon: Sparkles, title: 'AI Test Generator', desc: 'Automatically generate high-quality questions by subject, difficulty, and topic — MCQ and coding questions with built-in compiler. Done in seconds.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
+  { icon: ShieldCheck, title: 'AI Proctoring & Monitoring', desc: 'Webcam-based monitoring, tab-switch detection, violation tracking, and random photo capture. You control whether proctoring is enabled per test.', color: 'bg-red-100 dark:bg-red-900/30 text-red-600' },
+  { icon: BarChart2, title: 'Student Performance Tracking', desc: 'See how every student performs across each test. Track accuracy, score trends, attempt history, and time analysis — per student and per test.', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' },
+  { icon: Users, title: 'Batch Management', desc: 'Create batches, add or remove students, and assign tests to entire groups at once. Manage all your students from one place.', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600' },
+  { icon: Brain, title: 'AI Recommendations', desc: 'Our AI analyzes your students\' recent test performance and identifies strong topics, weak areas, and suggests what they should focus on next.', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' },
+  { icon: Code2, title: 'Coding Assessments', desc: 'Create coding questions evaluated by AI. Candidates write and run code in a sandboxed browser environment — no setup needed.', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600' },
+  { icon: Award, title: 'Certificates & Verification', desc: 'Auto-generate branded PDF certificates for passing students. QR-code based verification so anyone can confirm authenticity instantly.', color: 'bg-green-100 dark:bg-green-900/30 text-green-600' },
+  { icon: Clock, title: 'Test Expiry Control', desc: 'Set expiry date/time or lifetime availability. Tests automatically become inaccessible after expiry — no manual intervention needed.', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' },
+  { icon: Camera, title: 'Screenshot Evidence', desc: 'Randomly capture webcam snapshots during proctored exams. Evidence stored securely for instructor review to ensure exam integrity.', color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600' },
 ];
 
-const STEPS = [
-  { num: '01', icon: Sparkles, title: 'Generate Your Exam', desc: 'Enter a subject, pick difficulty and question count. Our AI generates unique, high-quality MCQs in under 10 seconds.' },
-  { num: '02', icon: Monitor, title: 'Take the Exam', desc: 'Complete the timed exam in a secure fullscreen environment. AI proctoring monitors in real-time.' },
-  { num: '03', icon: Award, title: 'Earn Your Certificate', desc: 'Pass with 75%+ to instantly receive a verifiable PDF certificate. Review analytics to improve.' },
+const INSTRUCTOR_CONTROLS = [
+  { label: 'Reattempt', desc: 'Allow or block retakes' },
+  { label: 'Answer Review', desc: 'Show answers after exam' },
+  { label: 'Certificates', desc: 'Auto-issue on pass' },
+  { label: 'AI Proctoring', desc: 'Enable per test' },
+  { label: 'Expiry Date', desc: 'Date/time or lifetime' },
+  { label: 'Passing Score', desc: 'Set your own threshold' },
 ];
 
-const USE_CASES = [
-  { icon: GraduationCap, title: 'Students', desc: 'Prepare for entrance exams, certifications, or competitive tests with AI-generated practice sets tailored to your syllabus.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
-  { icon: Briefcase, title: 'Professionals', desc: 'Sharpen your domain expertise, prepare for technical interviews, or earn verifiable certificates to showcase skills.', color: 'bg-green-100 dark:bg-green-900/30 text-green-600' },
-  { icon: Brain, title: 'Instructors & Trainers', desc: 'Create and share exams with your students. Track performance, view analytics, and identify who needs support.', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600' },
-  { icon: FileText, title: 'Organizations', desc: 'Run proctored assessments at scale. Issue branded certificates and maintain complete audit trails.', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' },
+const HOW_HELPS = [
+  { icon: TrendingUp, title: 'Understand student strengths & weaknesses', desc: 'Topic-wise accuracy and weak area detection across every student in your batches.', color: 'text-teal-600' },
+  { icon: Clock, title: 'Save time with automated evaluation', desc: 'AI grades every exam instantly — MCQ and coding questions included. No manual work.', color: 'text-blue-600' },
+  { icon: ShieldCheck, title: 'Ensure fair exams with AI proctoring', desc: 'Detect violations, capture evidence, and maintain complete integrity without external tools.', color: 'text-red-600' },
+  { icon: Target, title: 'Make data-driven teaching decisions', desc: 'Real reports tell you exactly who needs help and on what — before it\'s too late.', color: 'text-indigo-600' },
+  { icon: BarChart2, title: 'Improve overall student performance', desc: 'Track trends over time. AI recommendations tell students what to practice next.', color: 'text-violet-600' },
+  { icon: Zap, title: 'Scale evaluation effortlessly', desc: 'Run assessments for 5 or 500 students with the same effort. Batch invites in one click.', color: 'text-amber-600' },
 ];
 
-const BENEFITS = [
-  { text: 'No setup required — start in 30 seconds', icon: Clock },
-  { text: 'AI generates unique questions every time', icon: Sparkles },
-  { text: 'Tamper-proof certificates with QR verification', icon: Award },
-  { text: 'Works on any device — desktop or mobile', icon: Monitor },
-  { text: 'Real-time proctoring without external tools', icon: ShieldCheck },
-  { text: 'Detailed per-topic accuracy reports', icon: BarChart2 },
+const WHO_FOR = [
+  { icon: UserCheck, title: 'Instructors & Trainers', desc: 'Create and manage assessments for your students. Track individual performance, issue certificates, and improve outcomes using AI insights.', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600' },
+  { icon: GraduationCap, title: 'Coaching Institutes', desc: 'Run batch-level assessments, manage multiple student groups, and get institute-wide performance reports with proctored exam support.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
+  { icon: Briefcase, title: 'HR & L&D Teams', desc: 'Screen candidates, run skill assessments, and evaluate employee training outcomes. Proctored tests with verified certificates.', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600' },
+  { icon: Crown, title: 'Organizations & Enterprises', desc: 'Deploy assessments at scale. Full audit trails, proctoring violations log, and branded certificates. SSO and enterprise plans available.', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' },
 ];
 
 const STATS = [
-  { value: '50K+', label: 'Exams Generated', icon: Sparkles },
-  { value: '10K+', label: 'Students', icon: Users },
+  { value: '50K+', label: 'Tests Generated', icon: Sparkles },
+  { value: '10K+', label: 'Students Managed', icon: Users },
   { value: '95%', label: 'Satisfaction Rate', icon: Star },
   { value: '200+', label: 'Subjects Covered', icon: BookOpen },
 ];
 
 const DEMO_SCREENSHOTS = [
   {
-    src: ssCreate,
-    tag: 'AI Exam Creator',
-    accentColor: 'blue',
-    tabBg: 'bg-blue-500',
-    heading: 'Create any exam in seconds',
-    desc: 'Type a subject, pick how many questions, choose difficulty — and AI writes the entire exam for you. No manual work needed.',
-    bullets: ['Works for any subject or topic', 'MCQ and coding questions supported', 'Instant generation — under 10 seconds'],
-  },
-  {
-    src: ssDashboard,
-    tag: 'Smart Dashboard',
-    accentColor: 'indigo',
-    tabBg: 'bg-indigo-500',
-    heading: 'Know exactly where you stand',
-    desc: 'Your dashboard shows all recent exams, scores, XP earned, and streaks — plus AI-powered study tips based on your weakest topics.',
-    bullets: ['AI recommends what to study next', 'Track streaks and level progress', 'See all past results at a glance'],
-  },
-  {
-    src: ssStudy,
-    tag: 'Flashcards',
-    accentColor: 'purple',
-    tabBg: 'bg-purple-500',
-    heading: 'Study smarter with flashcards',
-    desc: 'Every exam becomes a study set. Flip through questions as flashcards, review answers, and repeat until you have mastered the topic.',
-    bullets: ['Flashcard mode for every exam', 'Attempt, reattempt, or just review', 'Works on any device'],
-  },
-  {
-    src: ssInstructor,
-    tag: 'Instructor Tools',
+    src: ss7,
+    tag: 'Dashboard',
     accentColor: 'teal',
     tabBg: 'bg-teal-500',
-    heading: 'Invite candidates effortlessly',
-    desc: 'As an instructor you can create exams, invite candidates by email, set exam controls, and attempt exams yourself.',
-    bullets: ['Email-based invite system', 'Per-exam settings & proctoring controls', 'Take exams yourself before sending'],
+    heading: 'Your complete instructor control panel',
+    desc: 'See score trends, AI-powered study recommendations, and a full overview of student activity — all from a clean, modern dashboard built for real instructor workflows.',
+    bullets: ['At-a-glance stats for all your tests', 'AI recommendation engine per student', 'Score trend chart across recent tests'],
   },
   {
-    src: ssReport,
+    src: ss6,
+    tag: 'My Tests',
+    accentColor: 'blue',
+    tabBg: 'bg-blue-500',
+    heading: 'Manage and assign all your tests',
+    desc: 'Browse every test you\'ve created. See attempts, accuracy, batch assignments, and expiry status. One-click invite for email or batch.',
+    bullets: ['Filter by subject, difficulty, or status', 'Expired and proctored indicators on cards', 'Batch and email invite from same view'],
+  },
+  {
+    src: ss5,
+    tag: 'AI Test Creator',
+    accentColor: 'violet',
+    tabBg: 'bg-violet-500',
+    heading: 'Create any test in seconds with AI',
+    desc: 'Type a subject, pick how many questions, choose difficulty — AI writes the entire test for you. Includes MCQ and coding questions with built-in proctoring controls.',
+    bullets: ['Works for any subject or topic', 'MCQ and coding questions supported', 'Advanced settings: proctoring, certificates, passing score'],
+  },
+  {
+    src: ss3,
     tag: 'Reports',
     accentColor: 'rose',
     tabBg: 'bg-rose-500',
-    heading: 'See how every candidate performed',
-    desc: 'Get a full breakdown — who attempted, what they scored, how long they took, and which questions they got wrong.',
-    bullets: ['Per-candidate score and time', 'Question-level accuracy breakdown', 'Proctoring screenshots included'],
+    heading: 'Deep analytics across all your tests',
+    desc: 'Track pass vs fail rates, attempts over 30 days, avg scores per test, and performance by subject — all in one analytics dashboard.',
+    bullets: ['Pass vs fail doughnut with trends', 'Attempts over last 30 days chart', 'Performance breakdown by subject'],
   },
   {
-    src: ssAnalytics,
-    tag: 'Your Analytics',
+    src: ss1,
+    tag: 'AI Insights',
+    accentColor: 'indigo',
+    tabBg: 'bg-indigo-500',
+    heading: 'AI-powered student recommendations',
+    desc: 'The platform analyzes test performance for each student and pinpoints exactly what they need to improve — by subject, weak area, and difficulty.',
+    bullets: ['Topic-wise accuracy per student', 'Struggling / Progressing / Excelling labels', 'Personalized AI recommendation per student'],
+  },
+  {
+    src: ss2,
+    tag: 'Certificates',
     accentColor: 'amber',
     tabBg: 'bg-amber-500',
-    heading: 'Track your progress over time',
-    desc: "See your personal performance analytics — topic accuracy, exam history, XP growth, and AI-powered recommendations.",
-    bullets: ['Accuracy per topic over time', 'AI study recommendations', 'Full exam history at a glance'],
+    heading: 'Auto-issue branded certificates on pass',
+    desc: 'Every passing student automatically receives a PDF certificate. View all student certificates from one place — filterable and linked to exam reports.',
+    bullets: ['Auto-generated on every pass', 'See all student certificates in one view', 'QR-code based public verification'],
+  },
+  {
+    src: ss4,
+    tag: 'Batches',
+    accentColor: 'emerald',
+    tabBg: 'bg-emerald-500',
+    heading: 'Manage student groups effortlessly',
+    desc: 'Create batches, add students, and share tests to entire groups with one action. Track attempt status, expiry, and reattempt settings per test.',
+    bullets: ['One-click batch test assignment', 'Per-test attempt and expiry status', 'Chat and member management built in'],
+  },
+  {
+    src: ss8,
+    tag: 'Exam Interface',
+    accentColor: 'purple',
+    tabBg: 'bg-purple-500',
+    heading: 'A clean, focused exam experience',
+    desc: 'Students get a distraction-free exam interface with built-in timer, question navigation, and flagging — ensuring integrity and ease of use on any device.',
+    bullets: ['Timed exam with auto-submit', 'Question navigator and flag for review', 'Works on any device — no install needed'],
   },
 ];
 
@@ -128,7 +151,6 @@ function ScreenshotShowcase() {
     setTimeout(() => { setActive(idx); setFading(false); }, 200);
   };
 
-  // Auto-advance every 5s
   useEffect(() => {
     intervalRef.current = setInterval(() => {
       setFading(true);
@@ -154,19 +176,16 @@ function ScreenshotShowcase() {
 
   return (
     <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
-      {/* Soft gradient background */}
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-[var(--color-bg)] via-indigo-50/30 to-[var(--color-bg)] dark:via-indigo-900/8" />
       <div className="relative max-w-7xl mx-auto">
-        {/* Header */}
         <div className="text-center mb-10">
           <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-            <Monitor size={13} /> Product Preview
+            <Monitor size={13} /> Platform Preview
           </div>
-          <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">See it in action</h2>
-          <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A clean, modern interface built for real use — from exam creation to analytics.</p>
+          <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">See your dashboard in action</h2>
+          <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A clean, modern interface built for real instructor workflows — from test creation to deep analytics.</p>
         </div>
 
-        {/* Tab buttons */}
         <div className="flex flex-wrap justify-center gap-2 mb-8">
           {DEMO_SCREENSHOTS.map((s, i) => (
             <button
@@ -183,10 +202,8 @@ function ScreenshotShowcase() {
           ))}
         </div>
 
-        {/* Main preview area */}
         <div className={`transition-opacity duration-200 ${fading ? 'opacity-0' : 'opacity-100'}`}>
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8 items-center">
-            {/* Info panel */}
             <div className="order-2 lg:order-1">
               <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full mb-4 bg-${ss.accentColor}-100 dark:bg-${ss.accentColor}-900/30 text-${ss.accentColor}-600 dark:text-${ss.accentColor}-400`}>
                 {ss.tag}
@@ -201,7 +218,6 @@ function ScreenshotShowcase() {
                   </li>
                 ))}
               </ul>
-              {/* Dot progress */}
               <div className="flex gap-1.5 mt-8">
                 {DEMO_SCREENSHOTS.map((_, i) => (
                   <button
@@ -213,10 +229,8 @@ function ScreenshotShowcase() {
               </div>
             </div>
 
-            {/* Screenshot */}
             <div className="order-1 lg:order-2">
               <div className="rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-2xl shadow-black/10">
-                {/* Browser chrome */}
                 <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[var(--color-bg-alt)] border-b border-[var(--color-border)]">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
                   <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/80" />
@@ -248,48 +262,73 @@ export default function HomePage() {
 
   return (
     <div className="bg-[var(--color-bg)]">
-      {/* ── Hero ── */}
+
+      {/* ── Hero: Instructor-First ── */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-gradient-radial from-blue-100/60 via-indigo-50/30 to-transparent dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-transparent rounded-full blur-3xl" />
-          <div className="absolute top-20 left-0 w-72 h-72 bg-violet-100/40 dark:bg-violet-900/10 rounded-full blur-3xl" />
-          <div className="absolute top-40 right-0 w-80 h-80 bg-blue-100/40 dark:bg-blue-900/10 rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-gradient-radial from-teal-100/50 via-cyan-50/25 to-transparent dark:from-teal-900/15 dark:via-cyan-900/8 dark:to-transparent rounded-full blur-3xl" />
+          <div className="absolute top-20 left-0 w-72 h-72 bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-3xl" />
+          <div className="absolute top-40 right-0 w-80 h-80 bg-teal-100/30 dark:bg-teal-900/10 rounded-full blur-3xl" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 lg:py-32">
-          <div className="max-w-4xl mx-auto text-center">
-            <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm">
-              <Sparkles size={12} />
-              Powered by Advanced AI — Fast & Accurate
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
+          <div className="text-center max-w-4xl mx-auto mb-12">
+            <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm">
+              <Sparkles size={12} /> AI-Powered Instructor Platform
             </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.75rem] font-extrabold text-[var(--color-text)] mb-6 leading-[1.12] tracking-tight">
-              The Smartest Way to<br />
-              <span className="text-[var(--color-primary)]">Prepare for Any Exam</span>
+            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold text-[var(--color-text)] mb-5 leading-[1.12] tracking-tight">
+              Create, Manage & Analyze Tests<br />
+              <span className="text-[var(--color-primary)]">All in One Instructor Platform</span>
             </h1>
-            <p className="text-lg sm:text-xl text-[var(--color-text-muted)] mb-10 max-w-2xl mx-auto leading-relaxed">
-              Generate AI-powered MCQ exams in seconds. Take proctored tests. Earn verifiable certificates. Improve with intelligent analytics — all in one platform.
+            <p className="text-lg text-[var(--color-text-muted)] max-w-2xl mx-auto leading-relaxed">
+              Create exams in seconds using AI, manage batches, and track how your students perform with detailed analytics and smart recommendations.
             </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mb-8">
+            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
               <Link
-                to={isAuthenticated ? '/create-exam' : '/signup'}
-                className="btn-primary px-8 py-3.5 text-base font-semibold rounded-xl flex items-center justify-center gap-2 shadow-lg shadow-blue-500/20 hover:shadow-blue-500/30 transition-all"
+                to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'}
+                className="btn-primary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl shadow-lg shadow-teal-500/20 text-base"
               >
-                <Sparkles size={18} />
-                {isAuthenticated ? 'Generate Exam Now' : 'Start for Free'}
-                <ArrowRight size={16} />
+                <Sparkles size={18} /> Create Your First Test
               </Link>
               <Link
-                to="/pricing"
-                className="border border-[var(--color-border)] px-8 py-3.5 text-base font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-[var(--color-bg-alt)] hover:border-[var(--color-primary)] transition-all text-[var(--color-text)]"
+                to={isAuthenticated ? '/instructor-dashboard' : '/signup?role=instructor'}
+                className="btn-secondary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
               >
-                <Crown size={16} />
-                View Plans & Pricing
+                <LayoutDashboard size={18} /> View Dashboard
               </Link>
             </div>
-            <div className="flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs text-[var(--color-text-muted)]">
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Free forever — no credit card</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Generate exam in 10 seconds</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verifiable PDF certificates</span>
-            </div>
+          </div>
+
+          {/* Trust indicators */}
+          <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[var(--color-text-muted)] mb-10">
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> No setup required</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Exam in 10 seconds</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> AI proctoring built-in</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verifiable certificates</span>
+          </div>
+
+          {/* Core value props — 3 cards */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+            {[
+              { icon: Users, title: 'Manage all your students from one place', desc: 'Create batches, assign tests, track who attempted, who passed, and who needs support.', color: 'from-teal-400 to-cyan-500' },
+              { icon: BarChart2, title: 'Track performance with real data', desc: 'Per-student analytics, topic-wise accuracy, score trends, and time analysis on every test.', color: 'from-blue-400 to-indigo-500' },
+              { icon: Brain, title: 'Improve results using AI insights', desc: 'AI identifies weak areas for each student and suggests what they should focus on next.', color: 'from-violet-400 to-purple-500' },
+            ].map(item => (
+              <div key={item.title} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 hover:shadow-md transition-all hover:-translate-y-0.5">
+                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-4 shadow-sm`}>
+                  <item.icon size={20} className="text-white" />
+                </div>
+                <h3 className="font-bold text-[var(--color-text)] mb-2 text-sm leading-snug">{item.title}</h3>
+                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Student join note */}
+          <div className="text-center mt-8">
+            <p className="text-xs text-[var(--color-text-muted)]">
+              <CheckCircle size={12} className="inline mr-1 text-green-500" />
+              Your students join <strong className="text-[var(--color-text)]">completely free</strong> — they take your tests, earn certificates, and never pay a thing.
+            </p>
           </div>
         </div>
       </section>
@@ -313,38 +352,49 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── How it works ── */}
+      {/* ── How It Works — Instructor Flow ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/4 w-64 h-64 bg-blue-50/60 dark:bg-blue-900/8 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-indigo-50/50 dark:bg-indigo-900/8 rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal-50/60 dark:bg-teal-900/8 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-50/50 dark:bg-blue-900/8 rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-              <PlayCircle size={13} /> Simple Process
+              <PlayCircle size={13} /> How It Works
             </div>
-            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">From zero to certified in 3 steps</h2>
-            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">No complex setup. No waiting. Start practicing and earning certificates today.</p>
+            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Up and running in minutes</h2>
+            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">From zero to running a proctored exam for your entire batch — no setup, no infrastructure.</p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {STEPS.map((step, i) => (
-              <div key={step.num} className="relative">
-                {i < STEPS.length - 1 && (
-                  <div className="hidden md:block absolute top-8 left-[calc(100%_-_24px)] w-12 border-t-2 border-dashed border-[var(--color-border)] z-10" />
-                )}
-                <div className="card h-full hover:shadow-md transition-shadow">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="w-12 h-12 bg-[var(--color-primary)] rounded-xl flex items-center justify-center shrink-0">
-                      <step.icon size={22} className="text-white" />
+
+          <div className="max-w-4xl mx-auto">
+            <div className="bg-gradient-to-br from-teal-50 to-cyan-50 dark:from-teal-900/10 dark:to-cyan-900/10 rounded-2xl border border-teal-200 dark:border-teal-800 p-8 md:p-10">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                {[
+                  { num: '1', title: 'Choose a Plan', desc: 'Pick Pro or Enterprise based on your exam volume. No setup or infrastructure required — start immediately.' },
+                  { num: '2', title: 'Generate Your Test', desc: 'Enter a topic, pick difficulty and question count. AI writes the entire test in under 10 seconds. Edit questions if needed.' },
+                  { num: '3', title: 'Invite Your Students', desc: 'Send invites by email or assign an entire batch. Set proctoring, time limits, expiry, and per-exam settings.' },
+                  { num: '4', title: 'View Analytics & Reports', desc: 'See who attempted, scores, time taken, per-question accuracy, AI recommendations, and proctoring screenshots.' },
+                ].map((s) => (
+                  <div key={s.num} className="flex gap-4">
+                    <div className="w-9 h-9 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-sm font-bold shrink-0 mt-0.5 shadow-sm">{s.num}</div>
+                    <div>
+                      <p className="font-semibold text-sm text-[var(--color-text)]">{s.title}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">{s.desc}</p>
                     </div>
-                    <span className="text-3xl font-black text-[var(--color-border)]">{step.num}</span>
                   </div>
-                  <h3 className="font-bold text-[var(--color-text)] mb-2">{step.title}</h3>
-                  <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{step.desc}</p>
-                </div>
+                ))}
               </div>
-            ))}
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <Link to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'} className="btn-primary px-6 py-3 flex items-center justify-center gap-2 font-semibold rounded-xl">
+                  <Sparkles size={16} /> {isAuthenticated ? 'Create a Test Now' : 'Get Started as Instructor'}
+                </Link>
+                <p className="flex items-center text-xs text-[var(--color-text-muted)] sm:ml-2">
+                  <CheckCircle size={12} className="text-green-500 mr-1.5 shrink-0" />
+                  Students join free — they never pay
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </section>
@@ -352,7 +402,7 @@ export default function HomePage() {
       {/* ── Screenshots Showcase ── */}
       <ScreenshotShowcase />
 
-      {/* ── Features ── */}
+      {/* ── Features — Instructor Benefits ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden bg-[var(--color-surface)]">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-gradient-radial from-blue-50/40 via-indigo-50/20 to-transparent dark:from-blue-900/8 dark:to-transparent rounded-full blur-3xl" />
@@ -360,10 +410,10 @@ export default function HomePage() {
         <div className="relative max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-              <Sparkles size={13} /> Full Feature Set
+              <Sparkles size={13} /> Platform Features
             </div>
-            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Everything you need to succeed</h2>
-            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A complete exam preparation platform built for serious learners and organisations.</p>
+            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Everything you need to manage your students</h2>
+            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A complete assessment platform built for instructors, trainers, and organizations who want results.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
             {FEATURES.map((f) => (
@@ -379,42 +429,39 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Instructor Tools highlight ── */}
+      {/* ── Advanced Test Controls ── */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
             <div>
               <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
-                <UserCheck size={13} /> For Instructors & Trainers
+                <UserCheck size={13} /> Advanced Test Controls
               </div>
-              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">Complete exam management for instructors</h2>
+              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">You control every aspect of every test</h2>
               <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
-                Create exams, invite candidates by email, control what they see, and monitor performance in real-time — all from one dashboard.
+                Set duration, difficulty, and passing score. Enable or disable reattempt, answer review, certificates, and AI proctoring — independently for each test you create.
               </p>
-              <ul className="space-y-3 mb-8">
-                {[
-                  ['Create and share exams with candidates via email invite', Mail],
-                  ['Control reattempt, flashcards, review & certificate per exam', ShieldCheck],
-                  ['View per-candidate score, attempt time & answers', BarChart2],
-                  ['Proctored exam screenshots reviewed in instructor dashboard', Camera],
-                  ['Coding assessments with auto AI evaluation', Code2],
-                ].map(([text, Icon]) => (
-                  <li key={text} className="flex items-center gap-2.5 text-sm text-[var(--color-text-muted)]">
-                    <Icon size={15} className="text-teal-500 shrink-0" />
-                    {text}
-                  </li>
+              <div className="grid grid-cols-2 gap-3 mb-8">
+                {INSTRUCTOR_CONTROLS.map(ctrl => (
+                  <div key={ctrl.label} className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
+                    <div className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-[var(--color-text)]">{ctrl.label}</p>
+                      <p className="text-[10px] text-[var(--color-text-muted)]">{ctrl.desc}</p>
+                    </div>
+                  </div>
                 ))}
-              </ul>
-              <Link to={isAuthenticated ? '/instructor' : '/signup'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
-                <LayoutDashboard size={16} /> {isAuthenticated ? 'Instructor Dashboard' : 'Start as Instructor'}
+              </div>
+              <Link to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
+                <Zap size={16} /> {isAuthenticated ? 'Create a Test' : 'Start Creating Tests'}
               </Link>
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Exam Created', value: 'Python Fundamentals', badge: '12 candidates', color: 'bg-teal-50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800' },
+                { label: 'Test Created', value: 'Python Fundamentals', badge: '24 students invited', color: 'bg-teal-50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800' },
                 { label: 'Avg Score', value: '82%', badge: 'Pass rate: 91%', color: 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' },
-                { label: 'Invites Sent', value: '12', badge: '11 attempted', color: 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' },
-                { label: 'Certificates', value: '10', badge: 'Auto-issued', color: 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' },
+                { label: 'Proctoring', value: 'Active', badge: '0 violations detected', color: 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' },
+                { label: 'Certificates', value: '22', badge: 'Auto-issued on pass', color: 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' },
               ].map(item => (
                 <div key={item.label} className={`card border ${item.color} hover:shadow-sm transition-shadow`}>
                   <p className="text-xs text-[var(--color-text-muted)] mb-1">{item.label}</p>
@@ -436,19 +483,20 @@ export default function HomePage() {
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
               <div>
                 <div className="inline-flex items-center gap-2 bg-white/10 text-blue-300 text-xs font-semibold px-3 py-1.5 rounded-full mb-5">
-                  <ShieldCheck size={13} /> Enterprise-Grade Proctoring
+                  <ShieldCheck size={13} /> AI Proctoring & Monitoring
                 </div>
-                <h2 className="text-3xl font-bold mb-4">Exam integrity you can trust</h2>
+                <h2 className="text-3xl font-bold mb-4">Ensure exam integrity across your entire batch</h2>
                 <p className="text-slate-300 text-sm leading-relaxed mb-6">
-                  Our AI proctoring uses real-time webcam analysis, tab monitoring, and keyboard blocking — no external software needed. Violations are logged and emailed automatically.
+                  Enable AI proctoring per test. Real-time webcam analysis, tab monitoring, random photo capture, and violation tracking — all in your instructor dashboard. No external software needed.
                 </p>
                 <ul className="space-y-3">
                   {[
-                    'Real-time face detection — detects multiple people',
-                    'Fullscreen enforcement with violation tracking',
+                    'Webcam-based face detection during exam',
                     'Tab-switch and window-blur monitoring',
-                    'Auto-submit after 3 violations + email alert',
-                    'AI Proctored badge printed on certificate',
+                    'Random photo capture at instructor\'s discretion',
+                    'Violation tracking with auto-submit after 3 violations',
+                    'Full proctoring screenshots available in your report',
+                    'AI Proctored badge printed on issued certificates',
                   ].map((item) => (
                     <li key={item} className="flex items-center gap-2.5 text-sm text-slate-300">
                       <CheckCircle size={15} className="text-green-400 shrink-0" />
@@ -468,6 +516,7 @@ export default function HomePage() {
                     { label: 'Tab Monitoring', status: 'Active', ok: true },
                     { label: 'Fullscreen', status: 'Enforced', ok: true },
                     { label: 'Copy / Paste', status: 'Blocked', ok: true },
+                    { label: 'Photo Captures', status: '3 taken', ok: true },
                     { label: 'Violations', status: '0 / 3', ok: true },
                   ].map(item => (
                     <div key={item.label} className="flex items-center justify-between py-2.5 border-b border-white/10 last:border-0">
@@ -484,22 +533,111 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Use Cases ── */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+      {/* ── How This Helps You (instructor benefits) ── */}
+      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden bg-[var(--color-surface)]">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 right-0 w-80 h-80 bg-violet-50/40 dark:bg-violet-900/8 rounded-full blur-3xl" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 bg-blue-50/40 dark:bg-blue-900/8 rounded-full blur-3xl" />
+          <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-50/40 dark:bg-teal-900/8 rounded-full blur-3xl" />
         </div>
+        <div className="relative max-w-7xl mx-auto">
+          <div className="text-center mb-14">
+            <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
+              <CheckCircle size={13} /> How This Helps You
+            </div>
+            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Built for real instructor outcomes</h2>
+            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Every feature is designed to make you more effective — saving time, improving results, and giving you the data to act.</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+            {HOW_HELPS.map((item) => (
+              <div key={item.title} className="card hover:shadow-md transition-all hover:-translate-y-0.5">
+                <item.icon size={22} className={`${item.color} mb-4`} />
+                <h3 className="font-bold text-[var(--color-text)] mb-2 text-sm">{item.title}</h3>
+                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* ── AI Insights Section ── */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
+                <Brain size={13} /> AI-Powered Insights
+              </div>
+              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">AI analyzes your students' performance and recommends what's next</h2>
+              <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
+                After every test, our AI reviews each student's answers and identifies patterns. You see who is strong, who is struggling, and exactly which topics need attention.
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  ['Topic-wise accuracy per student', BarChart2],
+                  ['Weak area detection and flagging', Target],
+                  ['Suggested practice topics shown to students', Brain],
+                  ['Score trends over multiple tests', TrendingUp],
+                ].map(([text, Icon]) => (
+                  <li key={text} className="flex items-center gap-2.5 text-sm text-[var(--color-text-muted)]">
+                    <Icon size={15} className="text-indigo-500 shrink-0" />
+                    {text}
+                  </li>
+                ))}
+              </ul>
+              <Link to={isAuthenticated ? '/instructor/analytics' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
+                <BarChart2 size={16} /> {isAuthenticated ? 'View Analytics' : 'Explore Analytics Features'}
+              </Link>
+            </div>
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
+              <div className="flex items-center gap-2 mb-5">
+                <Brain size={16} className="text-indigo-500" />
+                <span className="font-semibold text-sm text-[var(--color-text)]">Student Insight — React Fundamentals Test</span>
+              </div>
+              <div className="space-y-3">
+                {[
+                  { topic: 'React Hooks', accuracy: 92, status: 'Strong', color: 'bg-green-500' },
+                  { topic: 'Component Lifecycle', accuracy: 78, status: 'Good', color: 'bg-blue-500' },
+                  { topic: 'State Management', accuracy: 54, status: 'Needs Work', color: 'bg-amber-500' },
+                  { topic: 'Redux / Context API', accuracy: 38, status: 'Weak', color: 'bg-red-500' },
+                ].map(item => (
+                  <div key={item.topic}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-[var(--color-text)]">{item.topic}</span>
+                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                        item.status === 'Strong' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
+                        item.status === 'Good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
+                        item.status === 'Needs Work' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
+                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                      }`}>{item.status}</span>
+                    </div>
+                    <div className="w-full h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
+                      <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.accuracy}%` }} />
+                    </div>
+                    <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{item.accuracy}% accuracy</div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-5 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1">AI Recommendation</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Focus next session on Redux / Context API and State Management. Schedule a follow-up test in 1 week.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Who It's For ── */}
+      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden bg-[var(--color-surface)]">
         <div className="relative max-w-7xl mx-auto">
           <div className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
               <Users size={13} /> Who It's For
             </div>
-            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Built for every learner</h2>
-            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Whether you're a student, professional, instructor, or organisation — ExamPrep AI scales to your needs.</p>
+            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Built for instructors & organizations</h2>
+            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Whether you're an individual trainer or running assessments for thousands — this platform scales with you.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {USE_CASES.map((uc) => (
+            {WHO_FOR.map((uc) => (
               <div key={uc.title} className="card hover:shadow-md transition-all hover:-translate-y-0.5">
                 <div className={`w-11 h-11 rounded-xl ${uc.color} flex items-center justify-center mb-4`}>
                   <uc.icon size={20} />
@@ -512,82 +650,51 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── Benefits ── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8 bg-[var(--color-surface)]">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
-                <CheckCircle size={13} /> Why choose ExamPrep AI
-              </div>
-              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">All the tools. Zero friction.</h2>
-              <p className="text-[var(--color-text-muted)] mb-8 leading-relaxed text-sm">
-                We built ExamPrep AI to eliminate the gap between knowledge and certification. Everything you need is in one platform, designed to get out of your way.
-              </p>
-              <Link
-                to={isAuthenticated ? '/create-exam' : '/signup'}
-                className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl"
-              >
-                <Sparkles size={16} />
-                {isAuthenticated ? 'Start Generating' : 'Get Started Free'}
-              </Link>
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              {BENEFITS.map((b) => (
-                <div key={b.text} className="flex items-start gap-3 p-4 rounded-xl bg-[var(--color-bg)] border border-[var(--color-border)] hover:border-green-300 dark:hover:border-green-700 transition-colors">
-                  <div className="w-8 h-8 bg-green-100 dark:bg-green-900/30 rounded-lg flex items-center justify-center shrink-0">
-                    <b.icon size={15} className="text-green-600 dark:text-green-400" />
-                  </div>
-                  <p className="text-sm text-[var(--color-text)] leading-snug">{b.text}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* ── Pricing ── */}
+      {/* ── Instructor Pricing ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-radial from-blue-50/50 via-indigo-50/20 to-transparent dark:from-blue-900/10 dark:to-transparent rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-radial from-teal-50/50 via-cyan-50/20 to-transparent dark:from-teal-900/10 dark:to-transparent rounded-full blur-3xl" />
         </div>
-        <div className="relative max-w-7xl mx-auto">
-          <div className="text-center mb-14">
-            <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-              <Crown size={13} /> Pricing
+        <div className="relative max-w-4xl mx-auto">
+          <div className="text-center mb-10">
+            <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
+              <Crown size={13} /> Instructor Plans
             </div>
-            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Simple, transparent pricing</h2>
-            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Start free, upgrade when you need more. Cancel any time.</p>
+            <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Upgrade to unlock your full potential</h2>
+            <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">
+              Manage unlimited students, create unlimited tests, access advanced analytics, and enable full proctoring features.
+            </p>
           </div>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 max-w-5xl mx-auto">
-            {PLANS.map((plan) => {
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            {PLANS.filter(p => p.id !== 'free').map((plan) => {
               const Icon = plan.icon;
               return (
                 <div
                   key={plan.id}
-                  className={`relative flex flex-col rounded-2xl border-2 p-8 transition-all ${plan.borderColor} ${plan.badge ? 'shadow-xl scale-[1.02]' : 'shadow-sm hover:shadow-md'} bg-[var(--color-surface)]`}
+                  className={`relative flex flex-col rounded-2xl border-2 p-7 transition-all ${plan.borderColor} ${plan.badge ? 'shadow-xl' : 'shadow-sm hover:shadow-md'} bg-[var(--color-surface)]`}
                 >
                   {plan.badge && (
                     <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
                       <span className="bg-[var(--color-primary)] text-white text-xs font-bold px-4 py-1 rounded-full shadow">{plan.badge}</span>
                     </div>
                   )}
-                  <div className="flex items-center gap-3 mb-5">
+                  <div className="flex items-center gap-3 mb-4">
                     <div className={`w-10 h-10 rounded-xl ${plan.bgColor} flex items-center justify-center`}>
                       <Icon size={20} className={plan.color} />
                     </div>
                     <div>
                       <h3 className="font-bold text-[var(--color-text)] text-lg">{plan.name}</h3>
-                      <p className="text-xs text-[var(--color-text-muted)]">{plan.testsPerMonth} exams · {plan.maxQuestions} questions max</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{plan.testsPerMonth} exams/mo · {plan.maxQuestions} questions max</p>
                     </div>
                   </div>
-                  <div className="mb-6">
+                  <div className="mb-5">
                     {plan.originalPrice && (
                       <div className="text-sm text-[var(--color-text-muted)] line-through mb-0.5">₹{plan.originalPrice}/month</div>
                     )}
                     <div className="flex items-end gap-1">
-                      <span className="text-4xl font-bold text-[var(--color-text)]">{plan.price === 0 ? 'Free' : `₹${plan.price}`}</span>
-                      {plan.price > 0 && <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>}
+                      <span className="text-4xl font-bold text-[var(--color-text)]">₹{plan.price}</span>
+                      <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>
                     </div>
                     {plan.originalPrice && (
                       <div className="mt-1 inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -596,20 +703,18 @@ export default function HomePage() {
                     )}
                   </div>
                   <Link
-                    to={isAuthenticated ? '/pricing' : '/signup'}
-                    className={`w-full py-3 rounded-xl font-semibold text-sm text-center transition-all flex items-center justify-center gap-2 mb-6 ${
-                      plan.badge
-                        ? 'btn-primary hover:opacity-90'
-                        : 'border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] text-[var(--color-text)]'
+                    to={isAuthenticated ? '/pricing' : '/signup?role=instructor'}
+                    className={`w-full py-2.5 rounded-xl font-semibold text-sm text-center transition-all flex items-center justify-center gap-2 mb-5 ${
+                      plan.badge ? 'btn-primary hover:opacity-90' : 'border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] text-[var(--color-text)]'
                     }`}
                   >
-                    {plan.price === 0 ? 'Get Started Free' : `Upgrade to ${plan.name}`}
+                    {isAuthenticated ? `Upgrade to ${plan.name}` : 'Start as Instructor'}
                   </Link>
-                  <div className="border-t border-[var(--color-border)] mb-5" />
-                  <ul className="space-y-2.5 flex-1">
-                    {plan.features.map((f) => (
-                      <li key={f} className="flex items-start gap-2.5 text-sm">
-                        <Check size={15} className="text-green-500 mt-0.5 shrink-0" />
+                  <div className="border-t border-[var(--color-border)] mb-4" />
+                  <ul className="space-y-2 flex-1">
+                    {plan.features.slice(0, 5).map((f) => (
+                      <li key={f} className="flex items-start gap-2 text-xs">
+                        <Check size={12} className="text-green-500 mt-0.5 shrink-0" />
                         <span className="text-[var(--color-text)]">{f}</span>
                       </li>
                     ))}
@@ -618,9 +723,9 @@ export default function HomePage() {
               );
             })}
           </div>
-          <div className="text-center mt-8">
+          <div className="text-center">
             <Link to="/pricing" className="text-[var(--color-primary)] text-sm font-medium hover:underline inline-flex items-center gap-1">
-              View full plan comparison <ChevronRight size={15} />
+              View full plan details <ChevronRight size={15} />
             </Link>
           </div>
         </div>
@@ -629,36 +734,38 @@ export default function HomePage() {
       {/* ── CTA ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-gradient-radial from-blue-100/50 via-indigo-50/20 to-transparent dark:from-blue-900/15 dark:to-transparent rounded-full blur-3xl" />
+          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-gradient-radial from-teal-100/50 via-cyan-50/20 to-transparent dark:from-teal-900/15 dark:to-transparent rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-3xl mx-auto text-center">
-          <div className="w-16 h-16 bg-gradient-to-br from-[var(--color-primary)] to-blue-600 rounded-2xl flex items-center justify-center mx-auto mb-6 shadow-lg shadow-blue-500/20">
-            <GraduationCap size={28} className="text-white" />
+          <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
+            <Sparkles size={12} /> Start Today
           </div>
-          <h2 className="text-3xl sm:text-4xl font-bold text-[var(--color-text)] mb-4">
-            Ready to ace your next exam?
+          <h2 className="text-4xl font-extrabold text-[var(--color-text)] mb-4 tracking-tight">
+            Your students deserve better assessments.<br />
+            <span className="text-[var(--color-primary)]">You deserve better tools.</span>
           </h2>
-          <p className="text-[var(--color-text-muted)] mb-8 text-lg max-w-xl mx-auto">
-            Join thousands of learners who generate exams, earn certificates, and track their growth — all for free.
+          <p className="text-[var(--color-text-muted)] text-lg mb-8 leading-relaxed">
+            Join instructors and organizations already using ExamPrep AI to create smarter tests, track real performance, and improve student outcomes.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link
-              to={isAuthenticated ? '/create-exam' : '/signup'}
-              className="btn-primary px-10 py-4 text-base font-semibold rounded-xl inline-flex items-center gap-2 shadow-lg shadow-blue-500/20"
+              to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'}
+              className="btn-primary px-8 py-4 flex items-center justify-center gap-2 font-semibold rounded-xl shadow-lg shadow-teal-500/20 text-base"
             >
-              <Sparkles size={18} />
-              {isAuthenticated ? 'Create Exam Now' : 'Start Free Today'}
-              <ArrowRight size={18} />
+              <Sparkles size={18} /> {isAuthenticated ? 'Create a Test Now' : 'Get Started as Instructor'}
+              <ArrowRight size={16} />
             </Link>
-            {!isAuthenticated && (
-              <Link
-                to="/pricing"
-                className="border border-[var(--color-border)] px-8 py-4 text-base font-medium rounded-xl inline-flex items-center gap-2 hover:bg-[var(--color-bg-alt)] transition-all text-[var(--color-text)]"
-              >
-                View Pricing
-              </Link>
-            )}
+            <Link
+              to="/pricing"
+              className="btn-secondary px-8 py-4 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
+            >
+              View Plans & Pricing
+            </Link>
           </div>
+          <p className="text-xs text-[var(--color-text-muted)] mt-5">
+            <CheckCircle size={12} className="inline mr-1 text-green-500" />
+            Students always join free · No credit card for trial
+          </p>
         </div>
       </section>
     </div>

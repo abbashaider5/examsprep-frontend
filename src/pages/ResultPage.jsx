@@ -16,7 +16,8 @@ ChartJS.register(ArcElement, Tooltip, Legend);
 export default function ResultPage() {
   const { id } = useParams();
   const { state } = useLocation();
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const isInstructor = ['instructor', 'admin'].includes(user?.role);
   const [showFeedback, setShowFeedback] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -66,7 +67,7 @@ export default function ResultPage() {
           </p>
           <div className="flex gap-3 justify-center">
             <Link to="/dashboard" className="btn-secondary text-sm">Back to Dashboard</Link>
-            <Link to="/create-exam" className="btn-primary text-sm">Create New Exam</Link>
+            {isInstructor && <Link to="/create-exam" className="btn-primary text-sm">Create New Exam</Link>}
           </div>
         </div>
       </div>
@@ -146,7 +147,7 @@ export default function ResultPage() {
           {/* Actions */}
           <div className="flex sm:flex-col gap-2 shrink-0">
             <Link to="/dashboard" className="btn-secondary text-sm">Dashboard</Link>
-            <Link to="/create-exam" className="btn-primary text-sm">New Exam</Link>
+            {isInstructor && <Link to="/create-exam" className="btn-primary text-sm">New Exam</Link>}
           </div>
         </div>
       </div>

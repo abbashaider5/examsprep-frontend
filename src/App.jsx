@@ -13,11 +13,14 @@ import CertificatesPage from './pages/CertificatesPage.jsx';
 import ContactPage from './pages/ContactPage.jsx';
 import CreateExamPage from './pages/CreateExamPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import EditQuestionsPage from './pages/EditQuestionsPage.jsx';
 import ExamPage from './pages/ExamPage.jsx';
 import HomePage from './pages/HomePage.jsx';
 import GroupsPage, { GroupInviteAcceptPage } from './pages/GroupsPage.jsx';
 import InstructorAnalyticsPage from './pages/InstructorAnalyticsPage.jsx';
 import InstructorPage from './pages/InstructorPage.jsx';
+import InstructorPerformancePage from './pages/InstructorPerformancePage.jsx';
+import InstructorReportPage from './pages/InstructorReportPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MaintenancePage from './pages/MaintenancePage.jsx';
@@ -73,16 +76,23 @@ export default function App() {
         {/* Dashboard (sidebar layout) */}
         <Route element={<Guard><DashboardLayout /></Guard>}>
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="create-exam" element={<CreateExamPage />} />
+          <Route path="create-exam" element={<Guard instructorOnly><CreateExamPage /></Guard>} />
           <Route path="profile" element={<ProfilePage />} />
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
-          <Route path="study" element={<StudyModePage />} />
+          <Route path="study" element={<Navigate to="/tests" replace />} />
+          <Route path="tests" element={<StudyModePage />} />
           <Route path="performance" element={<StudyPerformancePage />} />
           <Route path="admin" element={<Guard adminOnly><AdminPage /></Guard>} />
-          <Route path="instructor" element={<Guard instructorOnly><InstructorPage /></Guard>} />
+          <Route path="instructor" element={<Navigate to="/instructor-dashboard" replace />} />
+          <Route path="instructor-dashboard" element={<Guard instructorOnly><InstructorPage /></Guard>} />
           <Route path="instructor/analytics" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
+          <Route path="test-reports" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
+          <Route path="instructor/performance" element={<Guard instructorOnly><InstructorPerformancePage /></Guard>} />
+          <Route path="instructor/report/:examId" element={<Guard instructorOnly><InstructorReportPage /></Guard>} />
+          <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />
           <Route path="groups" element={<GroupsPage />} />
+          <Route path="batches" element={<GroupsPage />} />
         </Route>
 
         {/* Group invite accept (needs auth but no layout) */}

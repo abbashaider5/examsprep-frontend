@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Flame, Star, Trophy, Zap } from 'lucide-react';
-import { leaderboardApi } from '../services/api.js';
+import { Flame, Star, Trophy, Users, Zap } from 'lucide-react';
+import { useState } from 'react';
+import { groupApi, leaderboardApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 const MEDAL = ['🥇', '🥈', '🥉'];
@@ -49,40 +50,97 @@ function PodiumCard({ user, rank }) {
 
 export default function LeaderboardPage() {
   const { user: me } = useAuthStore();
+  const [selectedBatch, setSelectedBatch] = useState(null); // null = global
+
   const { data, isLoading } = useQuery({
     queryKey: ['leaderboard'],
     queryFn: () => leaderboardApi.get().then(r => r.data),
   });
 
+  const { data: groupsData } = useQuery({
+    queryKey: ['groups'],
+    queryFn: () => groupApi.getAll().then(r => r.data),
+  });
+
+  const myBatches = groupsData?.groups || [];
+
   const board = data?.leaderboard || [];
-  const top3 = board.slice(0, 3);
-  const rest = board.slice(3);
-  const myRank = board.findIndex(u => u.name === me?.name);
+
+  // If a batch is selected, filter leaderboard to only batch members
+  const filteredBoard = selectedBatch
+    ? (() => {
+        const batch = myBatches.find(g => g._id === selectedBatch);
+        if (!batch) return board;
+        const memberIds = new Set([
+          ...(batch.members || []).map(m => (m._id || m).toString()),
+          batch.instructor ? (batch.instructor._id || batch.instructor).toString() : null,
+        ].filter(Boolean));
+        return board.filter(u => memberIds.has(u._id?.toString()));
+      })()
+    : board;
+
+  const top3 = filteredBoard.slice(0, 3);
+  const rest = filteredBoard.slice(3);
+  const myRank = filteredBoard.findIndex(u => u.name === me?.name);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
       {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-amber-50 via-yellow-50/50 to-orange-50/30 dark:from-amber-900/20 dark:via-yellow-900/10 dark:to-orange-900/5 border border-amber-100 dark:border-amber-900/30 px-6 py-5 mb-8">
-        <div className="absolute -top-8 -right-8 w-40 h-40 bg-amber-200/30 dark:bg-amber-700/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
+        <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-8 left-0 w-36 h-36 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
         <div className="relative flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
-            <Trophy size={18} className="text-amber-600 dark:text-amber-400" />
+          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+            <Trophy size={20} className="text-white" />
           </div>
           <div>
-            <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Leaderboard</h1>
-            <p className="text-xs text-[var(--color-text-muted)]">Top learners ranked by XP earned this month</p>
+            <h1 className="text-xl font-extrabold text-white leading-tight">Leaderboard</h1>
+            <p className="text-sm text-teal-100 mt-0.5">Top learners ranked by XP earned this month</p>
           </div>
         </div>
       </div>
+
+      {/* Batch filter */}
+      {myBatches.length > 0 && (
+        <div className="flex items-center gap-2 mb-6 overflow-x-auto pb-1">
+          <Users size={13} className="text-[var(--color-text-muted)] shrink-0" />
+          <button
+            onClick={() => setSelectedBatch(null)}
+            className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors shrink-0 ${
+              selectedBatch === null
+                ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+            }`}
+          >
+            All Users
+          </button>
+          {myBatches.map(g => (
+            <button
+              key={g._id}
+              onClick={() => setSelectedBatch(g._id)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3 py-1.5 rounded-full border transition-colors shrink-0 ${
+                selectedBatch === g._id
+                  ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                  : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]'
+              }`}
+            >
+              <Users size={10} />
+              {g.name}
+            </button>
+          ))}
+        </div>
+      )}
 
       {isLoading ? (
         <div className="space-y-3">
           {[1,2,3,4,5].map(i => <div key={i} className="skeleton h-14 w-full rounded-xl" />)}
         </div>
-      ) : board.length === 0 ? (
+      ) : filteredBoard.length === 0 ? (
         <div className="card text-center py-16">
           <Trophy size={40} className="mx-auto mb-3 text-[var(--color-text-muted)] opacity-30" />
-          <p className="text-[var(--color-text-muted)] font-medium">No rankings yet. Be the first!</p>
+          <p className="text-[var(--color-text-muted)] font-medium">
+            {selectedBatch ? 'No ranked members in this batch yet.' : 'No rankings yet. Be the first!'}
+          </p>
         </div>
       ) : (
         <>
@@ -101,11 +159,11 @@ export default function LeaderboardPage() {
           {/* Stats strip */}
           <div className="grid grid-cols-3 gap-3 mb-6">
             <div className="card text-center py-3">
-              <p className="text-lg font-extrabold text-[var(--color-primary)]">{board.length}</p>
+              <p className="text-lg font-extrabold text-[var(--color-primary)]">{filteredBoard.length}</p>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Competitors</p>
             </div>
             <div className="card text-center py-3">
-              <p className="text-lg font-extrabold text-[var(--color-primary)]">{board[0]?.xp?.toLocaleString() || 0}</p>
+              <p className="text-lg font-extrabold text-[var(--color-primary)]">{filteredBoard[0]?.xp?.toLocaleString() || 0}</p>
               <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Top XP</p>
             </div>
             <div className="card text-center py-3">

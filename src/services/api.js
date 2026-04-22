@@ -72,6 +72,7 @@ export const examApi = {
   getPublic: () => api.get('/exams/public'),
   getById: (id) => api.get(`/exams/${id}`),
   update: (id, data) => api.put(`/exams/${id}`, data),
+  updateQuestions: (id, questions) => api.put(`/exams/${id}/questions`, { questions }),
   delete: (id) => api.delete(`/exams/${id}`),
   regenerate: (id, data) => api.post(`/exams/${id}/regenerate`, data),
   saveScreenshot: (id, imageData) => api.post(`/exams/${id}/screenshot`, { imageData }),
@@ -176,9 +177,18 @@ export const groupApi = {
   sendMessage:      (id, data)   => api.post(`/groups/${id}/messages`, data),
   editMessage:      (id, msgId, text) => api.patch(`/groups/${id}/messages/${msgId}`, { text }),
   deleteMessage:    (id, msgId)  => api.delete(`/groups/${id}/messages/${msgId}`),
+  // Bulk invite
+  bulkInvite:       (id, emails) => api.post(`/groups/${id}/bulk-invite`, { emails }),
   // Admin
   adminGetAll:      ()           => api.get('/groups/admin'),
   adminDelete:      (id)         => api.delete(`/groups/admin/${id}`),
+};
+
+export const notificationApi = {
+  getAll:     ()   => api.get('/notifications'),
+  markRead:   (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: ()  => api.patch('/notifications/read-all'),
+  delete:     (id) => api.delete(`/notifications/${id}`),
 };
 
 export const contactApi = {

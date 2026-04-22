@@ -2,6 +2,7 @@ import { useMutation } from '@tanstack/react-query';
 import { BarChart2, BookmarkCheck, Mail, Shield, Users, X, Zap } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import Modal from './Modal.jsx';
 import { instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -19,7 +20,7 @@ export default function BecomeInstructorModal({ onClose }) {
 
   const becomeMut = useMutation({
     mutationFn: () => instructorApi.become(),
-    onSuccess: (res) => {
+    onSuccess: () => {
       setUser({ ...user, role: 'instructor', isInstructor: true });
       toast.success('You are now an Instructor!');
       onClose();
@@ -28,10 +29,10 @@ export default function BecomeInstructorModal({ onClose }) {
   });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
-      <div className="w-full max-w-md bg-[var(--color-surface)] rounded-2xl shadow-2xl overflow-hidden animate-slide-up">
+    <Modal onClose={onClose}>
+      <div className="w-full max-w-md bg-[var(--color-surface)] rounded-2xl shadow-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
         {/* Header */}
-        <div className="relative bg-gradient-to-br bg-primary px-6 pt-6 pb-8 text-white">
+        <div className="relative bg-gradient-to-br from-teal-500 to-blue-600 px-6 pt-6 pb-8 text-white rounded-t-2xl">
           <button onClick={onClose} className="absolute top-4 right-4 p-1 hover:bg-white/20 rounded-lg transition-colors">
             <X size={18} />
           </button>
@@ -42,10 +43,9 @@ export default function BecomeInstructorModal({ onClose }) {
           <p className="text-blue-100 text-sm">Create tests, invite candidates, track performance.</p>
         </div>
 
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           {isPremium ? (
             <>
-              {/* Show instructor perks and CTA */}
               <p className="text-sm text-[var(--color-text-muted)] mb-4">
                 With your <strong className="text-[var(--color-text)] capitalize">{user.plan}</strong> plan, you're eligible to become an instructor. Unlock HR-like tools instantly.
               </p>
@@ -70,7 +70,6 @@ export default function BecomeInstructorModal({ onClose }) {
             </>
           ) : (
             <>
-              {/* Show pricing cards first */}
               <p className="text-sm text-[var(--color-text-muted)] mb-4">
                 Instructor role requires an active <strong className="text-[var(--color-text)]">Pro or Enterprise</strong> plan. Upgrade to unlock:
               </p>
@@ -99,6 +98,6 @@ export default function BecomeInstructorModal({ onClose }) {
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

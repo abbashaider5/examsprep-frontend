@@ -1,4 +1,4 @@
-import { Check, Code2, Crown, Loader2, Shield, Sparkles, Users, Zap } from 'lucide-react';
+import { Check, Code2, Crown, GraduationCap, Loader2, Shield, Sparkles, Users, Zap } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -170,37 +170,75 @@ export default function PricingPage() {
   const isAuthenticated = !!user;
 
   const getButtonText = (plan) => {
-    if (!isAuthenticated) return plan.id === 'free' ? 'Get Started Free' : 'Sign Up & Upgrade';
+    if (!isAuthenticated) return `Sign Up & Upgrade`;
     if (user?.plan === plan.id) return 'Current Plan';
-    return plan.id === 'free' ? 'Free Plan' : `Upgrade to ${plan.name}`;
+    return `Upgrade to ${plan.name}`;
   };
+
+  const instructorPlans = PLANS.filter(p => p.id !== 'free');
 
   return (
     <div className="relative py-16 px-4 sm:px-6 lg:px-8 bg-[var(--color-bg)] min-h-screen overflow-hidden">
-      {/* Apple-style radial background */}
+      {/* Background */}
       <div className="absolute inset-0 pointer-events-none">
-        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-gradient-radial from-blue-100/50 via-indigo-50/25 to-transparent dark:from-blue-900/15 dark:via-indigo-900/8 dark:to-transparent rounded-full blur-3xl" />
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] h-[400px] bg-gradient-radial from-teal-100/50 via-cyan-50/25 to-transparent dark:from-teal-900/15 dark:via-cyan-900/8 dark:to-transparent rounded-full blur-3xl" />
         <div className="absolute top-32 right-0 w-56 h-56 bg-violet-100/30 dark:bg-violet-900/10 rounded-full blur-3xl" />
       </div>
-      <div className="relative max-w-6xl mx-auto">
+
+      <div className="relative max-w-5xl mx-auto">
+
         {/* Header */}
-        <div className="text-center mb-14">
-          <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-            <Sparkles size={13} />
-            Simple, Transparent Pricing
+        <div className="text-center mb-12">
+          <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
+            <Sparkles size={13} /> Instructor Plans
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] mb-4 tracking-tight">
-            Choose the right plan<br />
-            <span className="text-[var(--color-primary)]">for your learning</span>
+            Create. Manage. <span className="text-[var(--color-primary)]">Analyze.</span>
           </h1>
           <p className="text-[var(--color-text-muted)] text-lg max-w-xl mx-auto">
-            Start free, upgrade when you need more. All plans include AI-powered exam generation.
+            Powerful exam management tools for instructors and trainers. Students always join for free.
           </p>
         </div>
 
-        {/* Plans grid */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-12">
-          {PLANS.map((plan) => {
+        {/* Students are free callout */}
+        <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-900/15 dark:to-emerald-900/15 border border-green-200 dark:border-green-800 rounded-2xl px-6 py-5 mb-10 flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-green-400 to-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
+              <GraduationCap size={22} className="text-white" />
+            </div>
+            <div>
+              <p className="font-bold text-[var(--color-text)] text-base">Students — Always Free</p>
+              <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+                Take exams, study with flashcards, earn certificates, track performance — no plan needed.
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4 shrink-0">
+            <div className="flex items-center gap-3 text-sm text-[var(--color-text-muted)]">
+              {['Exams via invite', 'PDF Certificates', 'Analytics', 'Leaderboard'].map(f => (
+                <span key={f} className="flex items-center gap-1 text-xs">
+                  <Check size={12} className="text-green-500 shrink-0" /> {f}
+                </span>
+              ))}
+            </div>
+            <a href="/signup" className="btn-secondary text-sm px-4 py-2 shrink-0 rounded-xl whitespace-nowrap">
+              Join Free
+            </a>
+          </div>
+        </div>
+
+        {/* Instructor plans divider */}
+        <div className="flex items-center gap-4 mb-8">
+          <div className="flex-1 border-t border-[var(--color-border)]" />
+          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
+            <Users size={14} /> Instructor Plans
+          </div>
+          <div className="flex-1 border-t border-[var(--color-border)]" />
+        </div>
+
+        {/* Instructor plan grid */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 max-w-3xl mx-auto">
+          {instructorPlans.map((plan) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.id;
             return (
@@ -216,16 +254,8 @@ export default function PricingPage() {
                   </div>
                 )}
 
-                {plan.instructorBadge && !plan.badge && (
-                  <div className="absolute -top-3.5 right-4">
-                    <span className="bg-green-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow flex items-center gap-1">
-                      <Users size={10} /> {plan.instructorBadge}
-                    </span>
-                  </div>
-                )}
-
                 {/* Plan header */}
-                <div className="flex items-center gap-3 mb-6">
+                <div className="flex items-center gap-3 mb-5">
                   <div className={`w-10 h-10 rounded-xl ${plan.bgColor} flex items-center justify-center`}>
                     <Icon size={20} className={plan.color} />
                   </div>
@@ -238,12 +268,7 @@ export default function PricingPage() {
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-[var(--color-text-muted)]">{plan.testsPerMonth} exams / month · {plan.maxQuestions} questions max</p>
-                    {plan.instructorBadge && (
-                      <p className="text-[10px] font-semibold text-green-600 dark:text-green-400 flex items-center gap-1 mt-0.5">
-                        <Users size={9} /> {plan.instructorBadge}
-                      </p>
-                    )}
+                    <p className="text-xs text-[var(--color-text-muted)]">{plan.testsPerMonth} exams / month · up to {plan.maxQuestions} questions</p>
                   </div>
                 </div>
 
@@ -253,10 +278,8 @@ export default function PricingPage() {
                     <div className="text-sm text-[var(--color-text-muted)] line-through mb-0.5">₹{plan.originalPrice}/month</div>
                   )}
                   <div className="flex items-end gap-1">
-                    <span className="text-4xl font-bold text-[var(--color-text)]">
-                      {plan.price === 0 ? 'Free' : `₹${plan.price}`}
-                    </span>
-                    {plan.price > 0 && <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>}
+                    <span className="text-4xl font-bold text-[var(--color-text)]">₹{plan.price}</span>
+                    <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>
                   </div>
                   {plan.originalPrice && (
                     <div className="mt-1 inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
@@ -265,11 +288,11 @@ export default function PricingPage() {
                   )}
                 </div>
 
-                {/* CTA Button */}
+                {/* CTA */}
                 <button
                   onClick={() => handleSubscribe(plan)}
                   disabled={isCurrent || loading === plan.id}
-                  className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 mb-7 ${
+                  className={`w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 mb-6 ${
                     isCurrent
                       ? 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] cursor-default'
                       : plan.badge
@@ -298,7 +321,7 @@ export default function PricingPage() {
                   ))}
                   {plan.limitations.map((f) => (
                     <li key={f} className="flex items-start gap-2.5 text-sm opacity-50">
-                      <span className="w-3.5 h-3.5 mt-0.5 shrink-0 text-center text-[var(--color-text-muted)] leading-none">×</span>
+                      <span className="w-3.5 mt-0.5 shrink-0 text-center text-[var(--color-text-muted)]">×</span>
                       <span className="text-[var(--color-text-muted)]">{f}</span>
                     </li>
                   ))}
@@ -308,9 +331,23 @@ export default function PricingPage() {
           })}
         </div>
 
+        {/* FAQ row */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
+          {[
+            { q: 'Do students need to pay?', a: 'No. Students can take exams they\'ve been invited to, earn certificates, and track their progress — all for free.' },
+            { q: 'What do instructor plans unlock?', a: 'Instructor plans let you create AI-generated exams, invite candidates, manage batches, run analytics, and enable AI proctoring.' },
+            { q: 'Can I cancel any time?', a: 'Yes. All plans are monthly with no lock-in. You can cancel or change your plan at any time from your profile.' },
+          ].map(({ q, a }) => (
+            <div key={q} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+              <p className="font-semibold text-sm text-[var(--color-text)] mb-2">{q}</p>
+              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{a}</p>
+            </div>
+          ))}
+        </div>
+
         <div className="text-center">
           <p className="text-[var(--color-text-muted)] text-sm">
-            All paid plans renew monthly. Cancel any time. Payments are processed securely via Razorpay.
+            All paid plans renew monthly. Cancel any time. Payments processed securely via Razorpay.
           </p>
         </div>
       </div>

@@ -1,184 +1,385 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-  BookOpen, CheckCircle,
-  FlipHorizontal,
-  Lightbulb, Mail, Plus, RotateCcw, Search, TrendingUp,
-  UserCheck,
-  Users, X
+  BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
+  Lightbulb, Mail, Plus, RotateCcw, Search, Shield, Star,
+  Target, Timer, TrendingUp, Upload, UserCheck, Users, X, Zap,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
-// ── Invite modal ──────────────────────────────────────────────────────────────
-function InviteModal({ exam, onClose, isInstructor }) {
+function diffBadgeClass(d) {
+  return d === 'easy' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+    : d === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+    : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400';
+}
+
+// ── Invite modal — two-column layout ─────────────────────────────────────────
+function InviteModal({ exam, onClose }) {
   const { user } = useAuthStore();
-  const [mode, setMode] = useState('email'); // 'email' | 'group'
-  const [emailInput, setEmailInput] = useState('');
-  const [emails, setEmails] = useState([]);
+  const [inviteMode, setInviteMode] = useState('email');
+  const [inviteEmailTab, setInviteEmailTab] = useState('single');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteParsedEmails, setInviteParsedEmails] = useState([]);
+  const [inviteFileName, setInviteFileName] = useState('');
+  const [inviteGroupId, setInviteGroupId] = useState('');
   const [sending, setSending] = useState(false);
-  const [results, setResults] = useState(null);
-  const [selectedGroupId, setSelectedGroupId] = useState('');
+  const fileRef = useRef(null);
 
   const { data: groupsData } = useQuery({
     queryKey: ['myGroups'],
     queryFn: () => groupApi.getAll().then(r => r.data),
-    enabled: isInstructor,
   });
   const myGroups = (groupsData?.groups || []).filter(
     g => g.instructor?._id === user?._id || g.instructor === user?._id
   );
 
-  const addEmail = () => {
-    const e = emailInput.trim().toLowerCase();
-    if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast.error('Enter a valid email'); return; }
-    if (emails.includes(e)) { toast.error('Already added'); return; }
-    setEmails(prev => [...prev, e]);
-    setEmailInput('');
+  const handleFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setInviteFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const emails = [];
+        for (const row of rows) {
+          for (const cell of row) {
+            const val = String(cell || '').trim().toLowerCase();
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) emails.push(val);
+          }
+        }
+        const unique = [...new Set(emails)];
+        if (!unique.length) { toast.error('No valid emails found in file'); return; }
+        setInviteParsedEmails(unique);
+        toast.success(`Found ${unique.length} email(s)`);
+      } catch { toast.error('Failed to parse file'); }
+    };
+    reader.readAsArrayBuffer(file);
+    if (fileRef.current) fileRef.current.value = '';
   };
 
-  const sendEmails = async () => {
-    if (emails.length === 0) { toast.error('Add at least one email'); return; }
+  const downloadSample = () => {
+    const ws = XLSX.utils.aoa_to_sheet([['Name', 'Email'], ['Alice Smith', 'alice@example.com'], ['Bob Jones', 'bob@example.com']]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Invites');
+    XLSX.writeFile(wb, 'invite_sample.xlsx');
+  };
+
+  const sendSingle = async () => {
+    if (!inviteEmail) return;
     setSending(true);
-    const out = [];
-    for (const email of emails) {
-      try {
-        await instructorApi.sendInvite(exam._id, email);
-        out.push({ email, ok: true });
-      } catch (err) {
-        out.push({ email, ok: false, msg: err.response?.data?.message || 'Failed' });
-      }
-    }
+    try {
+      await instructorApi.sendInvite(exam._id, inviteEmail);
+      toast.success('Invite sent!');
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to send invite');
+    } finally { setSending(false); }
+  };
+
+  const sendBulk = async () => {
+    if (!inviteParsedEmails.length) return;
+    setSending(true);
+    const results = await Promise.allSettled(inviteParsedEmails.map(email => instructorApi.sendInvite(exam._id, email)));
+    const ok  = results.filter(r => r.status === 'fulfilled').length;
+    const err = results.filter(r => r.status === 'rejected').length;
     setSending(false);
-    setResults(out);
-    const ok = out.filter(r => r.ok).length;
-    if (ok) toast.success(`${ok} invite${ok !== 1 ? 's' : ''} sent`);
+    if (ok > 0) toast.success(`${ok} invite${ok !== 1 ? 's' : ''} sent!`);
+    if (err > 0) toast.error(`${err} invite${err !== 1 ? 's' : ''} failed`);
+    onClose();
   };
 
   const sendGroup = async () => {
-    if (!selectedGroupId) { toast.error('Select a group'); return; }
+    if (!inviteGroupId) return;
     setSending(true);
     try {
-      const res = await instructorApi.sendGroupInvite(exam._id, selectedGroupId);
-      toast.success(res.data.message || 'Group invited');
+      const res = await instructorApi.sendGroupInvite(exam._id, inviteGroupId);
+      toast.success(res.data.message || 'Batch invited');
       onClose();
     } catch (err) {
-      toast.error(err.response?.data?.message || 'Failed to invite group');
-    } finally {
-      setSending(false);
-    }
+      toast.error(err.response?.data?.message || 'Failed to invite batch');
+    } finally { setSending(false); }
   };
 
   return (
     <Modal onClose={onClose}>
-      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-md">
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
-          <div>
-            <h3 className="font-bold text-[var(--color-text)]">Invite to Exam</h3>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5 truncate max-w-[280px]">{exam.title}</p>
-          </div>
-          <button onClick={onClose} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={18} /></button>
-        </div>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-3xl flex overflow-hidden" style={{ minHeight: '480px', maxHeight: '90vh' }}>
 
-        <div className="p-5">
-          {/* Mode toggle (only for instructors with groups) */}
-          {isInstructor && myGroups.length > 0 && (
-            <div className="flex gap-1 mb-4 p-1 bg-[var(--color-bg-alt)] rounded-xl">
-              {[{ id: 'email', label: 'By Email' }, { id: 'group', label: 'By Group' }].map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => { setMode(m.id); setResults(null); }}
-                  className={`flex-1 py-1.5 text-sm font-medium rounded-lg transition-all ${mode === m.id ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
-                >
-                  {m.label}
-                </button>
+        {/* LEFT: Test details panel */}
+        <div className="w-60 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-1">Test</p>
+            <h4 className="font-bold text-sm text-[var(--color-text)] leading-snug">{exam.title}</h4>
+          </div>
+
+          {/* Subject + Difficulty */}
+          <div className="flex flex-wrap gap-1.5">
+            {exam.subject && (
+              <span className="text-[10px] font-semibold bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                {exam.subject}
+              </span>
+            )}
+            {exam.difficulty && (
+              <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${diffBadgeClass(exam.difficulty)}`}>
+                {exam.difficulty}
+              </span>
+            )}
+          </div>
+
+          {/* Settings */}
+          <div>
+            <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Settings</p>
+            <div className="space-y-1.5">
+              {[
+                { label: 'AI Proctoring', value: exam.proctored, icon: Shield },
+                { label: 'Reattempt', value: exam.allowReattempt, icon: RotateCcw },
+                { label: 'Certificate', value: exam.certificateEnabled !== false, icon: Star },
+              ].map(item => (
+                <div key={item.label} className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5">
+                    <item.icon size={11} className="shrink-0" /> {item.label}
+                  </span>
+                  <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    item.value
+                      ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                      : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                  }`}>
+                    {item.value ? 'On' : 'Off'}
+                  </span>
+                </div>
               ))}
+              {exam.passingPercentage != null && (
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-[var(--color-text-muted)]">Passing Score</span>
+                  <span className="text-xs font-bold text-[var(--color-text)]">{exam.passingPercentage}%</span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Expiry */}
+          {exam.expiryDate && (
+            <div className="flex items-start gap-1.5">
+              <Timer size={11} className="text-amber-500 mt-0.5 shrink-0" />
+              <div>
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)]">Expires</p>
+                <p className="text-xs text-[var(--color-text)]">
+                  {new Date(exam.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </p>
+                {new Date(exam.expiryDate) < new Date() && (
+                  <p className="text-[10px] text-red-500 font-semibold mt-0.5">Expired</p>
+                )}
+              </div>
             </div>
           )}
 
-          {mode === 'email' ? (
-            results ? (
+          {/* Questions count */}
+          {exam.questions?.length > 0 && (
+            <div className="flex items-center gap-1.5">
+              <Layers size={11} className="text-[var(--color-text-muted)]" />
+              <span className="text-xs text-[var(--color-text-muted)]">{exam.questions.length} questions</span>
+            </div>
+          )}
+        </div>
+
+        {/* RIGHT: Invite form */}
+        <div className="flex-1 flex flex-col min-w-0">
+          {/* Header */}
+          <div className="flex items-start justify-between p-5 border-b border-[var(--color-border)] shrink-0">
+            <div>
+              <h3 className="font-semibold text-[var(--color-text)] text-base">Send Test Invite</h3>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Invite students to attempt this test</p>
+            </div>
+            <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)] shrink-0">
+              <X size={18} className="text-[var(--color-text-muted)]" />
+            </button>
+          </div>
+
+          {/* Mode toggle */}
+          <div className="px-5 pt-4 shrink-0">
+            <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
+              {[
+                { id: 'email', label: 'By Email', icon: Mail },
+                { id: 'group', label: 'By Batch', icon: Users },
+              ].map(m => (
+                <button
+                  key={m.id}
+                  onClick={() => setInviteMode(m.id)}
+                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                    inviteMode === m.id
+                      ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
+                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                  }`}
+                >
+                  <m.icon size={14} /> {m.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Form content */}
+          <div className="flex flex-col flex-1 px-5 pt-4 pb-5 min-h-0">
+            {inviteMode === 'email' ? (
               <>
-                <div className="space-y-2 mb-4">
-                  {results.map(r => (
-                    <div key={r.email} className={`flex items-center gap-2 text-sm ${r.ok ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                      {r.ok ? <CheckCircle size={14} /> : <X size={14} />}
-                      <span className="flex-1 truncate">{r.email}</span>
-                      <span className="text-xs shrink-0">{r.ok ? 'Sent' : r.msg}</span>
-                    </div>
+                {/* Email sub-tabs */}
+                <div className="flex gap-3 mb-4 border-b border-[var(--color-border)] shrink-0">
+                  {[
+                    { id: 'single', label: 'Single Email' },
+                    { id: 'bulk', label: 'Upload Excel / CSV' },
+                  ].map(t => (
+                    <button key={t.id} onClick={() => setInviteEmailTab(t.id)}
+                      className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                        inviteEmailTab === t.id
+                          ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                          : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                      }`}
+                    >
+                      {t.label}
+                    </button>
                   ))}
                 </div>
-                <button onClick={onClose} className="btn-secondary w-full text-sm py-2">Done</button>
-              </>
-            ) : (
-              <>
-                <div className="flex gap-2 mb-3">
-                  <input
-                    className="input flex-1 text-sm"
-                    type="email"
-                    placeholder="user@example.com"
-                    value={emailInput}
-                    onChange={e => setEmailInput(e.target.value)}
-                    onKeyDown={e => e.key === 'Enter' && (e.preventDefault(), addEmail())}
-                  />
-                  <button onClick={addEmail} className="btn-secondary p-2 shrink-0"><Plus size={16} /></button>
-                </div>
-                {emails.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 mb-4">
-                    {emails.map(e => (
-                      <span key={e} className="flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
-                        <Mail size={10} /> {e}
-                        <button onClick={() => setEmails(prev => prev.filter(x => x !== e))} className="ml-0.5 hover:text-red-500"><X size={10} /></button>
-                      </span>
-                    ))}
+
+                {inviteEmailTab === 'single' ? (
+                  <div className="flex flex-col flex-1 min-h-0">
+                    <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Student Email Address</label>
+                    <input
+                      type="email"
+                      placeholder="student@email.com"
+                      value={inviteEmail}
+                      onChange={e => setInviteEmail(e.target.value)}
+                      onKeyDown={e => e.key === 'Enter' && inviteEmail && sendSingle()}
+                      className="input w-full shrink-0"
+                      autoFocus
+                    />
+                    <p className="text-[11px] text-[var(--color-text-muted)] mt-2 shrink-0">
+                      The student will receive an email with a direct link to this test.
+                    </p>
+                    <div className="flex gap-3 mt-auto shrink-0 pt-4">
+                      <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                      <button
+                        onClick={sendSingle}
+                        disabled={!inviteEmail || sending}
+                        className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Mail size={14} /> {sending ? 'Sending…' : 'Send Invite'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col flex-1 min-h-0">
+                    <div
+                      onClick={() => fileRef.current?.click()}
+                      className="border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)]/50 rounded-xl p-5 text-center cursor-pointer transition-colors shrink-0"
+                    >
+                      <Upload size={20} className="mx-auto mb-2 text-[var(--color-text-muted)]" />
+                      <p className="text-sm font-medium text-[var(--color-text)]">
+                        {inviteFileName || 'Click to upload .xlsx / .xls / .csv'}
+                      </p>
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Emails extracted automatically from any column</p>
+                      <input ref={fileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFile} />
+                    </div>
+                    <button onClick={downloadSample} className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline mt-2 shrink-0 w-fit">
+                      <Download size={11} /> Download sample file
+                    </button>
+                    {inviteParsedEmails.length > 0 && (
+                      <div className="flex-1 overflow-y-auto mt-3 min-h-0">
+                        <div className="flex items-center justify-between mb-1.5">
+                          <span className="text-xs font-medium text-[var(--color-text)]">{inviteParsedEmails.length} email{inviteParsedEmails.length !== 1 ? 's' : ''} found</span>
+                          <button onClick={() => { setInviteParsedEmails([]); setInviteFileName(''); }} className="text-[11px] text-red-500 hover:underline">Clear</button>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5">
+                          {inviteParsedEmails.map(e => (
+                            <span key={e} className="inline-flex items-center gap-1 text-[11px] bg-[var(--color-bg-alt)] text-[var(--color-text)] px-2 py-0.5 rounded-full border border-[var(--color-border)]">
+                              {e}
+                              <button onClick={() => setInviteParsedEmails(p => p.filter(x => x !== e))} className="hover:text-red-500"><X size={9} /></button>
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                    <div className="flex gap-3 mt-auto shrink-0 pt-3">
+                      <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                      <button
+                        onClick={sendBulk}
+                        disabled={!inviteParsedEmails.length || sending}
+                        className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Mail size={14} /> {sending ? 'Sending…' : `Send ${inviteParsedEmails.length || ''} Invite${inviteParsedEmails.length !== 1 ? 's' : ''}`}
+                      </button>
+                    </div>
                   </div>
                 )}
-                <button
-                  onClick={sendEmails}
-                  disabled={sending || emails.length === 0}
-                  className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-60"
-                >
-                  {sending
-                    ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
-                    : <><Mail size={14} /> Send {emails.length > 0 ? `${emails.length} ` : ''}Invite{emails.length !== 1 ? 's' : ''}</>
-                  }
-                </button>
               </>
-            )
-          ) : (
-            <>
-              <p className="text-xs text-[var(--color-text-muted)] mb-3">Invite all members of one of your groups to this exam.</p>
-              <select
-                value={selectedGroupId}
-                onChange={e => setSelectedGroupId(e.target.value)}
-                className="input w-full text-sm mb-4"
-              >
-                <option value="">— Select a group —</option>
-                {myGroups.map(g => (
-                  <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
-                ))}
-              </select>
-              <button
-                onClick={sendGroup}
-                disabled={sending || !selectedGroupId}
-                className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                {sending
-                  ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Sending...</>
-                  : <><Users size={14} /> Invite Group</>
-                }
-              </button>
-            </>
-          )}
+            ) : (
+              /* Batch tab */
+              <div className="flex flex-col flex-1 min-h-0">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Select Batch</label>
+                {myGroups.length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center py-6 px-4">
+                      <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
+                      <p className="text-sm text-[var(--color-text-muted)]">No batches yet.</p>
+                      <Link to="/batches" onClick={onClose} className="text-xs text-[var(--color-primary)] hover:underline mt-1 inline-block">
+                        Create a batch first
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <select className="input w-full text-sm shrink-0" value={inviteGroupId} onChange={e => setInviteGroupId(e.target.value)}>
+                      <option value="">Choose a batch…</option>
+                      {myGroups.map(g => (
+                        <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
+                      ))}
+                    </select>
+                    {inviteGroupId && (
+                      <p className="text-[11px] text-[var(--color-text-muted)] mt-2 shrink-0">
+                        All members of this batch will receive a test invite for <strong className="text-[var(--color-text)]">{exam.title}</strong>.
+                      </p>
+                    )}
+                    <div className="flex gap-3 mt-auto shrink-0 pt-4">
+                      <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                      <button
+                        onClick={sendGroup}
+                        disabled={!inviteGroupId || sending}
+                        className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Users size={14} /> {sending ? 'Sending…' : 'Invite Batch'}
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
   );
 }
+
+const DIFF_COLORS = {
+  easy: { badge: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400', dot: 'bg-emerald-400' },
+  medium: { badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400', dot: 'bg-amber-400' },
+  hard: { badge: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400', dot: 'bg-red-400' },
+};
+
+const CARD_GRADIENTS = [
+  'from-teal-400 to-cyan-500',
+  'from-blue-400 to-indigo-500',
+  'from-teal-500 to-blue-600',
+  'from-sky-400 to-blue-500',
+  'from-cyan-400 to-teal-500',
+  'from-blue-500 to-indigo-600',
+];
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function StudyModePage() {
@@ -189,41 +390,59 @@ export default function StudyModePage() {
     queryKey: ['myAcceptedInvites'],
     queryFn: () => instructorApi.getMyAcceptedInvites().then(r => r.data),
   });
+  const { data: groupsData } = useQuery({
+    queryKey: ['myGroups'],
+    queryFn: () => groupApi.getAll().then(r => r.data),
+  });
 
   const [selectedExam, setSelectedExam] = useState(null);
-  const [selectedInvite, setSelectedInvite] = useState(null); // invite object if it's an invited exam
+  const [selectedInvite, setSelectedInvite] = useState(null);
   const [examData, setExamData] = useState(null);
   const [cardIndex, setCardIndex] = useState(0);
   const [flipped, setFlipped] = useState(false);
   const [mode, setMode] = useState('flashcard');
   const [inviteExam, setInviteExam] = useState(null);
+  const [editExam, setEditExam] = useState(null);
   const [search, setSearch] = useState('');
+  const [filterDiff, setFilterDiff] = useState('all');
 
   const ownExams = data?.exams || [];
   const results = resultsData?.results || [];
   const acceptedInvites = acceptedInvitesData?.invites || [];
   const isInstructor = user?.isInstructor || ['instructor', 'admin'].includes(user?.role);
 
+  // Build a map of group ID → name for fallback when invite.group isn't populated
+  const groupMap = Object.fromEntries(
+    (groupsData?.groups || []).map(g => [g._id, g.name])
+  );
+
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
 
-  // Merge: own exams + invited exams (avoid duplicates — own exam takes priority)
   const ownExamIds = new Set(ownExams.map(e => e._id));
   const invitedEntries = acceptedInvites
     .filter(inv => !ownExamIds.has(inv.exam?._id))
-    .map(inv => ({ ...inv.exam, _inviteId: inv._id, _invitedBy: inv.invitedBy?.name, _isInvited: true, _inviteDate: inv.createdAt }));
+    .map(inv => ({
+      ...inv.exam,
+      _inviteId: inv._id,
+      _invitedBy: inv.invitedBy?.name,
+      _groupName: inv.group?.name || (inv.group ? groupMap[inv.group._id || inv.group] : null) || null,
+      _isInvited: true,
+      _inviteDate: inv.createdAt,
+    }));
 
   const allExams = [...ownExams, ...invitedEntries];
 
   const searchQuery = search.trim().toLowerCase();
-  const filteredExams = searchQuery
-    ? allExams.filter(e =>
-        e.title?.toLowerCase().includes(searchQuery) ||
-        e.subject?.toLowerCase().includes(searchQuery) ||
-        e.difficulty?.toLowerCase().includes(searchQuery)
-      )
-    : allExams;
+  const filteredExams = allExams.filter(e => {
+    if (filterDiff !== 'all' && e.difficulty !== filterDiff) return false;
+    if (searchQuery && !(
+      e.title?.toLowerCase().includes(searchQuery) ||
+      e.subject?.toLowerCase().includes(searchQuery) ||
+      e.difficulty?.toLowerCase().includes(searchQuery)
+    )) return false;
+    return true;
+  });
 
-  // Build per-exam attempt stats
   const examStats = results.reduce((acc, r) => {
     const id = r.exam?._id || r.exam;
     if (!id) return acc;
@@ -243,7 +462,6 @@ export default function StudyModePage() {
     const res = await examApi.getById(exam._id);
     setExamData(res.data.exam);
     setSelectedExam(exam);
-    // Find matching invite for this exam (if invited)
     const inv = exam._isInvited ? acceptedInvites.find(i => i.exam?._id === exam._id) : null;
     setSelectedInvite(inv || null);
     setCardIndex(0);
@@ -259,158 +477,255 @@ export default function StudyModePage() {
   if (!selectedExam) {
     return (
       <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-        {/* Header */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-purple-50 via-violet-50/60 to-blue-50/40 dark:from-purple-900/20 dark:via-violet-900/10 dark:to-blue-900/5 border border-purple-100 dark:border-purple-900/30 px-6 py-5 mb-6">
-          <div className="absolute -top-8 -right-8 w-40 h-40 bg-purple-200/30 dark:bg-purple-700/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-xl bg-purple-500/10 flex items-center justify-center shrink-0">
-                <BookOpen size={18} className="text-purple-600 dark:text-purple-400" />
-              </div>
-              <div>
-                <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Study Mode</h1>
-                <p className="text-xs text-[var(--color-text-muted)]">Choose an exam to study with flashcards or review mode.</p>
-              </div>
+        {/* Hero header — compact */}
+        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-5 mb-4 shadow-lg">
+          <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-white/10 pointer-events-none" />
+          <div className="absolute -top-10 -right-10 w-52 h-52 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+          <div className="relative flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <BookOpen size={20} className="text-white" />
             </div>
-            {/* Search bar */}
-            <div className="relative w-full sm:w-72">
-              <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-              <input
-                type="text"
-                placeholder="Search by title, subject..."
-                value={search}
-                onChange={e => setSearch(e.target.value)}
-                className="input pl-9 pr-8 text-sm w-full"
-              />
-              {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
-                  <X size={14} />
-                </button>
-              )}
+            <div>
+              <h1 className="text-xl font-extrabold text-white leading-tight">My Tests</h1>
+              <p className="text-sm text-teal-100 mt-0.5">
+                {allExams.length} total · {Object.keys(examStats).length} attempted · {invitedEntries.length} invited
+              </p>
             </div>
           </div>
         </div>
 
+        {/* Filters bar + search */}
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <div className="flex gap-1 p-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl">
+            {[{ id: 'all', label: 'All Levels' }, { id: 'easy', label: 'Easy' }, { id: 'medium', label: 'Medium' }, { id: 'hard', label: 'Hard' }].map(f => (
+              <button key={f.id} onClick={() => setFilterDiff(f.id)}
+                className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-all ${filterDiff === f.id ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] shadow-sm font-semibold' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>
+                {f.label}
+              </button>
+            ))}
+          </div>
+          {/* Search — right of filters */}
+          <div className="relative flex-1 min-w-[180px] max-w-xs">
+            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+            <input type="text" placeholder="Search tests…" value={search} onChange={e => setSearch(e.target.value)}
+              className="w-full pl-8 pr-7 py-1.5 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] text-sm text-[var(--color-text)] placeholder:text-[var(--color-text-muted)] focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]/30" />
+            {search && (
+              <button onClick={() => setSearch('')} className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                <X size={13} />
+              </button>
+            )}
+          </div>
+          <div className="ml-auto text-xs text-[var(--color-text-muted)] flex items-center shrink-0">
+            {filteredExams.length} result{filteredExams.length !== 1 ? 's' : ''}
+          </div>
+        </div>
+
         {allExams.length === 0 ? (
+          <div className="card text-center py-20">
+            <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/30 dark:to-blue-900/30 flex items-center justify-center mx-auto mb-4">
+              <BookOpen size={28} className="text-[var(--color-primary)]" />
+            </div>
+            <p className="font-semibold text-[var(--color-text)] mb-1">No tests yet</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Tests you create or are invited to will appear here.</p>
+          </div>
+        ) : filteredExams.length === 0 ? (
           <div className="card text-center py-16">
-            <BookOpen size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
-            <p className="text-[var(--color-text-muted)]">No exams yet. Create one first.</p>
+            <Search size={32} className="mx-auto mb-3 text-[var(--color-border)]" />
+            <p className="text-[var(--color-text-muted)] text-sm">No tests match your filters.</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filteredExams.length === 0 ? (
-              <div className="col-span-full text-center py-12">
-                <Search size={32} className="mx-auto mb-3 text-[var(--color-border)]" />
-                <p className="text-[var(--color-text-muted)] text-sm">No exams match your search.</p>
-              </div>
-            ) : filteredExams.map(e => {
+            {filteredExams.map((e, idx) => {
               const stats = examStats[e._id];
               const attempted = !!stats;
               const isInvited = !!e._isInvited;
+              const isExpired = !!e.expiryDate && new Date(e.expiryDate) < new Date();
               const showFlashcards = isInvited ? e.showFlashcards !== false : true;
               const showReview = isInvited ? e.showReview !== false : true;
               const allowReattempt = isInvited ? e.allowReattempt !== false : true;
               const hasStudyMode = showFlashcards || showReview;
+              const qCount = e.questions?.length || 0;
+              const diffColors = DIFF_COLORS[e.difficulty] || DIFF_COLORS.medium;
+              const gradClass = CARD_GRADIENTS[idx % CARD_GRADIENTS.length];
+              const accuracy = stats?.total > 0 ? Math.round((stats.correct / stats.total) * 100) : null;
 
               return (
-                <div
-                  key={e._id + (e._inviteId || '')}
-                  className="card hover:shadow-md transition-all hover:border-[var(--color-primary)] hover:-translate-y-0.5 group flex flex-col"
-                >
-                  <div className="flex items-start justify-between mb-3">
-                    <div className="w-10 h-10 rounded-xl bg-[var(--color-bg-alt)] flex items-center justify-center">
-                      <BookOpen size={18} className="text-[var(--color-primary)]" />
+                <div key={e._id + (e._inviteId || '')}
+                  className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden hover:shadow-xl hover:-translate-y-1 transition-all duration-200 group flex flex-col">
+
+                  {/* Colored top strip */}
+                  <div className={`h-1.5 w-full bg-gradient-to-r ${gradClass}`} />
+
+                  <div className="p-4 flex flex-col flex-1">
+                    {/* Top row: icon + badges */}
+                    <div className="flex items-start justify-between mb-3">
+                      <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradClass} flex items-center justify-center shadow-sm`}>
+                        <BookOpen size={18} className="text-white" />
+                      </div>
+                      <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                        {isExpired && (
+                          <span className="flex items-center gap-1 text-[10px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-semibold">
+                            <Timer size={9} /> Expired
+                          </span>
+                        )}
+                        {isInvited && (
+                          <span className="flex items-center gap-1 text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full font-semibold">
+                            <UserCheck size={9} /> Invited
+                          </span>
+                        )}
+                        {e.proctored && (
+                          <span className="flex items-center gap-1 text-[10px] bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-semibold">
+                            <Shield size={9} /> Proctored
+                          </span>
+                        )}
+                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${diffColors.badge}`}>
+                          {e.difficulty}
+                        </span>
+                      </div>
                     </div>
-                    <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                      {isInvited && (
-                        <span className="flex items-center gap-1 text-xs bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 px-2 py-0.5 rounded-full font-medium">
-                          <UserCheck size={10} /> Invited
+
+                    {/* Title + subject */}
+                    <h3 className="font-bold text-[var(--color-text)] mb-0.5 group-hover:text-[var(--color-primary)] transition-colors leading-snug">{e.title}</h3>
+                    {e.subject && (
+                      <p className="text-xs text-[var(--color-text-muted)] mb-2 font-medium">{e.subject}</p>
+                    )}
+
+                    {/* Invited-by row */}
+                    {isInvited && (
+                      <div className="flex items-center gap-1.5 mb-2">
+                        {e._groupName ? (
+                          <span className="flex items-center gap-1 text-xs bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-lg font-medium">
+                            <Users size={10} /> {e._groupName}
+                          </span>
+                        ) : null}
+                        {e._invitedBy && (
+                          <span className="text-xs text-[var(--color-text-muted)]">
+                            {e._groupName ? 'via' : 'From'} <span className="font-semibold text-[var(--color-text)]">{e._invitedBy}</span>
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Meta chips */}
+                    <div className="flex flex-wrap gap-1.5 mb-3">
+                      {qCount > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                          <Hash size={9} /> {qCount} questions
                         </span>
                       )}
-                      <span className={`badge capitalize ${e.difficulty === 'easy' ? 'bg-green-100 text-green-700' : e.difficulty === 'medium' ? 'bg-yellow-100 text-yellow-700' : 'bg-red-100 text-red-700'}`}>
-                        {e.difficulty}
-                      </span>
-                    </div>
-                  </div>
-
-                  <h3 className="font-semibold text-[var(--color-text)] mb-1 group-hover:text-[var(--color-primary)] transition-colors">{e.title}</h3>
-                  <p className="text-xs text-[var(--color-text-muted)] mb-1">{e.subject}</p>
-                  {isInvited && e._invitedBy && (
-                    <p className="text-xs text-purple-600 dark:text-purple-400 mb-1">From: {e._invitedBy}</p>
-                  )}
-                  {stats?.lastAttemptAt ? (
-                    <p className="text-xs text-[var(--color-text-muted)] mb-2">Last attempt: {fmtDate(stats.lastAttemptAt)}</p>
-                  ) : isInvited && e._inviteDate ? (
-                    <p className="text-xs text-[var(--color-text-muted)] mb-2">Invited: {fmtDate(e._inviteDate)}</p>
-                  ) : e.createdAt ? (
-                    <p className="text-xs text-[var(--color-text-muted)] mb-2">Created: {fmtDate(e.createdAt)}</p>
-                  ) : null}
-
-                  {/* Restriction chips for invited exams */}
-                  {isInvited && (!showFlashcards || !showReview) && (
-                    <div className="flex flex-wrap gap-1 mb-2">
-                      {!showFlashcards && (
-                        <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">No flashcards</span>
+                      {e.timePerQuestion > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                          <Clock size={9} /> {e.timePerQuestion}s/q
+                        </span>
                       )}
-                      {!showReview && (
-                        <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">No review</span>
+                      {e.passingPercentage > 0 && (
+                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                          <Target size={9} /> Pass: {e.passingPercentage}%
+                        </span>
+                      )}
+                      {e.certificateEnabled && (
+                        <span className="flex items-center gap-1 text-[10px] bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                          <Star size={9} /> Certificate
+                        </span>
+                      )}
+                      {e.expiryDate && !isExpired && (
+                        <span className="flex items-center gap-1 text-[10px] bg-rose-50 dark:bg-rose-900/20 text-rose-500 dark:text-rose-400 px-2 py-0.5 rounded-full">
+                          <Timer size={9} /> Expires {fmtDate(e.expiryDate)}
+                        </span>
                       )}
                     </div>
-                  )}
 
-                  {/* Attempt stats */}
-                  {attempted ? (
-                    <div className="border-t border-[var(--color-border)] pt-3 mt-auto grid grid-cols-3 gap-2 text-center">
-                      <div>
-                        <div className="text-xs font-bold text-[var(--color-primary)]">{stats.count}</div>
-                        <div className="text-xs text-[var(--color-text-muted)]">Attempts</div>
+                    {/* Topics */}
+                    {(e.topics?.length > 0) && (
+                      <div className="flex flex-wrap gap-1 mb-3">
+                        {e.topics.slice(0, 3).map(t => (
+                          <span key={t} className="text-[10px] bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 px-2 py-0.5 rounded-full">{t}</span>
+                        ))}
+                        {e.topics.length > 3 && <span className="text-[10px] text-[var(--color-text-muted)]">+{e.topics.length - 3} more</span>}
                       </div>
-                      <div>
-                        <div className={`text-xs font-bold ${stats.best >= 75 ? 'text-green-500' : 'text-amber-500'}`}>{stats.best}%</div>
-                        <div className="text-xs text-[var(--color-text-muted)]">Best</div>
-                      </div>
-                      <div>
-                        <div className="text-xs font-bold text-[var(--color-text)]">{stats.total > 0 ? Math.round((stats.correct / stats.total) * 100) : 0}%</div>
-                        <div className="text-xs text-[var(--color-text-muted)]">Accuracy</div>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="border-t border-[var(--color-border)] pt-3 mt-auto flex items-center gap-1.5">
-                      <div className="w-2 h-2 rounded-full bg-[var(--color-border)]" />
-                      <span className="text-xs text-[var(--color-text-muted)]">Not attempted yet</span>
-                    </div>
-                  )}
-
-                  <div className="mt-3 flex items-center gap-2">
-                    {/* Attempt/Reattempt button */}
-                    {(!isInvited || allowReattempt) && (
-                      <Link
-                        to={`/exam/${e._id}`}
-                        className="flex-1 text-center text-xs bg-[var(--color-primary)] text-white rounded-lg py-1.5 font-medium hover:opacity-90 transition-opacity"
-                      >
-                        {attempted ? 'Reattempt' : 'Attempt'}
-                      </Link>
                     )}
-                    {/* Study button */}
-                    {hasStudyMode ? (
-                      <button
-                        onClick={() => loadExam(e)}
-                        className="flex-1 text-center text-xs btn-secondary py-1.5 font-medium"
-                      >
-                        Study
-                      </button>
+
+                    {/* Restriction chips */}
+                    {isInvited && (!showFlashcards || !showReview) && (
+                      <div className="flex flex-wrap gap-1 mb-2">
+                        {!showFlashcards && <span className="text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">No flashcards</span>}
+                        {!showReview && <span className="text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">No review</span>}
+                      </div>
+                    )}
+
+                    {/* Attempt stats */}
+                    {attempted ? (
+                      <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3">
+                        <div className="grid grid-cols-3 gap-2 text-center mb-2">
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className="text-sm font-bold text-[var(--color-primary)]">{stats.count}</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
+                          </div>
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className={`text-sm font-bold ${stats.best >= 75 ? 'text-emerald-500' : stats.best >= 50 ? 'text-amber-500' : 'text-red-500'}`}>{stats.best}%</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Best</div>
+                          </div>
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className={`text-sm font-bold ${accuracy >= 75 ? 'text-emerald-500' : accuracy >= 50 ? 'text-amber-500' : 'text-red-500'}`}>{accuracy ?? 0}%</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Accuracy</div>
+                          </div>
+                        </div>
+                        {/* Score bar */}
+                        <div className="h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-700 bg-gradient-to-r ${stats.best >= 75 ? 'from-emerald-400 to-teal-500' : stats.best >= 50 ? 'from-amber-400 to-orange-500' : 'from-red-400 to-rose-500'}`}
+                            style={{ width: `${stats.best}%` }} />
+                        </div>
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
+                          Last: {fmtDate(stats.lastAttemptAt)}
+                        </p>
+                      </div>
                     ) : (
-                      <span className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-1.5">No study mode</span>
+                      <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3 flex items-center gap-2">
+                        <div className={`w-1.5 h-1.5 rounded-full ${isExpired ? 'bg-red-400' : 'bg-[var(--color-border)]'}`} />
+                        <span className={`text-xs ${isExpired ? 'text-red-500 dark:text-red-400 font-medium' : 'text-[var(--color-text-muted)]'}`}>
+                          {isExpired ? 'This test has expired' : 'Not attempted yet'}
+                        </span>
+                        {isInvited && e._inviteDate && !isExpired && (
+                          <span className="ml-auto text-[10px] text-[var(--color-text-muted)]">Invited {fmtDate(e._inviteDate)}</span>
+                        )}
+                      </div>
                     )}
-                    {isInstructor && !isInvited && (
-                      <button
-                        onClick={() => setInviteExam(e)}
-                        className="shrink-0 p-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
-                        title="Invite users"
-                      >
-                        <Users size={13} />
-                      </button>
-                    )}
+
+                    {/* Action buttons */}
+                    <div className="flex items-center gap-2">
+                      {isExpired ? (
+                        <span className="flex-1 text-center text-xs py-2 rounded-xl font-semibold bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 cursor-not-allowed">
+                          Expired
+                        </span>
+                      ) : (!isInvited || allowReattempt) ? (
+                        <Link to={`/exam/${e._id}`}
+                          className={`flex-1 text-center text-xs py-2 rounded-xl font-semibold transition-all bg-gradient-to-r ${gradClass} text-white hover:opacity-90 shadow-sm`}>
+                          {attempted ? 'Reattempt' : 'Start Exam'}
+                        </Link>
+                      ) : null}
+                      {hasStudyMode ? (
+                        <button onClick={() => loadExam(e)}
+                          className="flex-1 text-center text-xs btn-secondary py-2 rounded-xl font-semibold flex items-center justify-center gap-1">
+                          <FlipHorizontal size={12} /> Study
+                        </button>
+                      ) : (
+                        <span className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-2">No study mode</span>
+                      )}
+                      {isInstructor && !isInvited && (
+                        <button onClick={() => setEditExam(e)}
+                          className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
+                          title="Edit test">
+                          <Edit3 size={13} />
+                        </button>
+                      )}
+                      {isInstructor && !isInvited && (
+                        <button onClick={() => setInviteExam(e)}
+                          className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
+                          title="Invite users">
+                          <Users size={13} />
+                        </button>
+                      )}
+                    </div>
                   </div>
                 </div>
               );
@@ -418,7 +733,8 @@ export default function StudyModePage() {
           </div>
         )}
 
-        {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} isInstructor={isInstructor} />}
+        {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} />}
+        {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} invalidateKey="myExams" />}
       </div>
     );
   }
@@ -426,18 +742,13 @@ export default function StudyModePage() {
   // ── Study view ────────────────────────────────────────────────────────────
   const questions = examData?.questions || [];
   const q = questions[cardIndex];
-
-  // Determine available modes based on invite settings
   const isInvitedExam = !!selectedExam._isInvited;
   const showFlashcardsMode = isInvitedExam ? selectedExam.showFlashcards !== false : true;
   const showReviewMode = isInvitedExam ? selectedExam.showReview !== false : true;
-
   const availableModes = [
     showFlashcardsMode && { id: 'flashcard', icon: FlipHorizontal, label: 'Flashcards' },
     showReviewMode && { id: 'practice', icon: TrendingUp, label: 'Review' },
   ].filter(Boolean);
-
-  // Reset mode if current mode is not available
   const currentMode = availableModes.find(m => m.id === mode) ? mode : availableModes[0]?.id;
 
   if (availableModes.length === 0) {
@@ -453,29 +764,33 @@ export default function StudyModePage() {
         <div className="card text-center py-16">
           <BookOpen size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
           <p className="text-[var(--color-text-muted)]">Study mode is not available for this exam.</p>
-          <p className="text-xs text-[var(--color-text-muted)] mt-1">The instructor has disabled flashcards and review for this exam.</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">The instructor has disabled flashcards and review.</p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="font-bold text-[var(--color-text)] text-lg">{selectedExam.title}</h1>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Study Mode · {questions.length} questions</p>
+    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+      {/* Study header */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-5 mb-6 shadow-lg">
+        <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex items-center justify-between">
+          <div>
+            <h1 className="font-extrabold text-white text-lg leading-tight">{selectedExam.title}</h1>
+            <p className="text-sm text-teal-100 mt-0.5">Study Mode · {questions.length} questions
+              {selectedExam._groupName && <span className="ml-2 inline-flex items-center gap-1 bg-white/20 px-2 py-0.5 rounded-full text-xs"><Users size={10} /> {selectedExam._groupName}</span>}
+            </p>
+          </div>
+          <button onClick={exitStudy} className="bg-white/20 hover:bg-white/30 text-white text-xs py-2 px-4 rounded-xl transition-colors font-medium">← Back</button>
         </div>
-        <button onClick={exitStudy} className="btn-secondary text-xs py-1.5 px-3">← Back</button>
       </div>
 
+      {/* Mode toggle */}
       <div className="flex gap-2 mb-6">
         {availableModes.map(m => (
-          <button
-            key={m.id}
-            onClick={() => setMode(m.id)}
-            className={`flex items-center gap-1.5 text-sm px-4 py-1.5 rounded-full transition-all ${currentMode === m.id ? 'bg-[var(--color-primary)] text-white' : 'btn-secondary'}`}
-          >
+          <button key={m.id} onClick={() => setMode(m.id)}
+            className={`flex items-center gap-1.5 text-sm px-5 py-2 rounded-xl transition-all font-medium ${currentMode === m.id ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] shadow-sm font-semibold border border-[var(--color-primary)]/20' : 'btn-secondary'}`}>
             <m.icon size={14} /> {m.label}
           </button>
         ))}
@@ -491,21 +806,20 @@ export default function StudyModePage() {
               ))}
             </div>
           </div>
-
           <div
-            className="card min-h-52 flex flex-col items-center justify-center cursor-pointer select-none hover:shadow-md transition-all text-center mb-4 border-2 hover:border-[var(--color-primary)]"
+            className="card min-h-52 flex flex-col items-center justify-center cursor-pointer select-none hover:shadow-lg transition-all text-center mb-4 border-2 hover:border-[var(--color-primary)]"
             onClick={() => setFlipped(f => !f)}
           >
             {!flipped ? (
               <div>
-                <div className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4">Question</div>
+                <div className="text-xs font-bold text-[var(--color-primary)] uppercase tracking-wider mb-4">Question</div>
                 <p className="text-[var(--color-text)] text-base sm:text-lg font-medium leading-relaxed">{q.question}</p>
                 <p className="text-xs text-[var(--color-text-muted)] mt-6 flex items-center justify-center gap-1"><FlipHorizontal size={12} /> Tap to reveal answer</p>
               </div>
             ) : (
               <div>
-                <div className="text-xs font-semibold text-green-600 uppercase tracking-wider mb-3">Answer</div>
-                <div className="inline-flex items-center gap-2 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-semibold px-4 py-2 rounded-xl mb-3">
+                <div className="text-xs font-bold text-emerald-500 uppercase tracking-wider mb-3">Answer</div>
+                <div className="inline-flex items-center gap-2 bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400 font-semibold px-4 py-2 rounded-xl mb-3">
                   <CheckCircle size={15} />
                   {q.options[q.correctAnswer]}
                 </div>
@@ -514,11 +828,11 @@ export default function StudyModePage() {
               </div>
             )}
           </div>
-
           <div className="flex justify-between items-center">
             <button className="btn-secondary text-sm px-4" onClick={() => { setCardIndex(i => Math.max(0, i - 1)); setFlipped(false); }} disabled={cardIndex === 0}>← Prev</button>
             <button onClick={() => setFlipped(f => !f)} className="btn-secondary p-2.5 rounded-xl"><RotateCcw size={15} /></button>
-            <button className="btn-primary text-sm px-4" onClick={() => { setCardIndex(i => Math.min(questions.length - 1, i + 1)); setFlipped(false); }} disabled={cardIndex === questions.length - 1}>Next →</button>
+            <button className="bg-gradient-to-r from-teal-500 to-blue-600 text-white text-sm px-5 py-2 rounded-xl font-medium hover:opacity-90 transition-opacity disabled:opacity-40"
+              onClick={() => { setCardIndex(i => Math.min(questions.length - 1, i + 1)); setFlipped(false); }} disabled={cardIndex === questions.length - 1}>Next →</button>
           </div>
         </div>
       )}
@@ -528,20 +842,13 @@ export default function StudyModePage() {
           <div className="card">
             <div className="flex items-center justify-between mb-3">
               <span className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider">Q {cardIndex + 1} / {questions.length}</span>
-              {q.topic && <span className="badge bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">{q.topic}</span>}
+              {q.topic && <span className="badge bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300">{q.topic}</span>}
             </div>
             <p className="font-medium text-[var(--color-text)] mb-4 leading-relaxed">{q.question}</p>
             <div className="space-y-2">
               {q.options.map((opt, i) => (
-                <div
-                  key={i}
-                  className={`p-3 rounded-xl text-sm border-2 flex items-center gap-3 ${
-                    i === q.correctAnswer
-                      ? 'border-green-400 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-400'
-                      : 'border-[var(--color-border)] text-[var(--color-text-muted)]'
-                  }`}
-                >
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${i === q.correctAnswer ? 'bg-green-500 text-white' : 'bg-[var(--color-bg-alt)]'}`}>
+                <div key={i} className={`p-3 rounded-xl text-sm border-2 flex items-center gap-3 ${i === q.correctAnswer ? 'border-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400' : 'border-[var(--color-border)] text-[var(--color-text-muted)]'}`}>
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${i === q.correctAnswer ? 'bg-emerald-500 text-white' : 'bg-[var(--color-bg-alt)]'}`}>
                     {String.fromCharCode(65 + i)}
                   </span>
                   <span className="flex-1">{opt}</span>
@@ -550,16 +857,21 @@ export default function StudyModePage() {
               ))}
             </div>
             {q.explanation && (
-              <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 rounded-xl flex items-start gap-2">
-                <Lightbulb size={14} className="text-[var(--color-primary)] mt-0.5 shrink-0" />
+              <div className="mt-4 p-3 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-xl flex items-start gap-2">
+                <Lightbulb size={14} className="text-teal-500 mt-0.5 shrink-0" />
                 <p className="text-xs text-[var(--color-text)] leading-relaxed">{q.explanation}</p>
               </div>
             )}
           </div>
           <div className="flex justify-between items-center">
             <button className="btn-secondary text-sm" onClick={() => setCardIndex(i => Math.max(0, i - 1))} disabled={cardIndex === 0}>← Prev</button>
-            <span className="text-xs text-[var(--color-text-muted)]">{cardIndex + 1} / {questions.length}</span>
-            <button className="btn-primary text-sm" onClick={() => setCardIndex(i => Math.min(questions.length - 1, i + 1))} disabled={cardIndex === questions.length - 1}>Next →</button>
+            <div className="flex gap-1">
+              {questions.map((_, i) => (
+                <div key={i} className={`h-1.5 rounded-full transition-all cursor-pointer ${i === cardIndex ? 'bg-[var(--color-primary)] w-4' : 'bg-[var(--color-border)] w-1.5'}`} onClick={() => setCardIndex(i)} />
+              ))}
+            </div>
+            <button className="bg-gradient-to-r from-teal-500 to-blue-600 text-white text-sm px-5 py-2 rounded-xl font-medium hover:opacity-90 disabled:opacity-40"
+              onClick={() => setCardIndex(i => Math.min(questions.length - 1, i + 1))} disabled={cardIndex === questions.length - 1}>Next →</button>
           </div>
         </div>
       )}

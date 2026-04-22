@@ -1,9 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarElement, CategoryScale, Chart as ChartJS, LinearScale, Tooltip } from 'chart.js';
 import {
-  Award, BadgeCheck, BarChart2, Check, CheckCircle, CreditCard,
+  Award, BadgeCheck, BarChart2, Bell, Check, CheckCircle, CreditCard,
   Edit3, Flame, GraduationCap, KeyRound, Lock, RefreshCw,
-  Shield, Star, Trophy, User, X, Zap,
+  Settings, Shield, Sliders, Star, Trophy, User, X, Zap,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Bar } from 'react-chartjs-2';
@@ -22,8 +22,9 @@ const PLAN_INFO = {
 
 const TABS = [
   { id: 'account',      label: 'Account',      icon: User },
-  { id: 'subscription', label: 'Subscription', icon: CreditCard },
-  { id: 'billing',      label: 'Billing',      icon: BarChart2 },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard, instructorOnly: true },
+  { id: 'billing',      label: 'Billing',      icon: BarChart2, instructorOnly: true },
+  { id: 'preferences',  label: 'Preferences',  icon: Settings, instructorOnly: true },
   { id: 'performance',  label: 'Performance',  icon: Star },
 ];
 
@@ -34,6 +35,27 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' });
+
+  // Instructor preferences — persisted in localStorage
+  const PREF_KEY = 'instructor_prefs';
+  const loadPrefs = () => {
+    try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; }
+  };
+  const [prefs, setPrefs] = useState(() => ({
+    defaultDifficulty: 'medium',
+    defaultQuestions: 10,
+    defaultPassingScore: 60,
+    emailOnAttempt: true,
+    emailOnBatchJoin: true,
+    weeklyReport: false,
+    ...loadPrefs(),
+  }));
+
+  const savePrefs = (updated) => {
+    setPrefs(updated);
+    localStorage.setItem(PREF_KEY, JSON.stringify(updated));
+    toast.success('Preferences saved');
+  };
 
   const { data: analyticsData } = useQuery({
     queryKey: ['analytics'],
@@ -79,6 +101,8 @@ export default function ProfilePage() {
   const planInfo = PLAN_INFO[plan] || PLAN_INFO.free;
   const PlanIcon = planInfo.icon;
   const isFreePlan = plan === 'free';
+  const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
+  const visibleTabs = TABS.filter(t => !t.instructorOnly || isInstructor || !isFreePlan);
   const transactions = txnData?.transactions || [];
   const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const fmtAmount = (paise) => `₹${(paise / 100).toFixed(0)}`;
@@ -127,7 +151,7 @@ export default function ProfilePage() {
 
       {/* ── Tab bar ── */}
       <div className="flex gap-1 border-b border-[var(--color-border)] mb-6 overflow-x-auto">
-        {TABS.map(t => {
+        {visibleTabs.map(t => {
           const Icon = t.icon;
           return (
             <button
@@ -429,6 +453,90 @@ export default function ProfilePage() {
               ))}
             </div>
           )}
+        </div>
+      )}
+
+      {/* ── Preferences tab (instructor) ── */}
+      {tab === 'preferences' && (
+        <div className="space-y-5">
+          {/* Test defaults */}
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
+              <Sliders size={15} className="text-[var(--color-primary)]" /> Default Test Settings
+            </h3>
+            <p className="text-xs text-[var(--color-text-muted)] mb-5">These values are pre-filled when you create a new test. You can always override them per test.</p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Difficulty</label>
+                <select
+                  value={prefs.defaultDifficulty}
+                  onChange={e => savePrefs({ ...prefs, defaultDifficulty: e.target.value })}
+                  className="input w-full text-sm"
+                >
+                  <option value="easy">Easy</option>
+                  <option value="medium">Medium</option>
+                  <option value="hard">Hard</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Number of Questions</label>
+                <select
+                  value={prefs.defaultQuestions}
+                  onChange={e => savePrefs({ ...prefs, defaultQuestions: Number(e.target.value) })}
+                  className="input w-full text-sm"
+                >
+                  {[5, 10, 15, 20, 25, 30].map(n => <option key={n} value={n}>{n} questions</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Passing Score</label>
+                <div className="flex items-center gap-3">
+                  <input
+                    type="range"
+                    min={30}
+                    max={100}
+                    step={5}
+                    value={prefs.defaultPassingScore}
+                    onChange={e => setPrefs(p => ({ ...p, defaultPassingScore: Number(e.target.value) }))}
+                    onMouseUp={e => savePrefs({ ...prefs, defaultPassingScore: Number(e.target.value) })}
+                    onTouchEnd={e => savePrefs({ ...prefs, defaultPassingScore: Number(e.target.value) })}
+                    className="flex-1 accent-[var(--color-primary)]"
+                  />
+                  <span className="text-sm font-bold text-[var(--color-primary)] w-10 shrink-0 text-right">{prefs.defaultPassingScore}%</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Email notifications */}
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
+              <Bell size={15} className="text-[var(--color-primary)]" /> Email Notifications
+            </h3>
+            <div className="space-y-4">
+              {[
+                { key: 'emailOnAttempt', label: 'New test attempt', desc: 'Get notified when a student attempts one of your tests' },
+                { key: 'emailOnBatchJoin', label: 'Student joins batch', desc: 'Get notified when a new student accepts a batch invite' },
+                { key: 'weeklyReport', label: 'Weekly performance report', desc: 'Receive a weekly email summary of your students\' performance' },
+              ].map(({ key, label, desc }) => (
+                <div key={key} className="flex items-start justify-between gap-4">
+                  <div>
+                    <p className="text-sm font-medium text-[var(--color-text)]">{label}</p>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
+                  </div>
+                  <button
+                    onClick={() => savePrefs({ ...prefs, [key]: !prefs[key] })}
+                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 mt-0.5 ${prefs[key] ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${prefs[key] ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[10px] text-[var(--color-text-muted)] mt-4 pt-4 border-t border-[var(--color-border)]">
+              Note: These preferences are stored locally on this device. Email delivery depends on your account settings.
+            </p>
+          </div>
         </div>
       )}
 

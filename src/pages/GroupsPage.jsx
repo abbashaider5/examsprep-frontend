@@ -1,41 +1,44 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, Check, ChevronLeft, ChevronRight, Edit3, FileText,
-  Image, Info, LogOut, Mail, MessageSquare, Paperclip, Plus,
-  Send, Settings, Shield, Trash2, UserCheck, UserPlus, Users,
-  X, Zap,
+  BookOpen, Check, ChevronLeft, Crown, Download, Edit3, FileText,
+  Info, LogOut, Mail, MessageSquare, Paperclip, Plus,
+  Search, Send, Settings, Shield, Trash2, Upload, UserCheck, UserPlus, Users, X, Zap,
 } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
-import { groupApi, instructorApi } from '../services/api.js';
+import { groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
-
-const isPro = (user) => ['pro', 'enterprise'].includes(user?.plan) || user?.role === 'admin';
-const isInstructorRole = (user) => user?.role === 'instructor' || user?.role === 'admin';
+const isPro            = (u) => ['pro', 'enterprise'].includes(u?.plan) || u?.role === 'admin';
+const isInstructorRole = (u) => u?.role === 'instructor' || u?.role === 'admin';
 
 function fmtTime(d) {
-  const dt = new Date(d);
-  const now = new Date();
-  const diff = (now - dt) / 1000;
-  if (diff < 60) return 'just now';
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`;
-  if (diff < 86400) return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
-  if (diff < 7 * 86400) return dt.toLocaleDateString('en-IN', { weekday: 'short' });
+  const dt   = new Date(d);
+  const diff = (Date.now() - dt) / 1000;
+  if (diff < 60)     return 'just now';
+  if (diff < 3600)   return `${Math.floor(diff / 60)}m ago`;
+  if (diff < 86400)  return dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  if (diff < 604800) return dt.toLocaleDateString('en-IN', { weekday: 'short' });
   return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
 }
 
-function fmtFull(d) {
-  return new Date(d).toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+function fmtMsgTime(d) {
+  const dt    = new Date(d);
+  const today = new Date();
+  const isToday = dt.toDateString() === today.toDateString();
+  const time  = dt.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' });
+  const date  = dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  if (isToday) return `Today · ${time}`;
+  return `${date} · ${time}`;
 }
 
 function formatDateDivider(d) {
-  const dt = new Date(d);
-  const now = new Date();
-  const diff = (now - dt) / 86400000;
+  const dt   = new Date(d);
+  const diff = (Date.now() - dt) / 86400000;
   if (diff < 1) return 'Today';
   if (diff < 2) return 'Yesterday';
   return dt.toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
@@ -43,75 +46,334 @@ function formatDateDivider(d) {
 
 function sameDay(a, b) {
   const da = new Date(a), db = new Date(b);
-  return da.getFullYear() === db.getFullYear() && da.getMonth() === db.getMonth() && da.getDate() === db.getDate();
+  return da.getFullYear() === db.getFullYear()
+      && da.getMonth()    === db.getMonth()
+      && da.getDate()     === db.getDate();
 }
 
 function bytesToSize(b) {
   if (!b) return '';
-  if (b < 1024) return `${b} B`;
+  if (b < 1024)        return `${b} B`;
   if (b < 1024 * 1024) return `${(b / 1024).toFixed(1)} KB`;
   return `${(b / 1024 / 1024).toFixed(1)} MB`;
 }
 
-// Convert file to base64 data URI
 function fileToBase64(file) {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
+    reader.onload  = () => resolve(reader.result);
     reader.onerror = reject;
     reader.readAsDataURL(file);
   });
 }
 
-// URL auto-linkify component
-function Linkified({ text, isMine }) {
+function idStr(v) { return v?.toString?.() || String(v || ''); }
+
+// ── MessageContent: URLs + @mention highlights ────────────────────────────────
+function MessageContent({ text, isMine, members = [] }) {
   if (!text) return null;
-  const urlRegex = /https?:\/\/[^\s<>"{}|\\^`[\]]+/g;
+  const re    = /https?:\/\/[^\s<>"{}|\\^`[\]]+|@\w+/g;
   const parts = [];
-  let lastIndex = 0;
-  let m;
-  while ((m = urlRegex.exec(text)) !== null) {
-    if (m.index > lastIndex) parts.push({ t: 'text', v: text.slice(lastIndex, m.index) });
-    parts.push({ t: 'link', v: m[0] });
-    lastIndex = urlRegex.lastIndex;
+  let last = 0, m;
+  while ((m = re.exec(text)) !== null) {
+    if (m.index > last) parts.push({ t: 'text', v: text.slice(last, m.index) });
+    if (m[0].startsWith('http')) {
+      parts.push({ t: 'url', v: m[0] });
+    } else {
+      const word   = m[0].slice(1).toLowerCase();
+      const isReal = members.some(mb => mb.name?.toLowerCase().startsWith(word));
+      parts.push({ t: 'mention', v: m[0], valid: isReal });
+    }
+    last = re.lastIndex;
   }
-  if (lastIndex < text.length) parts.push({ t: 'text', v: text.slice(lastIndex) });
+  if (last < text.length) parts.push({ t: 'text', v: text.slice(last) });
   return (
     <p className="leading-relaxed whitespace-pre-wrap break-words">
-      {parts.map((p, i) =>
-        p.t === 'link'
-          ? <a key={i} href={p.v} target="_blank" rel="noreferrer" className={`underline break-all ${isMine ? 'opacity-80 hover:opacity-100' : 'text-[var(--color-primary)]'}`}>{p.v}</a>
-          : p.v
-      )}
+      {parts.map((p, i) => {
+        if (p.t === 'url')
+          return <a key={i} href={p.v} target="_blank" rel="noreferrer"
+            className={`underline break-all ${isMine ? 'opacity-80 hover:opacity-100' : 'text-[var(--color-primary)]'}`}>{p.v}</a>;
+        if (p.t === 'mention')
+          return <span key={i}
+            className={`font-semibold rounded px-0.5 ${isMine ? 'bg-white/25 text-white' : 'bg-[var(--color-primary)]/15 text-[var(--color-primary)]'}`}>{p.v}</span>;
+        return p.v;
+      })}
     </p>
   );
 }
 
-// ── Toggle Switch ─────────────────────────────────────────────────────────────
+// ── Toggle ────────────────────────────────────────────────────────────────────
 function Toggle({ checked, onChange, disabled }) {
   return (
     <button
       type="button"
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
-      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none ${checked ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'} ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
+      className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors focus:outline-none
+        ${checked ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}
+        ${disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'}`}
     >
-      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform ${checked ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
+      <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white shadow transition-transform
+        ${checked ? 'translate-x-4.5' : 'translate-x-0.5'}`} />
     </button>
+  );
+}
+
+// ── ConfirmDialog ─────────────────────────────────────────────────────────────
+function ConfirmDialog({ icon: Icon = Trash2, title, message, confirmLabel = 'Confirm', onConfirm, onCancel }) {
+  return (
+    <Modal onClose={onCancel}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-sm p-6">
+        <div className="flex items-start gap-4 mb-5">
+          <div className="w-11 h-11 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
+            <Icon size={20} className="text-red-600 dark:text-red-400" />
+          </div>
+          <div>
+            <h3 className="font-bold text-[var(--color-text)] text-base">{title}</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mt-1 leading-relaxed">{message}</p>
+          </div>
+        </div>
+        <div className="flex gap-3">
+          <button onClick={onCancel} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+          <button
+            onClick={onConfirm}
+            className="flex-1 py-2.5 text-sm font-semibold rounded-xl bg-red-600 hover:bg-red-700 text-white transition-colors"
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+// ── GroupSettingsPanel ────────────────────────────────────────────────────────
+function GroupSettingsPanel({ group, isOwner, onClose, onDeleted, onLeft }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    name:        group.name        || '',
+    description: group.description || '',
+    settings: {
+      allowMedia:       group.settings?.allowMedia !== false,
+      whoCanSend:       group.settings?.whoCanSend       || 'all',
+      isPrivate:        group.settings?.isPrivate        || false,
+      allowReactions:   group.settings?.allowReactions   !== false,
+      allowReplies:     group.settings?.allowReplies     !== false,
+      maxMembers:       group.settings?.maxMembers       || 100,
+      muteNotifications: group.settings?.muteNotifications || false,
+    },
+  });
+  const [confirm, setConfirm] = useState(null); // 'delete' | 'leave'
+
+  const saveMut = useMutation({
+    mutationFn: async () => {
+      await groupApi.update(group._id, { name: form.name.trim(), description: form.description.trim() });
+      await groupApi.updateSettings(group._id, form.settings);
+    },
+    onSuccess: () => {
+      toast.success('Settings saved');
+      qc.invalidateQueries({ queryKey: ['group', group._id] });
+      qc.invalidateQueries({ queryKey: ['groups'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to save'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: () => groupApi.remove(group._id),
+    onSuccess: () => {
+      toast.success('Batch deleted');
+      qc.invalidateQueries({ queryKey: ['groups'] });
+      onClose();
+      onDeleted?.();
+    },
+    onError: () => toast.error('Failed to delete group'),
+  });
+
+  const leaveMut = useMutation({
+    mutationFn: () => groupApi.leave(group._id),
+    onSuccess: () => {
+      toast.success('You left the batch');
+      qc.invalidateQueries({ queryKey: ['groups'] });
+      onClose();
+      onLeft?.();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const setS = (key, val) => setForm(f => ({ ...f, settings: { ...f.settings, [key]: val } }));
+
+  return (
+    <>
+      <div className="fixed inset-0 z-[9998] flex">
+        <div className="flex-1 bg-black/40" onClick={onClose} />
+        <div className="w-full max-w-sm bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col h-full animate-slide-left shadow-2xl">
+          {/* Header */}
+          <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
+            <h2 className="font-bold text-[var(--color-text)] text-base">Batch Settings</h2>
+            <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="flex-1 overflow-y-auto">
+            {/* Group info */}
+            {isOwner ? (
+              <div className="p-5 space-y-3 border-b border-[var(--color-border)]">
+                <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">Batch Info</p>
+                <div>
+                  <label className="label text-xs">Batch Name</label>
+                  <input className="input w-full" value={form.name}
+                    onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="label text-xs">Description</label>
+                  <textarea className="input w-full resize-none" rows={2} value={form.description}
+                    onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
+                </div>
+              </div>
+            ) : (
+              <div className="p-5 border-b border-[var(--color-border)]">
+                <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Batch Info</p>
+                <p className="font-semibold text-[var(--color-text)]">{group.name}</p>
+                {group.description && <p className="text-sm text-[var(--color-text-muted)] mt-1">{group.description}</p>}
+                <p className="text-xs text-[var(--color-text-muted)] mt-2">
+                  {group.members?.length || 0} members · Owned by {group.instructor?.name}
+                </p>
+              </div>
+            )}
+
+            {/* Permissions (owner only) */}
+            {isOwner && (
+              <div className="p-5 space-y-3 border-b border-[var(--color-border)]">
+                <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">Permissions</p>
+                {[
+                  { key: 'allowMedia',     label: 'Allow Media Sharing',   desc: 'Members can share images and files' },
+                  { key: 'allowReactions', label: 'Allow Reactions',        desc: 'Members can react to messages with emoji' },
+                  { key: 'allowReplies',   label: 'Allow Replies',          desc: 'Members can reply to specific messages' },
+                  { key: 'isPrivate',      label: 'Private Batch',          desc: 'Only invited members can see this batch' },
+                  { key: 'muteNotifications', label: 'Mute Notifications',  desc: 'Suppress notifications for all members' },
+                ].map(({ key, label, desc }) => (
+                  <div key={key} className="flex items-center justify-between p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
+                    <div>
+                      <p className="text-sm font-medium text-[var(--color-text)]">{label}</p>
+                      <p className="text-xs text-[var(--color-text-muted)]">{desc}</p>
+                    </div>
+                    <Toggle checked={!!form.settings[key]} onChange={v => setS(key, v)} />
+                  </div>
+                ))}
+
+                {/* Who can send */}
+                <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
+                  <p className="text-sm font-medium text-[var(--color-text)] mb-2">Who Can Send Messages</p>
+                  <div className="flex gap-2">
+                    {[['all', 'Everyone'], ['instructorOnly', 'Instructor Only']].map(([val, lbl]) => (
+                      <button key={val} onClick={() => setS('whoCanSend', val)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                          ${form.settings.whoCanSend === val
+                            ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                            : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}>
+                        {lbl}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Max members */}
+                <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
+                  <p className="text-sm font-medium text-[var(--color-text)] mb-1">Max Members</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mb-2">Maximum number of members allowed in this group</p>
+                  <div className="flex gap-2">
+                    {[25, 50, 100, 200].map(n => (
+                      <button key={n} onClick={() => setS('maxMembers', n)}
+                        className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                          ${form.settings.maxMembers === n
+                            ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                            : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}>
+                        {n}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Danger zone */}
+            <div className="p-5 space-y-2">
+              <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-3">Danger Zone</p>
+              {isOwner ? (
+                <button
+                  onClick={() => setConfirm('delete')}
+                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-medium"
+                >
+                  <Trash2 size={15} /> Delete Batch
+                </button>
+              ) : (
+                <button
+                  onClick={() => setConfirm('leave')}
+                  className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-medium"
+                >
+                  <LogOut size={15} /> Leave Batch
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Footer */}
+          {isOwner && (
+            <div className="p-5 border-t border-[var(--color-border)] flex gap-3">
+              <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+              <button
+                onClick={() => saveMut.mutate()}
+                disabled={!form.name.trim() || saveMut.isPending}
+                className="btn-primary flex-1 py-2.5 text-sm disabled:opacity-50"
+              >
+                {saveMut.isPending ? 'Saving…' : 'Save Changes'}
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {confirm === 'delete' && (
+        <ConfirmDialog
+          icon={Trash2}
+          title="Delete Batch"
+          message={`Are you sure you want to delete "${group.name}"? All messages and data will be permanently lost. This cannot be undone.`}
+          confirmLabel="Yes, Delete Batch"
+          onConfirm={() => { setConfirm(null); deleteMut.mutate(); }}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+      {confirm === 'leave' && (
+        <ConfirmDialog
+          icon={LogOut}
+          title="Leave Batch"
+          message={`Are you sure you want to leave "${group.name}"? You will need to be invited again to rejoin.`}
+          confirmLabel="Leave Batch"
+          onConfirm={() => { setConfirm(null); leaveMut.mutate(); }}
+          onCancel={() => setConfirm(null)}
+        />
+      )}
+    </>
   );
 }
 
 // ── Group Drawer (Create / Edit) ──────────────────────────────────────────────
 function GroupDrawer({ initial, onClose, onSaved }) {
-  const qc = useQueryClient();
+  const qc     = useQueryClient();
   const isEdit = !!initial;
   const [form, setForm] = useState({
     name:        initial?.name        || '',
     description: initial?.description || '',
     settings: {
-      allowMedia:  initial?.settings?.allowMedia  !== false,
-      whoCanSend:  initial?.settings?.whoCanSend   || 'all',
-      isPrivate:   initial?.settings?.isPrivate    || false,
+      allowMedia:        initial?.settings?.allowMedia        !== false,
+      whoCanSend:        initial?.settings?.whoCanSend        || 'all',
+      isPrivate:         initial?.settings?.isPrivate         || false,
+      allowReactions:    initial?.settings?.allowReactions    !== false,
+      allowReplies:      initial?.settings?.allowReplies      !== false,
+      maxMembers:        initial?.settings?.maxMembers        || 100,
+      muteNotifications: initial?.settings?.muteNotifications || false,
     },
   });
 
@@ -120,69 +382,47 @@ function GroupDrawer({ initial, onClose, onSaved }) {
       ? groupApi.update(initial._id, { name: d.name, description: d.description })
       : groupApi.create(d),
     onSuccess: async (res) => {
-      if (!isEdit && form.settings) {
-        try { await groupApi.updateSettings(res.data.group._id, form.settings); } catch {}
-      }
-      toast.success(isEdit ? 'Group updated' : 'Group created!');
+      const id = isEdit ? initial._id : res.data.group._id;
+      try { await groupApi.updateSettings(id, form.settings); } catch {}
+      toast.success(isEdit ? 'Batch updated' : 'Batch created!');
       qc.invalidateQueries({ queryKey: ['groups'] });
-      onSaved?.(res.data.group);
+      if (!isEdit) onSaved?.(res.data.group);
       onClose();
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
-  });
-
-  const settingsMut = useMutation({
-    mutationFn: (s) => groupApi.updateSettings(initial._id, s),
-    onSuccess: () => { toast.success('Settings saved'); qc.invalidateQueries({ queryKey: ['groups'] }); qc.invalidateQueries({ queryKey: ['group', initial._id] }); },
-    onError: () => toast.error('Failed to save settings'),
   });
 
   const setS = (key, val) => setForm(f => ({ ...f, settings: { ...f.settings, [key]: val } }));
 
   return (
     <div className="fixed inset-0 z-[9998] flex">
-      {/* Backdrop */}
       <div className="flex-1 bg-black/40" onClick={onClose} />
-      {/* Drawer */}
       <div className="w-full max-w-md bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col h-full animate-slide-left shadow-2xl">
-        {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)]">
-          <h2 className="font-bold text-[var(--color-text)]">{isEdit ? 'Edit Group' : 'Create New Group'}</h2>
+          <h2 className="font-bold text-[var(--color-text)]">{isEdit ? 'Edit Batch' : 'Create New Batch'}</h2>
           <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]"><X size={18} /></button>
         </div>
-
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Basic info */}
           <div className="space-y-4">
-            <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Group Info</h3>
+            <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Batch Info</h3>
             <div>
-              <label className="label text-xs">Group Name *</label>
-              <input
-                className="input w-full"
-                placeholder="e.g. GATE 2025 Batch"
-                value={form.name}
-                onChange={e => setForm(f => ({ ...f, name: e.target.value }))}
-              />
+              <label className="label text-xs">Batch Name *</label>
+              <input className="input w-full" placeholder="e.g. GATE 2025 Batch"
+                value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} />
             </div>
             <div>
               <label className="label text-xs">Description</label>
-              <textarea
-                className="input w-full resize-none"
-                rows={3}
-                placeholder="Brief description of this group…"
-                value={form.description}
-                onChange={e => setForm(f => ({ ...f, description: e.target.value }))}
-              />
+              <textarea className="input w-full resize-none" rows={3} placeholder="Brief description…"
+                value={form.description} onChange={e => setForm(f => ({ ...f, description: e.target.value }))} />
             </div>
           </div>
-
-          {/* Settings */}
           <div className="space-y-3">
-            <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Group Settings</h3>
-
+            <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Settings</h3>
             {[
-              { key: 'allowMedia',  label: 'Allow Media Sharing', desc: 'Members can share images and files in chat' },
-              { key: 'isPrivate',   label: 'Private Group',        desc: 'Only invited members can see this group' },
+              { key: 'allowMedia',        label: 'Allow Media Sharing',  desc: 'Members can share images and files' },
+              { key: 'allowReactions',    label: 'Allow Reactions',       desc: 'Members can react to messages with emoji' },
+              { key: 'allowReplies',      label: 'Allow Replies',         desc: 'Members can reply to specific messages' },
+              { key: 'isPrivate',         label: 'Private Batch',         desc: 'Only invited members can see this batch' },
             ].map(({ key, label, desc }) => (
               <div key={key} className="flex items-center justify-between p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
                 <div>
@@ -192,44 +432,42 @@ function GroupDrawer({ initial, onClose, onSaved }) {
                 <Toggle checked={!!form.settings[key]} onChange={v => setS(key, v)} />
               </div>
             ))}
-
             <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
               <p className="text-sm font-medium text-[var(--color-text)] mb-2">Who Can Send Messages</p>
               <div className="flex gap-2">
                 {[['all', 'Everyone'], ['instructorOnly', 'Instructor Only']].map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    onClick={() => setS('whoCanSend', val)}
-                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors ${form.settings.whoCanSend === val ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}
-                  >
+                  <button key={val} onClick={() => setS('whoCanSend', val)}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                      ${form.settings.whoCanSend === val
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}>
                     {lbl}
                   </button>
                 ))}
               </div>
             </div>
+            <div className="p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
+              <p className="text-sm font-medium text-[var(--color-text)] mb-1">Max Members</p>
+              <p className="text-xs text-[var(--color-text-muted)] mb-2">Maximum number of members allowed</p>
+              <div className="flex gap-2">
+                {[25, 50, 100, 200].map(n => (
+                  <button key={n} onClick={() => setS('maxMembers', n)}
+                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition-colors
+                      ${form.settings.maxMembers === n
+                        ? 'bg-[var(--color-primary)] text-white border-[var(--color-primary)]'
+                        : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}>
+                    {n}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-
-          {/* Save settings separately if editing */}
-          {isEdit && (
-            <button
-              onClick={() => settingsMut.mutate(form.settings)}
-              disabled={settingsMut.isPending}
-              className="btn-secondary w-full py-2.5 text-sm"
-            >
-              {settingsMut.isPending ? 'Saving…' : 'Save Settings'}
-            </button>
-          )}
         </div>
-
-        {/* Footer */}
         <div className="p-6 border-t border-[var(--color-border)] flex gap-3">
           <button onClick={onClose} className="btn-secondary flex-1 py-3 text-sm">Cancel</button>
-          <button
-            onClick={() => mut.mutate(form)}
-            disabled={!form.name.trim() || mut.isPending}
-            className="btn-primary flex-1 py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <Plus size={14} /> {mut.isPending ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Group'}
+          <button onClick={() => mut.mutate(form)} disabled={!form.name.trim() || mut.isPending}
+            className="btn-primary flex-1 py-3 text-sm flex items-center justify-center gap-2 disabled:opacity-50">
+            <Plus size={14} /> {mut.isPending ? 'Saving…' : isEdit ? 'Save Changes' : 'Create Batch'}
           </button>
         </div>
       </div>
@@ -237,117 +475,171 @@ function GroupDrawer({ initial, onClose, onSaved }) {
   );
 }
 
-// ── Invite Accept Page (via token) ────────────────────────────────────────────
-export function GroupInviteAcceptPage() {
-  const { token } = useParams();
-  const navigate   = useNavigate();
-  const qc         = useQueryClient();
-  const { isAuthenticated } = useAuthStore();
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['groupInvite', token],
-    queryFn:  () => groupApi.validateInvite(token).then(r => r.data),
-  });
+// ── Invite Popup (replaces separate accept page) ──────────────────────────────
+function InvitePopup({ invite, onClose, onAccepted }) {
+  const qc      = useQueryClient();
+  const navigate = useNavigate();
 
   const acceptMut = useMutation({
-    mutationFn: () => groupApi.acceptInvite(token),
+    mutationFn: () => groupApi.acceptInvite(invite.token),
     onSuccess: (res) => {
-      toast.success('Welcome to the group!');
+      toast.success('Welcome to the batch!');
+      // Optimistically remove from pending invites immediately
+      qc.setQueryData(['myGroupInvites'], old =>
+        old ? { ...old, invites: (old.invites || []).filter(i => i._id !== invite._id) } : old
+      );
       qc.invalidateQueries({ queryKey: ['groups'] });
-      navigate(`/groups?join=${res.data.groupId}`);
+      onAccepted?.(res.data?.groupId);
+      onClose();
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to accept'),
   });
 
   const declineMut = useMutation({
-    mutationFn: () => groupApi.declineInvite(token),
-    onSuccess: () => { toast.success('Invite declined'); navigate('/groups'); },
+    mutationFn: () => groupApi.declineInvite(invite.token),
+    onSuccess: () => {
+      toast.success('Invite declined');
+      // Optimistically remove from pending invites immediately
+      qc.setQueryData(['myGroupInvites'], old =>
+        old ? { ...old, invites: (old.invites || []).filter(i => i._id !== invite._id) } : old
+      );
+      qc.invalidateQueries({ queryKey: ['myGroupInvites'] });
+      onClose();
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
   });
 
-  if (!isAuthenticated) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
-        <div className="card max-w-sm w-full p-8 text-center">
-          <Users size={40} className="mx-auto mb-3 text-[var(--color-primary)]" />
-          <h2 className="font-bold text-[var(--color-text)] text-lg mb-2">Group Invitation</h2>
-          <p className="text-sm text-[var(--color-text-muted)] mb-6">Please log in to accept this group invitation.</p>
-          <Link to="/login" className="btn-primary block w-full py-3 text-sm">Log In to Accept</Link>
-        </div>
-      </div>
-    );
-  }
-
-  if (isLoading) return <div className="flex items-center justify-center h-screen"><div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>;
-
-  if (error) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
-        <div className="card max-w-sm w-full p-8 text-center">
-          <X size={40} className="mx-auto mb-3 text-red-500" />
-          <h2 className="font-bold text-[var(--color-text)] text-lg mb-2">Invalid Invite</h2>
-          <p className="text-sm text-[var(--color-text-muted)] mb-6">{error.response?.data?.message || 'This invite link is invalid or expired.'}</p>
-          <Link to="/groups" className="btn-secondary block w-full py-3 text-sm">Back to Groups</Link>
-        </div>
-      </div>
-    );
-  }
-
-  const invite = data?.invite;
   return (
-    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
-      <div className="card max-w-sm w-full p-8 text-center animate-slide-up">
-        <div className="w-16 h-16 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
-          <Users size={28} className="text-green-600 dark:text-green-400" />
+    <Modal onClose={onClose}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-sm p-6 text-center animate-slide-up">
+        <div className="w-14 h-14 rounded-2xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center mx-auto mb-4">
+          <Users size={24} className="text-green-600 dark:text-green-400" />
         </div>
-        <h2 className="font-bold text-[var(--color-text)] text-xl mb-1">You're Invited!</h2>
-        <p className="text-sm text-[var(--color-text-muted)] mb-4">
-          <strong className="text-[var(--color-text)]">{invite?.invitedBy?.name}</strong> invited you to join
-        </p>
-        <div className="bg-[var(--color-bg-alt)] rounded-xl p-4 mb-6">
-          <p className="font-bold text-[var(--color-text)] text-lg">{invite?.group?.name}</p>
-          {invite?.group?.description && <p className="text-sm text-[var(--color-text-muted)] mt-1">{invite?.group?.description}</p>}
-          <p className="text-xs text-[var(--color-text-muted)] mt-2">Instructor: {invite?.group?.instructor?.name}</p>
+        <h2 className="font-bold text-[var(--color-text)] text-lg mb-1">You're Invited to a Batch!</h2>
+        {invite.invitedBy?.name && (
+          <p className="text-sm text-[var(--color-text-muted)] mb-3">
+            <strong className="text-[var(--color-text)]">{invite.invitedBy.name}</strong> invited you to join
+          </p>
+        )}
+        <div className="bg-[var(--color-bg-alt)] rounded-xl p-4 mb-5 text-left">
+          <p className="font-bold text-[var(--color-text)]">{invite.group?.name}</p>
+          {invite.group?.description && (
+            <p className="text-sm text-[var(--color-text-muted)] mt-1">{invite.group.description}</p>
+          )}
+          <p className="text-xs text-[var(--color-text-muted)] mt-2">
+            Instructor: {invite.group?.instructor?.name}
+          </p>
         </div>
         <div className="flex gap-3">
-          <button
-            onClick={() => declineMut.mutate()}
-            disabled={declineMut.isPending}
-            className="btn-secondary flex-1 py-3 text-sm"
-          >
-            Decline
+          <button onClick={() => declineMut.mutate()} disabled={declineMut.isPending || acceptMut.isPending}
+            className="btn-secondary flex-1 py-2.5 text-sm">
+            {declineMut.isPending ? 'Declining…' : 'Decline'}
           </button>
-          <button
-            onClick={() => acceptMut.mutate()}
-            disabled={acceptMut.isPending}
-            className="btn-primary flex-1 py-3 text-sm flex items-center justify-center gap-2"
-          >
-            <UserCheck size={15} /> {acceptMut.isPending ? 'Joining…' : 'Accept & Join'}
+          <button onClick={() => acceptMut.mutate()} disabled={acceptMut.isPending || declineMut.isPending}
+            className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-2">
+            <UserCheck size={15} />
+            {acceptMut.isPending ? 'Joining…' : 'Accept & Join'}
           </button>
         </div>
       </div>
+    </Modal>
+  );
+}
+
+// ── Invite Accept Page (via direct link / email) ──────────────────────────────
+// Kept for email invite links; renders same popup style inside a centered overlay
+export function GroupInviteAcceptPage() {
+  const { token }           = useParams();
+  const navigate            = useNavigate();
+  const { isAuthenticated } = useAuthStore();
+
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['groupInvite', token],
+    queryFn:  () => groupApi.validateInvite(token).then(r => r.data),
+    enabled:  !!token && isAuthenticated,
+  });
+
+  if (!isAuthenticated) return (
+    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
+      <div className="card max-w-sm w-full p-8 text-center">
+        <Users size={40} className="mx-auto mb-3 text-[var(--color-primary)]" />
+        <h2 className="font-bold text-[var(--color-text)] text-lg mb-2">Batch Invitation</h2>
+        <p className="text-sm text-[var(--color-text-muted)] mb-6">Please log in to accept this batch invitation.</p>
+        <Link to="/login" className="btn-primary block w-full py-3 text-sm">Log In to Accept</Link>
+      </div>
+    </div>
+  );
+
+  if (isLoading) return (
+    <div className="flex items-center justify-center h-screen">
+      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+
+  if (error) return (
+    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
+      <div className="card max-w-sm w-full p-8 text-center">
+        <X size={40} className="mx-auto mb-3 text-red-500" />
+        <h2 className="font-bold text-[var(--color-text)] text-lg mb-2">Invalid Invite</h2>
+        <p className="text-sm text-[var(--color-text-muted)] mb-6">
+          {error.response?.data?.message || 'This invite link is invalid or expired.'}
+        </p>
+        <Link to="/batches" className="btn-secondary block w-full py-3 text-sm">Back to Batches</Link>
+      </div>
+    </div>
+  );
+
+  // Build a synthetic invite object from the validated data so InvitePopup can reuse it
+  const raw = data?.invite;
+  const syntheticInvite = {
+    _id: raw?._id || token,
+    token,
+    invitedBy: raw?.invitedBy,
+    group: raw?.group,
+  };
+
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)] p-4">
+      <InvitePopup
+        invite={syntheticInvite}
+        onClose={() => navigate('/batches')}
+        onAccepted={(groupId) => navigate(groupId ? `/batches?join=${groupId}` : '/batches')}
+      />
     </div>
   );
 }
 
-// ── WhatsApp-style Chat Panel ─────────────────────────────────────────────────
+// ── Chat Panel ────────────────────────────────────────────────────────────────
 function ChatPanel({ group, isOwner }) {
-  const { user } = useAuthStore();
-  const qc = useQueryClient();
-  const [text, setText] = useState('');
-  const [replyTo, setReplyTo] = useState(null);
-  const [uploading, setUploading] = useState(false);
-  const [editingMsgId, setEditingMsgId] = useState(null);
-  const [editText, setEditText] = useState('');
-  const bottomRef = useRef(null);
-  const fileInputRef = useRef(null);
+  const { user }   = useAuthStore();
+  const qc         = useQueryClient();
+  const members    = group.members || [];
+  // Include instructor in mention list
+  const allMentionable = [
+    ...(group.instructor ? [group.instructor] : []),
+    ...members.filter(m => idStr(m._id) !== idStr(group.instructor?._id)),
+  ];
 
-  const canSend = group.settings?.whoCanSend === 'all' || isOwner;
+  const [text,          setText]          = useState('');
+  const [replyTo,       setReplyTo]       = useState(null);
+  const [pendingFile,   setPendingFile]   = useState(null); // { base64, type, name, size, preview }
+  const [editingMsgId,  setEditingMsgId]  = useState(null);
+  const [editText,      setEditText]      = useState('');
+  const [mentionSearch, setMentionSearch] = useState('');
+  const [showMentions,  setShowMentions]  = useState(false);
+  const mentionStart = useRef(-1);
+
+  const bottomRef    = useRef(null);
+  const fileInputRef = useRef(null);
+  const textareaRef  = useRef(null);
+
+  const canSend    = group.settings?.whoCanSend === 'all' || isOwner;
   const allowMedia = group.settings?.allowMedia !== false || isOwner;
 
   const { data, isLoading } = useQuery({
-    queryKey: ['groupMessages', group._id],
-    queryFn:  () => groupApi.getMessages(group._id, { limit: 60 }).then(r => r.data),
-    refetchInterval: 3000,
+    queryKey:        ['groupMessages', group._id],
+    queryFn:         () => groupApi.getMessages(group._id, { limit: 80 }).then(r => r.data),
+    refetchInterval: 8000,
   });
   const messages = data?.messages || [];
 
@@ -357,71 +649,159 @@ function ChatPanel({ group, isOwner }) {
 
   const sendMut = useMutation({
     mutationFn: (payload) => groupApi.sendMessage(group._id, payload),
-    onSuccess: () => { setText(''); setReplyTo(null); qc.invalidateQueries({ queryKey: ['groupMessages', group._id] }); },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to send'),
+    onMutate: async (payload) => {
+      // Cancel any in-flight refetches so they don't overwrite our optimistic update
+      await qc.cancelQueries({ queryKey: ['groupMessages', group._id] });
+      const prev = qc.getQueryData(['groupMessages', group._id]);
+      const myId = user?.id || user?._id;
+      const tempMsg = {
+        _id: `temp-${Date.now()}`,
+        text: payload.text || null,
+        type: payload.mediaBase64 ? 'media' : 'text',
+        sender: { _id: myId, name: user?.name || 'You', role: user?.role },
+        createdAt: new Date().toISOString(),
+        replyTo: replyTo || null,
+        _pending: true,
+        ...(payload.mediaBase64 ? {
+          mediaType: payload.mediaType,
+          fileName:  payload.fileName,
+          fileSize:  payload.fileSize,
+          mediaUrl:  payload.mediaType === 'image' ? payload.mediaBase64 : null,
+        } : {}),
+      };
+      qc.setQueryData(['groupMessages', group._id], (old) => ({
+        ...(old || {}),
+        messages: [...(old?.messages || []), tempMsg],
+      }));
+      setText(''); setReplyTo(null); setPendingFile(null); setShowMentions(false);
+      return { prev };
+    },
+    onError: (err, vars, ctx) => {
+      if (ctx?.prev) qc.setQueryData(['groupMessages', group._id], ctx.prev);
+      toast.error(err.response?.data?.message || 'Failed to send');
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['groupMessages', group._id] });
+    },
   });
 
   const deleteMut = useMutation({
     mutationFn: (msgId) => groupApi.deleteMessage(group._id, msgId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groupMessages', group._id] }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['groupMessages', group._id] }),
   });
 
   const editMut = useMutation({
     mutationFn: ({ msgId, text }) => groupApi.editMessage(group._id, msgId, text),
-    onSuccess: () => {
-      setEditingMsgId(null);
-      setEditText('');
+    onSuccess:  () => {
+      setEditingMsgId(null); setEditText('');
       qc.invalidateQueries({ queryKey: ['groupMessages', group._id] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to edit'),
   });
 
+  // @mention logic
+  const handleTextChange = useCallback((e) => {
+    const val    = e.target.value;
+    const cursor = e.target.selectionStart;
+    setText(val);
+    const before = val.slice(0, cursor);
+    const match  = before.match(/@(\w*)$/);
+    if (match) {
+      setMentionSearch(match[1].toLowerCase());
+      setShowMentions(true);
+      mentionStart.current = cursor - match[0].length;
+    } else {
+      setShowMentions(false);
+      setMentionSearch('');
+    }
+  }, []);
+
+  const insertMention = useCallback((member) => {
+    const firstName = member.name?.split(' ')[0] || member.name;
+    const cursorPos  = textareaRef.current?.selectionStart ?? text.length;
+    const before     = text.slice(0, mentionStart.current);
+    const after      = text.slice(cursorPos);
+    const newText    = `${before}@${firstName} ${after}`;
+    setText(newText);
+    setShowMentions(false);
+    setMentionSearch('');
+    requestAnimationFrame(() => {
+      if (textareaRef.current) {
+        const pos = before.length + firstName.length + 2;
+        textareaRef.current.focus();
+        textareaRef.current.setSelectionRange(pos, pos);
+      }
+    });
+  }, [text]);
+
+  const filteredMentions = allMentionable.filter(m =>
+    !mentionSearch || m.name?.toLowerCase().includes(mentionSearch)
+  ).slice(0, 6);
+
   const handleSend = () => {
-    if (!text.trim() || sendMut.isPending) return;
-    sendMut.mutate({ text: text.trim(), replyTo: replyTo?._id || null });
+    const hasText = !!text.trim();
+    const hasFile = !!pendingFile;
+    if (!hasText && !hasFile) return;
+    if (sendMut.isPending) return;
+    sendMut.mutate({
+      text:   text.trim() || null,
+      replyTo: replyTo?._id || null,
+      ...(pendingFile ? {
+        mediaBase64: pendingFile.base64,
+        mediaType:   pendingFile.type,
+        fileName:    pendingFile.name,
+        fileSize:    pendingFile.size,
+      } : {}),
+    });
   };
 
+  // Only reads the file and sets preview — does NOT send
   const handleFileSelect = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 8 * 1024 * 1024) { toast.error('File too large (max 8 MB)'); return; }
-    setUploading(true);
     try {
       const base64 = await fileToBase64(file);
-      const isImage = file.type.startsWith('image/');
-      sendMut.mutate({
-        text:        text.trim() || null,
-        replyTo:     replyTo?._id || null,
-        mediaBase64: base64,
-        mediaType:   isImage ? 'image' : 'document',
-        fileName:    file.name,
-        fileSize:    file.size,
+      setPendingFile({
+        base64,
+        type:    file.type.startsWith('image/') ? 'image' : 'document',
+        name:    file.name,
+        size:    file.size,
+        preview: file.type.startsWith('image/') ? base64 : null,
       });
-      setText('');
-      setReplyTo(null);
     } catch { toast.error('Failed to read file'); }
-    finally { setUploading(false); if (fileInputRef.current) fileInputRef.current.value = ''; }
+    finally { if (fileInputRef.current) fileInputRef.current.value = ''; }
   };
 
-  if (isLoading) return <div className="flex-1 flex items-center justify-center"><div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>;
+  if (isLoading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-6 h-6 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
 
-  // Group messages by date for dividers
-  const groupedMessages = [];
-  let lastDate = null;
+  // Build grouped messages with date dividers + consecutive-sender tracking
+  const grouped = [];
+  let lastDate     = null;
+  let lastSenderId = null;
   for (const msg of messages) {
-    const dateKey = msg.createdAt;
-    if (!lastDate || !sameDay(lastDate, dateKey)) {
-      groupedMessages.push({ type: 'divider', date: dateKey });
-      lastDate = dateKey;
+    if (!lastDate || !sameDay(lastDate, msg.createdAt)) {
+      grouped.push({ type: 'divider', date: msg.createdAt });
+      lastDate     = msg.createdAt;
+      lastSenderId = null;
     }
-    groupedMessages.push({ type: 'message', msg });
+    const sid      = idStr(msg.sender?._id || msg.sender);
+    const sameAsPrev = msg.type !== 'system' && !!sid && sid === lastSenderId;
+    grouped.push({ type: 'message', msg, sameAsPrev });
+    if (msg.type !== 'system') lastSenderId = sid;
   }
 
   return (
-    <div className="flex-1 flex flex-col min-h-0 bg-[var(--color-bg)]">
-      {/* Chat background pattern */}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1" style={{ backgroundImage: 'url("data:image/svg+xml,%3Csvg width=\'60\' height=\'60\' viewBox=\'0 0 60 60\' xmlns=\'http://www.w3.org/2000/svg\'%3E%3Cg fill=\'none\' fill-rule=\'evenodd\'%3E%3Cg fill=\'%23000000\' fill-opacity=\'0.015\'%3E%3Cpath d=\'M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z\'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")' }}>
-
+    <div className="flex-1 flex flex-col min-h-0">
+      {/* Message list */}
+      <div
+        className="flex-1 overflow-y-auto px-4 py-3"
+        style={{ background: 'var(--color-bg)' }}
+      >
         {messages.length === 0 && (
           <div className="flex items-center justify-center h-full min-h-[200px]">
             <div className="text-center">
@@ -432,47 +812,51 @@ function ChatPanel({ group, isOwner }) {
           </div>
         )}
 
-        {groupedMessages.map((item, idx) => {
-          if (item.type === 'divider') {
-            return (
-              <div key={`div-${idx}`} className="flex items-center justify-center my-3">
-                <span className="bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] text-[10px] font-medium px-3 py-1 rounded-full border border-[var(--color-border)]">
-                  {formatDateDivider(item.date)}
-                </span>
-              </div>
-            );
-          }
+        {grouped.map((item, idx) => {
+          if (item.type === 'divider') return (
+            <div key={`d-${idx}`} className="flex items-center justify-center my-4">
+              <span className="bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] text-[10px] font-medium px-3 py-1 rounded-full border border-[var(--color-border)]">
+                {formatDateDivider(item.date)}
+              </span>
+            </div>
+          );
 
-          const { msg } = item;
-          const isMine    = msg.sender?._id === user?._id;
-          const isSystem  = msg.type === 'system';
-          const isExam    = msg.type === 'exam_share';
-          const isMedia   = msg.type === 'media';
+          const { msg, sameAsPrev } = item;
+          // Robust isMine: compare both populated _id and raw id string
+          const isMine   = idStr(msg.sender?._id || msg.sender) === idStr(user?.id || user?._id);
+          const isSystem = msg.type === 'system';
+          const isExam   = msg.type === 'exam_share';
+          const isMedia  = msg.type === 'media';
           const isInstruct = msg.sender?.role === 'instructor' || msg.sender?.role === 'admin';
+          const canEdit   = isMine && msg.type === 'text' && !isSystem && !msg._pending;
+          const canDelete = isMine && !isSystem && !msg._pending; // only own messages
 
-          if (isSystem) {
-            return (
-              <div key={msg._id} className="flex justify-center my-2">
-                <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-3 py-1 rounded-full border border-[var(--color-border)]">
-                  {msg.text}
-                </span>
-              </div>
-            );
-          }
+          if (isSystem) return (
+            <div key={msg._id} className="flex justify-center my-2">
+              <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-3 py-1 rounded-full border border-[var(--color-border)]">
+                {msg.text}
+              </span>
+            </div>
+          );
 
           return (
-            <div key={msg._id} className={`flex gap-2 group ${isMine ? 'flex-row-reverse' : 'flex-row'} items-end mb-1`}>
-              {/* Avatar (others only) */}
+            <div
+              key={msg._id}
+              className={`flex items-end gap-2 group/msg ${isMine ? 'flex-row-reverse' : 'flex-row'} ${sameAsPrev ? 'mt-0.5' : 'mt-3'}`}
+            >
+              {/* Avatar — others only, hidden for consecutive */}
               {!isMine && (
-                <div className="w-7 h-7 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-teal-500 text-white flex items-center justify-center text-xs font-bold shrink-0 mb-1">
+                <div className={`w-7 h-7 rounded-full shrink-0 flex items-center justify-center text-xs font-bold text-white
+                  bg-gradient-to-br from-[var(--color-primary)] to-teal-500
+                  ${sameAsPrev ? 'invisible' : ''}`}>
                   {msg.sender?.name?.[0]?.toUpperCase() || '?'}
                 </div>
               )}
 
-              <div className={`max-w-[72%] flex flex-col gap-0.5 ${isMine ? 'items-end' : 'items-start'}`}>
-                {/* Sender + role */}
-                {!isMine && (
-                  <div className="flex items-center gap-1.5 px-1">
+              <div className={`max-w-[68%] flex flex-col ${isMine ? 'items-end' : 'items-start'}`}>
+                {/* Sender name — only first in group */}
+                {!isMine && !sameAsPrev && (
+                  <div className="flex items-center gap-1.5 px-1 mb-0.5">
                     <span className="text-xs font-semibold text-[var(--color-text)]">{msg.sender?.name}</span>
                     {isInstruct && (
                       <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 leading-none">
@@ -484,7 +868,7 @@ function ChatPanel({ group, isOwner }) {
 
                 {/* Reply quote */}
                 {msg.replyTo && (
-                  <div className={`px-2.5 py-1.5 rounded-lg text-[10px] border-l-2 border-[var(--color-primary)]/50 bg-[var(--color-bg-alt)] max-w-full ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
+                  <div className={`px-2.5 py-1.5 rounded-lg text-[10px] border-l-2 border-[var(--color-primary)]/60 bg-[var(--color-bg-alt)] max-w-full mb-0.5 ${isMine ? 'rounded-br-sm' : 'rounded-bl-sm'}`}>
                     <span className="font-semibold text-[var(--color-primary)]">{msg.replyTo.sender?.name || 'Unknown'}</span>
                     <p className="text-[var(--color-text-muted)] truncate mt-0.5">{msg.replyTo.text || '[media]'}</p>
                   </div>
@@ -492,11 +876,11 @@ function ChatPanel({ group, isOwner }) {
 
                 {/* Bubble */}
                 <div
-                  className={`rounded-2xl px-3.5 py-2.5 text-sm shadow-sm relative ${
-                    isMine
-                      ? 'bg-[var(--color-primary)] text-white rounded-br-sm'
-                      : 'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-sm'
-                  }`}
+                  className={`rounded-2xl px-3 py-1.5 text-sm shadow-sm
+                    ${isMine
+                      ? 'bg-[var(--color-primary)] text-white rounded-br-none'
+                      : 'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-none'
+                    }`}
                 >
                   {/* Exam share */}
                   {isExam && (
@@ -506,12 +890,12 @@ function ChatPanel({ group, isOwner }) {
                         <span className="text-[10px] font-semibold uppercase tracking-wide">Shared Test</span>
                       </div>
                       {msg.examRef ? (
-                        <Link
-                          to={`/exam/${msg.examRef._id}`}
-                          className={`block rounded-xl px-3 py-2.5 mt-1 transition-colors ${isMine ? 'bg-white/15 hover:bg-white/25' : 'bg-[var(--color-bg-alt)] hover:bg-[var(--color-border)]'}`}
-                        >
+                        <Link to={`/exam/${msg.examRef._id}`}
+                          className={`block rounded-xl px-3 py-2.5 mt-1 transition-colors ${isMine ? 'bg-white/15 hover:bg-white/25' : 'bg-[var(--color-bg-alt)] hover:bg-[var(--color-border)]'}`}>
                           <p className="font-semibold text-sm leading-tight">{msg.examRef.title}</p>
-                          <p className={`text-xs mt-0.5 ${isMine ? 'opacity-70' : 'text-[var(--color-text-muted)]'}`}>{msg.examRef.subject} · {msg.examRef.difficulty}</p>
+                          <p className={`text-xs mt-0.5 ${isMine ? 'opacity-70' : 'text-[var(--color-text-muted)]'}`}>
+                            {msg.examRef.subject} · {msg.examRef.difficulty}
+                          </p>
                           <span className={`inline-block mt-2 text-[10px] font-bold px-2 py-0.5 rounded-full ${isMine ? 'bg-white/20' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'}`}>
                             Attempt Now →
                           </span>
@@ -527,20 +911,13 @@ function ChatPanel({ group, isOwner }) {
                     <div>
                       {msg.mediaType === 'image' ? (
                         <a href={msg.mediaUrl} target="_blank" rel="noreferrer">
-                          <img
-                            src={msg.mediaUrl}
-                            alt={msg.fileName || 'image'}
+                          <img src={msg.mediaUrl} alt={msg.fileName || 'image'}
                             className="rounded-xl max-w-[220px] max-h-[200px] object-cover cursor-pointer hover:opacity-90 transition-opacity"
-                            onError={e => { e.target.style.display = 'none'; }}
-                          />
+                            onError={e => { e.target.style.display = 'none'; }} />
                         </a>
                       ) : (
-                        <a
-                          href={msg.mediaUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className={`flex items-center gap-2.5 p-2.5 rounded-xl ${isMine ? 'bg-white/15 hover:bg-white/25' : 'bg-[var(--color-bg-alt)] hover:bg-[var(--color-border)]'} transition-colors`}
-                        >
+                        <a href={msg.mediaUrl} target="_blank" rel="noreferrer"
+                          className={`flex items-center gap-2.5 p-2.5 rounded-xl ${isMine ? 'bg-white/15 hover:bg-white/25' : 'bg-[var(--color-bg-alt)] hover:bg-[var(--color-border)]'} transition-colors`}>
                           <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isMine ? 'bg-white/20' : 'bg-[var(--color-primary)]/10'}`}>
                             <FileText size={14} className={isMine ? 'text-white' : 'text-[var(--color-primary)]'} />
                           </div>
@@ -550,11 +927,11 @@ function ChatPanel({ group, isOwner }) {
                           </div>
                         </a>
                       )}
-                      {msg.text && <Linkified text={msg.text} isMine={isMine} />}
+                      {msg.text && <div className="mt-1.5"><MessageContent text={msg.text} isMine={isMine} members={allMentionable} /></div>}
                     </div>
                   )}
 
-                  {/* Text */}
+                  {/* Text message */}
                   {msg.type === 'text' && (
                     editingMsgId === msg._id ? (
                       <div className="flex flex-col gap-1.5 min-w-[200px]">
@@ -565,54 +942,56 @@ function ChatPanel({ group, isOwner }) {
                             if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); editMut.mutate({ msgId: msg._id, text: editText }); }
                             if (e.key === 'Escape') setEditingMsgId(null);
                           }}
-                          className="input text-sm resize-none py-1.5 bg-white/10 border-white/20 text-inherit placeholder-white/50"
-                          rows={2}
-                          autoFocus
+                          className="input text-sm resize-none py-1.5 bg-white/10 border-white/20 text-inherit"
+                          rows={2} autoFocus
                         />
-                        <div className="flex items-center gap-1.5 justify-end">
-                          <button onClick={() => setEditingMsgId(null)} className="text-[10px] px-2.5 py-1 rounded-lg bg-black/10 hover:bg-black/20 transition-colors">Cancel</button>
-                          <button
-                            onClick={() => editMut.mutate({ msgId: msg._id, text: editText })}
+                        <div className="flex gap-1.5 justify-end">
+                          <button onClick={() => setEditingMsgId(null)}
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-black/10 hover:bg-black/20 transition-colors">Cancel</button>
+                          <button onClick={() => editMut.mutate({ msgId: msg._id, text: editText })}
                             disabled={!editText.trim() || editMut.isPending}
-                            className="text-[10px] px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 font-semibold transition-colors disabled:opacity-50"
-                          >
+                            className="text-[10px] px-2.5 py-1 rounded-lg bg-white/20 hover:bg-white/30 font-semibold disabled:opacity-50">
                             {editMut.isPending ? 'Saving…' : 'Save'}
                           </button>
                         </div>
                       </div>
                     ) : (
-                      <>
-                        <Linkified text={msg.text} isMine={isMine} />
-                        {msg.edited && (
-                          <span className={`text-[9px] italic ${isMine ? 'opacity-50' : 'text-[var(--color-text-muted)]'}`}>edited</span>
-                        )}
-                      </>
+                      <MessageContent text={msg.text} isMine={isMine} members={allMentionable} />
                     )
                   )}
 
-                  {/* Timestamp inside bubble */}
-                  <span className={`text-[9px] block text-right mt-1 ${isMine ? 'opacity-60' : 'text-[var(--color-text-muted)]'}`}>
-                    {fmtFull(msg.createdAt)}
-                  </span>
+                  {/* Timestamp + edited + pending */}
+                  <div className={`flex items-center justify-end gap-1.5 mt-0.5 ${isMine ? 'opacity-60' : ''}`}>
+                    {msg.edited && (
+                      <span className={`text-[9px] italic ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>edited</span>
+                    )}
+                    {msg._pending ? (
+                      <span className={`text-[9px] italic ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>Sending…</span>
+                    ) : (
+                      <span className={`text-[9px] ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>
+                        {fmtMsgTime(msg.createdAt)}
+                      </span>
+                    )}
+                  </div>
                 </div>
 
-                {/* Actions on hover */}
-                <div className={`flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity px-1 ${isMine ? 'flex-row-reverse' : ''}`}>
+                {/* Message actions */}
+                <div className={`flex items-center gap-0.5 mt-0.5 ${isMine ? 'flex-row-reverse' : ''}`}>
                   {!isSystem && !isExam && (
-                    <button onClick={() => setReplyTo(msg)} className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)]">
+                    <button onClick={() => setReplyTo(msg)}
+                      className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)] transition-colors">
                       Reply
                     </button>
                   )}
-                  {isMine && msg.type === 'text' && !isSystem && (
-                    <button
-                      onClick={() => { setEditingMsgId(msg._id); setEditText(msg.text); }}
-                      className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)]"
-                    >
+                  {canEdit && (
+                    <button onClick={() => { setEditingMsgId(msg._id); setEditText(msg.text); }}
+                      className="text-[10px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)] transition-colors">
                       Edit
                     </button>
                   )}
-                  {(isMine || isOwner) && (
-                    <button onClick={() => deleteMut.mutate(msg._id)} className="text-[10px] text-[var(--color-text-muted)] hover:text-red-500 transition-colors px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)]">
+                  {canDelete && (
+                    <button onClick={() => deleteMut.mutate(msg._id)}
+                      className="text-[10px] text-[var(--color-text-muted)] hover:text-red-500 px-1.5 py-0.5 rounded hover:bg-[var(--color-bg-alt)] transition-colors">
                       Delete
                     </button>
                   )}
@@ -624,7 +1003,25 @@ function ChatPanel({ group, isOwner }) {
         <div ref={bottomRef} />
       </div>
 
-      {/* Reply preview */}
+      {/* File attachment preview strip */}
+      {pendingFile && (
+        <div className="px-4 py-2 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center gap-3">
+          <div className="w-8 h-8 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
+            {pendingFile.preview
+              ? <img src={pendingFile.preview} alt="" className="w-8 h-8 rounded-lg object-cover" />
+              : <FileText size={16} className="text-[var(--color-primary)]" />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-xs font-medium text-[var(--color-text)] truncate">{pendingFile.name}</p>
+            <p className="text-[10px] text-[var(--color-text-muted)]">{bytesToSize(pendingFile.size)} · Click Send to attach</p>
+          </div>
+          <button onClick={() => setPendingFile(null)} className="p-1 text-[var(--color-text-muted)] hover:text-red-500">
+            <X size={14} />
+          </button>
+        </div>
+      )}
+
+      {/* Reply strip */}
       {replyTo && (
         <div className="px-4 py-2 bg-[var(--color-surface)] border-t border-[var(--color-border)] flex items-center gap-3">
           <div className="w-0.5 h-8 bg-[var(--color-primary)] rounded-full" />
@@ -632,48 +1029,79 @@ function ChatPanel({ group, isOwner }) {
             <p className="text-[10px] font-semibold text-[var(--color-primary)]">Replying to {replyTo.sender?.name}</p>
             <p className="text-xs text-[var(--color-text-muted)] truncate">{replyTo.text || '[media]'}</p>
           </div>
-          <button onClick={() => setReplyTo(null)} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={13} /></button>
+          <button onClick={() => setReplyTo(null)} className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+            <X size={13} />
+          </button>
         </div>
       )}
 
       {/* Input */}
       {canSend ? (
-        <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)]">
+        <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] relative">
+          {/* @mention dropdown */}
+          {showMentions && filteredMentions.length > 0 && (
+            <div className="absolute bottom-full left-4 right-4 mb-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden z-20">
+              <p className="text-[10px] font-semibold text-[var(--color-text-muted)] px-3 py-1.5 border-b border-[var(--color-border)] uppercase tracking-wide">
+                Mention member
+              </p>
+              {filteredMentions.map(m => (
+                <button
+                  key={idStr(m._id)}
+                  onMouseDown={e => { e.preventDefault(); insertMention(m); }}
+                  className="flex items-center gap-2.5 w-full px-3 py-2.5 hover:bg-[var(--color-bg-alt)] transition-colors text-left"
+                >
+                  <div className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-[10px] font-bold shrink-0">
+                    {m.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-text)] truncate">{m.name}</p>
+                    <p className="text-[10px] text-[var(--color-text-muted)] truncate">{m.email}</p>
+                  </div>
+                  {(m.role === 'instructor' || m.role === 'admin') && (
+                    <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400 shrink-0">
+                      Instructor
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex items-end gap-2">
             {allowMedia && (
               <>
-                <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,.zip" className="hidden" onChange={handleFileSelect} />
-                <button
-                  onClick={() => fileInputRef.current?.click()}
-                  disabled={uploading || sendMut.isPending}
-                  className="p-2.5 rounded-xl hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors shrink-0 mb-0.5 disabled:opacity-50"
-                  title="Attach file"
-                >
-                  {uploading ? <div className="w-4 h-4 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /> : <Paperclip size={18} />}
+                <input ref={fileInputRef} type="file" accept="image/*,.pdf,.doc,.docx,.txt,.zip"
+                  className="hidden" onChange={handleFileSelect} />
+                <button onClick={() => fileInputRef.current?.click()}
+                  disabled={sendMut.isPending}
+                  className={`p-2.5 rounded-xl hover:bg-[var(--color-bg-alt)] transition-colors shrink-0 mb-0.5 disabled:opacity-50
+                    ${pendingFile ? 'text-[var(--color-primary)] bg-[var(--color-primary)]/10' : 'text-[var(--color-text-muted)] hover:text-[var(--color-primary)]'}`}>
+                  <Paperclip size={18} />
                 </button>
               </>
             )}
             <textarea
+              ref={textareaRef}
               value={text}
-              onChange={e => setText(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); } }}
-              placeholder={canSend ? 'Type a message… (Enter to send)' : 'Only instructor can send messages'}
+              onChange={handleTextChange}
+              onKeyDown={e => {
+                if (showMentions && e.key === 'Escape') { setShowMentions(false); return; }
+                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
+              }}
+              placeholder={pendingFile ? 'Add a caption… (optional)' : 'Type a message… (@ to mention, Enter to send)'}
               rows={1}
               className="flex-1 input resize-none text-sm py-2.5 max-h-28 overflow-y-auto"
               style={{ minHeight: '44px' }}
             />
-            <button
-              onClick={handleSend}
-              disabled={!text.trim() || sendMut.isPending}
-              className="p-2.5 btn-primary rounded-xl disabled:opacity-50 shrink-0 mb-0.5"
-            >
+            <button onClick={handleSend} disabled={(!text.trim() && !pendingFile) || sendMut.isPending}
+              className="p-2.5 btn-primary rounded-xl disabled:opacity-50 shrink-0 mb-0.5">
               <Send size={16} />
             </button>
           </div>
         </div>
       ) : (
         <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] text-center">
-          <p className="text-xs text-[var(--color-text-muted)]">Only the instructor can send messages in this group.</p>
+          <p className="text-xs text-[var(--color-text-muted)]">Only the instructor can send messages in this batch.</p>
         </div>
       )}
     </div>
@@ -683,173 +1111,306 @@ function ChatPanel({ group, isOwner }) {
 // ── Members Tab ───────────────────────────────────────────────────────────────
 function MembersTab({ group, isOwner }) {
   const qc = useQueryClient();
-  const [emailInput, setEmailInput] = useState('');
-  const [emailList, setEmailList] = useState([]);
-  const [inviting, setInviting] = useState(false);
+  const fileInputRef  = useRef(null);
+  const [showInvite,   setShowInvite]   = useState(false);
+  const [inviteTab,    setInviteTab]    = useState('email'); // 'email' | 'file'
+  const [emailInput,   setEmailInput]   = useState('');
+  const [emailList,    setEmailList]    = useState([]);
+  const [inviting,     setInviting]     = useState(false);
+  const [memberSearch, setMemberSearch] = useState('');
+  const [parsedEmails, setParsedEmails] = useState([]);
+  const [fileName,     setFileName]     = useState('');
 
   const { data: invitesData } = useQuery({
     queryKey: ['groupInvites', group._id],
     queryFn:  () => groupApi.getInvites(group._id).then(r => r.data),
     enabled:  isOwner,
   });
-  const invites = invitesData?.invites || [];
-  const pendingInvites = invites.filter(i => i.status === 'pending');
+  const pendingInvites = (invitesData?.invites || []).filter(i => i.status === 'pending');
 
   const cancelMut = useMutation({
     mutationFn: (invId) => groupApi.cancelInvite(group._id, invId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['groupInvites', group._id] }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['groupInvites', group._id] }),
   });
-
   const removeMut = useMutation({
     mutationFn: (userId) => groupApi.removeMember(group._id, userId),
-    onSuccess: () => {
-      toast.success('Member removed');
-      qc.invalidateQueries({ queryKey: ['group', group._id] });
+    onSuccess:  () => { toast.success('Member removed'); qc.invalidateQueries({ queryKey: ['group', group._id] }); },
+  });
+  const bulkMut = useMutation({
+    mutationFn: (emails) => groupApi.bulkInvite(group._id, emails),
+    onSuccess: (res) => {
+      const { results } = res.data;
+      toast.success(`${results?.sent?.length || 0} invite(s) sent`);
+      if (results?.skipped?.length) toast(`${results.skipped.length} skipped`, { icon: '⚠️' });
+      setParsedEmails([]); setFileName('');
+      qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
     },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
   });
 
   const addEmail = () => {
     const e = emailInput.trim().toLowerCase();
     if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast.error('Enter a valid email'); return; }
     if (emailList.includes(e)) { toast.error('Already added'); return; }
-    setEmailList(prev => [...prev, e]);
+    setEmailList(p => [...p, e]);
     setEmailInput('');
   };
 
-  const sendInvites = async () => {
+  const sendManualInvites = async () => {
     if (!emailList.length) return;
     setInviting(true);
-    let sent = 0, failed = 0;
+    let sent = 0;
     for (const email of emailList) {
       try { await groupApi.inviteMember(group._id, email); sent++; }
-      catch (err) { failed++; toast.error(`${email}: ${err.response?.data?.message || 'Failed'}`); }
+      catch (err) { toast.error(`${email}: ${err.response?.data?.message || 'Failed'}`); }
     }
     setInviting(false);
-    if (sent) { toast.success(`${sent} invite${sent !== 1 ? 's' : ''} sent`); setEmailList([]); }
+    if (sent) {
+      toast.success(`${sent} invite${sent !== 1 ? 's' : ''} sent`);
+      setEmailList([]);
+      setShowInvite(false);
+    }
     qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
   };
 
-  return (
-    <div className="flex-1 overflow-y-auto p-5 space-y-5">
-      {/* Instructor */}
-      <div>
-        <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Instructor</p>
-        <div className="flex items-center gap-3 p-3 rounded-xl bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/30">
-          <div className="w-9 h-9 rounded-full bg-amber-500 text-white flex items-center justify-center text-sm font-bold shrink-0">
-            {group.instructor?.name?.[0]?.toUpperCase()}
-          </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[var(--color-text)] truncate">{group.instructor?.name}</p>
-            <p className="text-xs text-[var(--color-text-muted)] truncate">{group.instructor?.email}</p>
-          </div>
-          <span className="text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">Owner</span>
-        </div>
-      </div>
+  const handleFileUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb    = XLSX.read(evt.target.result, { type: 'array' });
+        const ws    = wb.Sheets[wb.SheetNames[0]];
+        const rows  = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        // Skip header row if it contains 'email' text, extract email column
+        const emails = [];
+        for (const row of rows) {
+          for (const cell of row) {
+            const val = String(cell || '').trim().toLowerCase();
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) emails.push(val);
+          }
+        }
+        const unique = [...new Set(emails)];
+        if (!unique.length) { toast.error('No valid emails found in file'); return; }
+        setParsedEmails(unique);
+        toast.success(`Found ${unique.length} email(s)`);
+      } catch { toast.error('Failed to parse file'); }
+    };
+    reader.readAsArrayBuffer(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
-      {/* Members */}
-      <div>
-        <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-          Members ({group.members?.length || 0})
-        </p>
-        {(!group.members || group.members.length === 0) ? (
-          <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No members yet. Invite someone!</p>
-        ) : (
-          <div className="space-y-2">
-            {group.members.map(m => (
-              <div key={m._id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-xs font-bold shrink-0">
-                  {m.name?.[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-[var(--color-text)] truncate">{m.name}</p>
-                  <p className="text-xs text-[var(--color-text-muted)] truncate">{m.email}</p>
-                </div>
-                {isOwner && (
-                  <button
-                    onClick={() => removeMut.mutate(m._id)}
-                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 transition-colors"
-                    title="Remove"
-                  >
-                    <LogOut size={13} />
+  const downloadSample = () => {
+    const ws  = XLSX.utils.aoa_to_sheet([['Name', 'Email'], ['Alice Smith', 'alice@example.com'], ['Bob Jones', 'bob@example.com']]);
+    const wb  = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Members');
+    XLSX.writeFile(wb, 'sample_members.xlsx');
+  };
+
+  const totalMembers = (group.members?.length || 0) + 1; // +1 for instructor
+
+  return (
+    <div className={`flex-1 overflow-y-auto ${!isOwner ? 'pt-4' : ''}`}>
+      {/* Add Members button */}
+      {isOwner && (
+        <div className="px-4 pt-3 pb-2">
+          <button
+            onClick={() => setShowInvite(v => !v)}
+            className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-primary)]/40 text-[var(--color-primary)] text-sm font-semibold hover:bg-[var(--color-primary)]/5 hover:border-[var(--color-primary)] transition-all"
+          >
+            <UserPlus size={15} />
+            {showInvite ? 'Close' : 'Add / Invite Members'}
+          </button>
+        </div>
+      )}
+
+      {/* Invite panel */}
+      {isOwner && showInvite && (
+        <div className="mx-4 mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 overflow-hidden">
+          {/* Tabs */}
+          <div className="flex border-b border-[var(--color-border)]">
+            {[['email', 'Email Invite'], ['file', 'Upload File']].map(([key, lbl]) => (
+              <button key={key} onClick={() => setInviteTab(key)}
+                className={`flex-1 py-2 text-xs font-semibold transition-colors
+                  ${inviteTab === key ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] -mb-px' : 'text-[var(--color-text-muted)]'}`}>
+                {lbl}
+              </button>
+            ))}
+          </div>
+
+          <div className="p-3 space-y-2.5">
+            {inviteTab === 'email' ? (
+              <>
+                <div className="flex gap-2">
+                  <input type="email" placeholder="student@email.com" value={emailInput}
+                    onChange={e => setEmailInput(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+                    className="input flex-1 text-sm py-2" />
+                  <button onClick={addEmail} disabled={!emailInput}
+                    className="btn-secondary px-3 disabled:opacity-50 text-sm flex items-center gap-1">
+                    <Plus size={13} /> Add
                   </button>
+                </div>
+                {emailList.length > 0 && (
+                  <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] max-h-24 overflow-y-auto">
+                    {emailList.map(e => (
+                      <span key={e} className="flex items-center gap-1 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
+                        {e}
+                        <button onClick={() => setEmailList(p => p.filter(x => x !== e))} className="hover:text-red-500"><X size={9} /></button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+                <button onClick={sendManualInvites} disabled={!emailList.length || inviting}
+                  className="btn-primary w-full text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50">
+                  <UserPlus size={13} />
+                  {inviting ? 'Sending…' : `Send ${emailList.length || ''} Invite${emailList.length !== 1 ? 's' : ''}`}
+                </button>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-[var(--color-text-muted)]">Upload .xlsx or .csv with email column</p>
+                  <button onClick={downloadSample}
+                    className="flex items-center gap-1 text-[10px] text-[var(--color-primary)] hover:underline">
+                    <Download size={10} /> Sample
+                  </button>
+                </div>
+                <button onClick={() => fileInputRef.current?.click()}
+                  className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-xs transition-colors">
+                  <Upload size={14} />
+                  {fileName ? fileName : 'Click to select file'}
+                </button>
+                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+                {parsedEmails.length > 0 && (
+                  <>
+                    <div className="p-2 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] max-h-20 overflow-y-auto">
+                      {parsedEmails.map((e, i) => (
+                        <p key={i} className="text-[10px] text-[var(--color-text-muted)] truncate">{e}</p>
+                      ))}
+                    </div>
+                    <button onClick={() => bulkMut.mutate(parsedEmails)} disabled={bulkMut.isPending}
+                      className="btn-primary w-full text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50">
+                      <UserPlus size={13} />
+                      {bulkMut.isPending ? 'Sending…' : `Invite ${parsedEmails.length} Member${parsedEmails.length !== 1 ? 's' : ''}`}
+                    </button>
+                  </>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Search */}
+      {totalMembers > 3 && (
+        <div className="px-4 pb-2">
+          <div className="flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-lg px-2.5 py-1.5">
+            <Search size={11} className="text-[var(--color-text-muted)] shrink-0" />
+            <input type="text" placeholder="Search by name…" value={memberSearch}
+              onChange={e => setMemberSearch(e.target.value)}
+              className="flex-1 bg-transparent text-xs text-[var(--color-text)] placeholder-[var(--color-text-muted)] outline-none" />
+            {memberSearch && (
+              <button onClick={() => setMemberSearch('')} className="text-[var(--color-text-muted)]"><X size={10} /></button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Member list */}
+      <div className="px-4 pb-4">
+        <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+          {totalMembers} Member{totalMembers !== 1 ? 's' : ''}
+        </p>
+
+        <div className="rounded-xl border border-[var(--color-border)] overflow-hidden divide-y divide-[var(--color-border)]">
+          {/* Instructor row */}
+          {(!memberSearch || group.instructor?.name?.toLowerCase().includes(memberSearch.toLowerCase())) && (
+            <div className="flex items-center gap-3 px-4 py-3 bg-amber-50/70 dark:bg-amber-900/10">
+              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                {group.instructor?.name?.[0]?.toUpperCase()}
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold text-[var(--color-text)] truncate">{group.instructor?.name}</p>
+                {isOwner && (
+                  <p className="text-[10px] text-[var(--color-text-muted)] truncate">{group.instructor?.email}</p>
                 )}
               </div>
-            ))}
+              <span className="flex items-center gap-0.5 text-[10px] font-bold bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 px-2 py-1 rounded-full shrink-0">
+                <Crown size={9} /> Owner
+              </span>
+            </div>
+          )}
+
+          {/* Member rows */}
+          {(!group.members || group.members.length === 0) ? (
+            <div className="px-4 py-8 text-center">
+              <Users size={22} className="mx-auto mb-2 text-[var(--color-border)]" />
+              <p className="text-xs text-[var(--color-text-muted)]">No members yet.</p>
+            </div>
+          ) : (() => {
+            const filtered = memberSearch
+              ? group.members.filter(m => m.name?.toLowerCase().includes(memberSearch.toLowerCase()))
+              : group.members;
+            return filtered.length === 0
+              ? <p className="text-xs text-center text-[var(--color-text-muted)] py-4">No match for "{memberSearch}"</p>
+              : filtered.map((m, idx) => (
+                <div key={m._id} className="flex items-center gap-3 px-4 py-3 hover:bg-[var(--color-bg-alt)]/40 transition-colors">
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[var(--color-primary)] to-cyan-500 text-white flex items-center justify-center text-sm font-bold shrink-0 shadow-sm">
+                    {m.name?.[0]?.toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-text)] truncate">{m.name}</p>
+                    {isOwner && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] truncate hidden sm:block">{m.email}</p>
+                    )}
+                  </div>
+                  <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-2 py-0.5 rounded-full shrink-0">Member</span>
+                  {isOwner && (
+                    <button onClick={() => removeMut.mutate(m._id)} title="Remove"
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 transition-colors shrink-0">
+                      <X size={12} />
+                    </button>
+                  )}
+                </div>
+              ));
+          })()}
+        </div>
+
+        {/* Pending invites */}
+        {isOwner && pendingInvites.length > 0 && (
+          <div className="mt-3">
+            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+              Pending ({pendingInvites.length})
+            </p>
+            <div className="rounded-xl border border-dashed border-[var(--color-border)] overflow-hidden divide-y divide-[var(--color-border)]">
+              {pendingInvites.map(inv => (
+                <div key={inv._id} className="flex items-center gap-3 px-4 py-3 opacity-70 hover:opacity-90 transition-opacity">
+                  <div className="w-8 h-8 rounded-full bg-[var(--color-bg-alt)] border-2 border-dashed border-[var(--color-border)] text-[var(--color-text-muted)] flex items-center justify-center text-xs shrink-0">?</div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm text-[var(--color-text)] truncate">{inv.email}</p>
+                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                      Expires {new Date(inv.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
+                    </p>
+                  </div>
+                  <button onClick={() => cancelMut.mutate(inv._id)}
+                    className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 hover:text-red-500 text-[var(--color-text-muted)] transition-colors shrink-0">
+                    <X size={12} />
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
         )}
       </div>
-
-      {/* Pending invites */}
-      {isOwner && pendingInvites.length > 0 && (
-        <div>
-          <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">
-            Pending Invites ({pendingInvites.length})
-          </p>
-          <div className="space-y-2">
-            {pendingInvites.map(inv => (
-              <div key={inv._id} className="flex items-center gap-3 p-3 rounded-xl border border-dashed border-[var(--color-border)] opacity-80">
-                <div className="w-8 h-8 rounded-full bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] flex items-center justify-center text-xs shrink-0">?</div>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm text-[var(--color-text)] truncate">{inv.email}</p>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">Invited · expires {new Date(inv.expiresAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</p>
-                </div>
-                <button onClick={() => cancelMut.mutate(inv._id)} className="p-1 text-[var(--color-text-muted)] hover:text-red-500 transition-colors"><X size={13} /></button>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
-
-      {/* Add member */}
-      {isOwner && (
-        <div className="pt-2 border-t border-[var(--color-border)]">
-          <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">Invite by Email</p>
-          <div className="flex gap-2 mb-2">
-            <input
-              type="email"
-              placeholder="student@email.com"
-              value={emailInput}
-              onChange={e => setEmailInput(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
-              className="input flex-1 text-sm"
-            />
-            <button
-              onClick={addEmail}
-              disabled={!emailInput}
-              className="btn-secondary px-3 py-2 text-sm disabled:opacity-50 shrink-0 flex items-center gap-1"
-              title="Add email"
-            >
-              <Plus size={14} />
-            </button>
-          </div>
-          {emailList.length > 0 && (
-            <div className="flex flex-wrap gap-1.5 mb-3">
-              {emailList.map(e => (
-                <span key={e} className="flex items-center gap-1 text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2.5 py-1 rounded-full">
-                  <Mail size={10} /> {e}
-                  <button onClick={() => setEmailList(prev => prev.filter(x => x !== e))} className="ml-0.5 hover:text-red-500 transition-colors"><X size={10} /></button>
-                </span>
-              ))}
-            </div>
-          )}
-          <button
-            onClick={sendInvites}
-            disabled={emailList.length === 0 || inviting}
-            className="btn-primary w-full text-sm py-2 flex items-center justify-center gap-2 disabled:opacity-50"
-          >
-            <UserPlus size={14} />
-            {inviting ? 'Sending…' : `Send ${emailList.length > 0 ? emailList.length + ' ' : ''}Invite${emailList.length !== 1 ? 's' : ''}`}
-          </button>
-          <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">Press Enter or + to add emails. They must accept to join.</p>
-        </div>
-      )}
     </div>
   );
 }
 
 // ── Tests Tab ─────────────────────────────────────────────────────────────────
 function TestsTab({ group, isOwner }) {
-  const qc = useQueryClient();
+  const qc             = useQueryClient();
   const [showShare, setShowShare] = useState(false);
 
   const { data: myExamsData } = useQuery({
@@ -859,9 +1420,20 @@ function TestsTab({ group, isOwner }) {
   });
   const myExams = myExamsData?.exams || [];
 
+  // Fetch user's results to check attempt status per exam
+  const { data: resultsData } = useQuery({
+    queryKey: ['results'],
+    queryFn:  () => resultApi.getAll().then(r => r.data),
+    staleTime: 60 * 1000,
+  });
+  const userResults = resultsData?.results || [];
+
+  const hasAttempted = (examId) =>
+    userResults.some(r => (r.exam?._id || r.exam)?.toString() === examId?.toString());
+
   const shareMut = useMutation({
     mutationFn: (examId) => groupApi.shareExam(group._id, examId),
-    onSuccess: () => {
+    onSuccess:  () => {
       toast.success('Exam shared!');
       setShowShare(false);
       qc.invalidateQueries({ queryKey: ['group', group._id] });
@@ -872,54 +1444,123 @@ function TestsTab({ group, isOwner }) {
 
   const unshareMut = useMutation({
     mutationFn: (examId) => groupApi.unshareExam(group._id, examId),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ['group', group._id] }),
+    onSuccess:  () => qc.invalidateQueries({ queryKey: ['group', group._id] }),
   });
+
+  // group.sharedExams is now [{ exam: {...}, sharedAt: Date }]
+  const sharedExams = group.sharedExams || [];
+  const validExams  = sharedExams.filter(({ exam }) => exam?._id);
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-3">
       {isOwner && (
-        <button onClick={() => setShowShare(true)} className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2">
-          <Zap size={14} /> Share a Test with Group
+        <button onClick={() => setShowShare(true)}
+          className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2">
+          <Zap size={14} /> Share a Test with Batch
         </button>
       )}
-
-      {(!group.sharedExams || group.sharedExams.length === 0) ? (
-        <div className="text-center py-12">
-          <BookOpen size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
-          <p className="text-sm text-[var(--color-text-muted)]">No tests shared yet.</p>
+      {validExams.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
+          <div className="w-16 h-16 rounded-2xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center mx-auto mb-4">
+            <BookOpen size={28} className="text-[var(--color-text-muted)] opacity-50" />
+          </div>
+          {isOwner ? (
+            <>
+              <p className="text-sm font-semibold text-[var(--color-text)] mb-1">No tests shared yet</p>
+              <p className="text-xs text-[var(--color-text-muted)] max-w-[220px] leading-relaxed">
+                Share a test with this batch so members can view and attempt it.
+              </p>
+              <button onClick={() => setShowShare(true)} className="btn-primary mt-5 px-5 py-2 text-sm flex items-center gap-2 mx-auto">
+                <Zap size={13} /> Share a Test
+              </button>
+            </>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-[var(--color-text)] mb-1">No tests available yet</p>
+              <p className="text-xs text-[var(--color-text-muted)] max-w-[220px] leading-relaxed">
+                Your instructor hasn't shared any tests in this batch yet. Check back later.
+              </p>
+            </>
+          )}
         </div>
       ) : (
-        group.sharedExams.map(exam => (
-          <div key={exam._id} className="card flex items-center gap-3 p-4">
-            <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
-              <BookOpen size={16} className="text-[var(--color-primary)]" />
+        validExams.map(({ exam, sharedAt }) => {
+          const attempted   = hasAttempted(exam._id);
+          const canAttempt  = exam.allowReattempt !== false || !attempted;
+          const isExpired   = !!exam.expiryDate && new Date(exam.expiryDate) < new Date();
+          return (
+            <div key={exam._id} className="card p-4">
+              <div className="flex items-start gap-3">
+                <div className="w-10 h-10 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0 mt-0.5">
+                  <BookOpen size={16} className="text-[var(--color-primary)]" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-[var(--color-text)] truncate">{exam.title}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty} · {exam.questions?.length || 0}q</p>
+                  <div className="flex items-center gap-2 mt-1.5">
+                    {sharedAt && (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">
+                        Shared {new Date(sharedAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                    <span className={`text-[10px] font-semibold px-1.5 py-0.5 rounded-full leading-none ${
+                      isExpired && !attempted
+                        ? 'bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400'
+                        : attempted
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
+                    }`}>
+                      {isExpired && !attempted ? 'Expired' : attempted ? 'Attempted' : 'Not attempted'}
+                    </span>
+                    {!canAttempt && !isExpired && (
+                      <span className="text-[10px] text-[var(--color-text-muted)] italic">No reattempt</span>
+                    )}
+                    {exam.expiryDate && !isExpired && (
+                      <span className="text-[10px] text-rose-500 dark:text-rose-400">
+                        Expires {new Date(exam.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  {isExpired && !attempted ? (
+                    <span className="text-xs px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 shrink-0">Expired</span>
+                  ) : canAttempt ? (
+                    <Link to={`/exam/${exam._id}`} className="btn-primary text-xs px-3 py-1.5 shrink-0">
+                      {attempted ? 'Retry' : 'Attempt'}
+                    </Link>
+                  ) : (
+                    <span className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] shrink-0">Done</span>
+                  )}
+                  {isOwner && (
+                    <button onClick={() => unshareMut.mutate(exam._id)}
+                      className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 shrink-0">
+                      <X size={13} />
+                    </button>
+                  )}
+                </div>
+              </div>
             </div>
-            <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold text-[var(--color-text)] truncate">{exam.title}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty} · {exam.questions?.length || 0}q</p>
-            </div>
-            <Link to={`/exam/${exam._id}`} className="btn-primary text-xs px-3 py-1.5 shrink-0">Attempt</Link>
-            {isOwner && (
-              <button onClick={() => unshareMut.mutate(exam._id)} className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 shrink-0">
-                <X size={13} />
-              </button>
-            )}
-          </div>
-        ))
+          );
+        })
       )}
 
       {showShare && (
         <Modal onClose={() => setShowShare(false)}>
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
-              <h3 className="font-semibold text-[var(--color-text)]">Share Test with Group</h3>
-              <button onClick={() => setShowShare(false)} className="p-1 rounded hover:bg-[var(--color-bg-alt)]"><X size={16} className="text-[var(--color-text-muted)]" /></button>
+              <h3 className="font-semibold text-[var(--color-text)]">Share Test with Batch</h3>
+              <button onClick={() => setShowShare(false)} className="p-1 rounded hover:bg-[var(--color-bg-alt)]">
+                <X size={16} className="text-[var(--color-text-muted)]" />
+              </button>
             </div>
             <div className="p-5 space-y-2 max-h-80 overflow-y-auto">
               {myExams.length === 0 ? (
-                <p className="text-sm text-center text-[var(--color-text-muted)] py-4">No tests yet. <Link to="/create-exam" className="text-[var(--color-primary)] hover:underline">Create one first.</Link></p>
+                <p className="text-sm text-center text-[var(--color-text-muted)] py-4">
+                  No tests yet. <Link to="/create-exam" className="text-[var(--color-primary)] hover:underline">Create one first.</Link>
+                </p>
               ) : myExams.map(exam => {
-                const alreadyShared = group.sharedExams?.some(se => (se._id || se)?.toString() === exam._id?.toString());
+                const alreadyShared = sharedExams.some(se => (se.exam?._id || se.exam)?.toString() === exam._id?.toString());
                 return (
                   <div key={exam._id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)]">
                     <div className="flex-1 min-w-0">
@@ -944,167 +1585,45 @@ function TestsTab({ group, isOwner }) {
   );
 }
 
-// ── Settings Tab ──────────────────────────────────────────────────────────────
-function SettingsTab({ group, isOwner }) {
-  const qc = useQueryClient();
-  const [settings, setSettings] = useState(group.settings || { allowMedia: true, whoCanSend: 'all', isPrivate: false });
-
-  const saveMut = useMutation({
-    mutationFn: (s) => groupApi.updateSettings(group._id, s),
-    onSuccess: () => {
-      toast.success('Settings saved');
-      qc.invalidateQueries({ queryKey: ['group', group._id] });
-      qc.invalidateQueries({ queryKey: ['groups'] });
-    },
-    onError: () => toast.error('Failed to save settings'),
-  });
-
-  const leaveMut = useMutation({
-    mutationFn: () => groupApi.leave(group._id),
-    onSuccess: () => {
-      toast.success('You left the group');
-      qc.invalidateQueries({ queryKey: ['groups'] });
-    },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
-  });
-
-  const deleteMut = useMutation({
-    mutationFn: () => groupApi.remove(group._id),
-    onSuccess: () => {
-      toast.success('Group deleted');
-      qc.invalidateQueries({ queryKey: ['groups'] });
-    },
-    onError: () => toast.error('Failed to delete group'),
-  });
-
-  const setS = (key, val) => setSettings(s => ({ ...s, [key]: val }));
-
-  return (
-    <div className="flex-1 overflow-y-auto p-5 space-y-5">
-      {isOwner ? (
-        <>
-          <div className="space-y-3">
-            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">Messaging</p>
-
-            {[
-              { key: 'allowMedia', label: 'Allow Media Sharing', desc: 'Members can share images and files in chat' },
-            ].map(({ key, label, desc }) => (
-              <div key={key} className="flex items-center justify-between p-4 rounded-xl border border-[var(--color-border)]">
-                <div>
-                  <p className="text-sm font-medium text-[var(--color-text)]">{label}</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
-                </div>
-                <Toggle checked={!!settings[key]} onChange={v => setS(key, v)} />
-              </div>
-            ))}
-
-            <div className="p-4 rounded-xl border border-[var(--color-border)]">
-              <p className="text-sm font-medium text-[var(--color-text)] mb-3">Who Can Send Messages</p>
-              <div className="flex gap-2">
-                {[['all', 'Everyone'], ['instructorOnly', 'Instructor Only']].map(([val, lbl]) => (
-                  <button
-                    key={val}
-                    onClick={() => setS('whoCanSend', val)}
-                    className={`flex-1 py-2 text-xs font-medium rounded-lg border transition-colors ${settings.whoCanSend === val ? 'btn-primary text-white border-transparent' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]'}`}
-                  >
-                    {lbl}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider pt-2">Privacy</p>
-            <div className="flex items-center justify-between p-4 rounded-xl border border-[var(--color-border)]">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">Private Group</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Only invited members can see this group</p>
-              </div>
-              <Toggle checked={!!settings.isPrivate} onChange={v => setS('isPrivate', v)} />
-            </div>
-          </div>
-
-          <button
-            onClick={() => saveMut.mutate(settings)}
-            disabled={saveMut.isPending}
-            className="btn-primary w-full py-3 text-sm"
-          >
-            {saveMut.isPending ? 'Saving…' : 'Save Settings'}
-          </button>
-
-          {/* Danger zone */}
-          <div className="border border-red-200 dark:border-red-800/40 rounded-xl p-4 bg-red-50/50 dark:bg-red-900/5 space-y-3">
-            <p className="text-xs font-bold text-red-700 dark:text-red-400 uppercase tracking-wide">Danger Zone</p>
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">Delete Group</p>
-                <p className="text-xs text-[var(--color-text-muted)]">Permanently delete this group and all messages</p>
-              </div>
-              <button
-                onClick={() => { if (window.confirm('Delete group and all messages?')) deleteMut.mutate(); }}
-                className="text-xs text-red-600 border border-red-300 dark:border-red-700 px-3 py-1.5 rounded-lg hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors"
-              >
-                Delete
-              </button>
-            </div>
-          </div>
-        </>
-      ) : (
-        <div className="space-y-4">
-          {/* Read-only settings view */}
-          <div className="p-4 rounded-xl bg-[var(--color-bg-alt)]/50 border border-[var(--color-border)] space-y-3">
-            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider">Group Info</p>
-            {[
-              ['Media Sharing', group.settings?.allowMedia ? 'Enabled' : 'Disabled'],
-              ['Who Can Send', group.settings?.whoCanSend === 'all' ? 'Everyone' : 'Instructor Only'],
-              ['Privacy', group.settings?.isPrivate ? 'Private' : 'Standard'],
-            ].map(([label, val]) => (
-              <div key={label} className="flex justify-between text-sm">
-                <span className="text-[var(--color-text-muted)]">{label}</span>
-                <span className="font-medium text-[var(--color-text)]">{val}</span>
-              </div>
-            ))}
-          </div>
-
-          <button
-            onClick={() => { if (window.confirm('Leave this group?')) leaveMut.mutate(); }}
-            className="w-full py-3 text-sm border border-red-300 dark:border-red-700 text-red-600 rounded-xl hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
-          >
-            Leave Group
-          </button>
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ── Group Detail Panel ────────────────────────────────────────────────────────
 function GroupDetail({ groupId, onBack }) {
-  const { user } = useAuthStore();
-  const [tab, setTab] = useState('chat');
+  const { user }  = useAuthStore();
+  const qc        = useQueryClient();
+  const [tab,          setTab]          = useState('chat');
+  const [showSettings, setShowSettings] = useState(false);
 
   const { data, isLoading } = useQuery({
-    queryKey: ['group', groupId],
-    queryFn:  () => groupApi.getOne(groupId).then(r => r.data),
-    enabled:  !!groupId,
+    queryKey:        ['group', groupId],
+    queryFn:         () => groupApi.getOne(groupId).then(r => r.data),
+    enabled:         !!groupId,
     refetchInterval: 30000,
   });
   const group = data?.group;
-  const isOwner = group?.instructor?._id === user?._id || group?.instructor === user?._id;
 
-  if (isLoading) return <div className="flex-1 flex items-center justify-center"><div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" /></div>;
+  // Robust owner check: sanitizeUser stores id (not _id)
+  const uid = idStr(user?.id || user?._id);
+  const isOwner = !!group && !!uid && (
+    idStr(group.instructor?._id) === uid ||
+    idStr(group.instructor)      === uid
+  );
+
+  if (isLoading) return (
+    <div className="flex-1 flex items-center justify-center">
+      <div className="w-8 h-8 border-2 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
   if (!group) return null;
 
   const TABS = [
-    { key: 'chat',    label: 'Chat',     icon: MessageSquare },
-    { key: 'members', label: 'Members',  icon: Users },
-    { key: 'tests',   label: 'Tests',    icon: BookOpen },
-    { key: 'settings',label: 'Settings', icon: Settings },
+    { key: 'chat',    label: 'Chat',    icon: MessageSquare },
+    { key: 'members', label: 'Members', icon: Users },
+    { key: 'tests',   label: 'Tests',   icon: BookOpen },
   ];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
       {/* Header */}
-      <div className="flex items-center gap-3 px-4 py-3.5 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
+      <div className="flex items-center gap-3 px-4 py-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
         <button onClick={onBack} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] md:hidden">
           <ChevronLeft size={18} />
         </button>
@@ -1113,108 +1632,145 @@ function GroupDetail({ groupId, onBack }) {
         </div>
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-[var(--color-text)] text-sm truncate">{group.name}</h2>
-          <p className="text-[10px] text-[var(--color-text-muted)]">{group.members?.length || 0} members · {isOwner ? 'You own this group' : `by ${group.instructor?.name}`}</p>
+          <p className="text-[10px] text-[var(--color-text-muted)]">
+            {group.members?.length || 0} members · {isOwner ? 'You own this batch' : `by ${group.instructor?.name}`}
+          </p>
         </div>
-        <div className="flex items-center gap-1">
-          {group.settings?.isPrivate && <div title="Private group" className="p-1.5 text-[var(--color-text-muted)]"><Shield size={13} /></div>}
+        {/* Settings gear — opens settings panel for both owner and member */}
+        <div className="flex items-center gap-1 shrink-0">
+          {group.settings?.isPrivate && (
+            <div title="Private group" className="p-1.5 text-[var(--color-text-muted)]"><Shield size={13} /></div>
+          )}
+          <button
+            onClick={() => setShowSettings(true)}
+            title="Group settings"
+            className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] transition-colors"
+          >
+            <Settings size={16} />
+          </button>
         </div>
       </div>
 
       {/* Tabs */}
-      <div className="flex border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
-        {TABS.map(({ key, label, icon: Icon }) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`flex items-center gap-1.5 flex-1 py-2.5 text-xs transition-colors border-b-2 -mb-px font-medium ${tab === key ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
-          >
-            <Icon size={12} /> <span className="hidden sm:inline">{label}</span>
-          </button>
-        ))}
+      <div className="bg-[var(--color-surface)] border-b border-[var(--color-border)] shrink-0">
+        <div className="flex px-4 gap-1">
+          {TABS.map(({ key, label, icon: Icon }) => (
+            <button
+              key={key}
+              onClick={() => setTab(key)}
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors -mb-px whitespace-nowrap
+                ${tab === key
+                  ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                  : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-[var(--color-border)]'}`}
+            >
+              <Icon size={14} />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      {tab === 'chat'     && <ChatPanel group={group} isOwner={isOwner} />}
-      {tab === 'members'  && <MembersTab group={group} isOwner={isOwner} />}
-      {tab === 'tests'    && <TestsTab group={group} isOwner={isOwner} />}
-      {tab === 'settings' && <SettingsTab group={group} isOwner={isOwner} />}
+      {/* Tab content */}
+      {tab === 'chat'    && <ChatPanel  group={group} isOwner={isOwner} />}
+      {tab === 'members' && <MembersTab group={group} isOwner={isOwner} />}
+      {tab === 'tests'   && <TestsTab   group={group} isOwner={isOwner} />}
+
+      {/* Settings panel */}
+      {showSettings && (
+        <GroupSettingsPanel
+          group={group}
+          isOwner={isOwner}
+          onClose={() => setShowSettings(false)}
+          onDeleted={onBack}
+          onLeft={onBack}
+        />
+      )}
     </div>
   );
 }
 
 // ── Main Page ─────────────────────────────────────────────────────────────────
 export default function GroupsPage() {
-  const { user } = useAuthStore();
-  const qc = useQueryClient();
-  const navigate = useNavigate();
+  const { user }  = useAuthStore();
+  const navigate  = useNavigate();
   const [selectedGroupId, setSelectedGroupId] = useState(null);
-  const [showDrawer, setShowDrawer] = useState(false);
-  const [editGroup, setEditGroup] = useState(null);
+  const [showDrawer,      setShowDrawer]      = useState(false);
+  const [search,          setSearch]          = useState('');
+  const [invitePopup,     setInvitePopup]     = useState(null); // holds the invite object
   const canCreate = isInstructorRole(user) && isPro(user);
 
-  // Listen for ?join= param after invite accept
-  const params = new URLSearchParams(window.location.search);
-  const joinId = params.get('join');
+  const joinId = new URLSearchParams(window.location.search).get('join');
 
   const { data, isLoading } = useQuery({
-    queryKey: ['groups'],
-    queryFn:  () => groupApi.getAll().then(r => r.data),
+    queryKey:        ['groups'],
+    queryFn:         () => groupApi.getAll().then(r => r.data),
     refetchInterval: 30000,
   });
-  const groups = data?.groups || [];
+  const allGroups = data?.groups || [];
+  const groups    = search.trim()
+    ? allGroups.filter(g => g.name?.toLowerCase().includes(search.toLowerCase()))
+    : allGroups;
 
-  // My pending group invites (for non-instructors)
   const { data: myInvitesData } = useQuery({
-    queryKey: ['myGroupInvites'],
-    queryFn:  () => groupApi.getMyInvites().then(r => r.data),
+    queryKey:        ['myGroupInvites'],
+    queryFn:         () => groupApi.getMyInvites().then(r => r.data),
     refetchInterval: 60000,
   });
   const pendingInvites = myInvitesData?.invites || [];
 
-  // Auto-select after join redirect
   useEffect(() => {
-    if (joinId) {
-      setSelectedGroupId(joinId);
-      navigate('/groups', { replace: true });
-    }
+    if (joinId) { setSelectedGroupId(joinId); navigate('/batches', { replace: true }); }
   }, [joinId]);
-
-  const deleteMut = useMutation({
-    mutationFn: (id) => groupApi.remove(id),
-    onSuccess: () => {
-      toast.success('Group deleted');
-      if (selectedGroupId) setSelectedGroupId(null);
-      qc.invalidateQueries({ queryKey: ['groups'] });
-    },
-  });
 
   return (
     <div className="flex h-full bg-[var(--color-bg)] overflow-hidden">
 
-      {/* Left sidebar */}
+      {/* Sidebar */}
       <aside className={`w-72 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col ${selectedGroupId ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-4 border-b border-[var(--color-border)]">
           <div className="flex items-center gap-2">
             <Users size={15} className="text-[var(--color-primary)]" />
-            <span className="font-bold text-[var(--color-text)] text-sm">Groups</span>
+            <span className="font-bold text-[var(--color-text)] text-sm">Batches</span>
             {pendingInvites.length > 0 && (
               <span className="text-[9px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingInvites.length}</span>
             )}
           </div>
           {isInstructorRole(user) && (
             canCreate ? (
-              <button onClick={() => setShowDrawer(true)} className="p-1.5 btn-primary rounded-lg text-white" title="Create group">
+              <button onClick={() => setShowDrawer(true)}
+                className="p-1.5 btn-primary rounded-lg text-white" title="Create batch">
                 <Plus size={14} />
               </button>
             ) : (
-              <Link to="/pricing" className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" title="Pro plan required">
+              <Link to="/pricing"
+                className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" title="Pro plan required">
                 <Zap size={14} />
               </Link>
             )
           )}
         </div>
 
-        {/* Pending invites section */}
+        {/* Search */}
+        <div className="px-3 py-2.5 border-b border-[var(--color-border)]">
+          <div className="flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-lg px-3 py-2">
+            <Search size={13} className="text-[var(--color-text-muted)] shrink-0" />
+            <input
+              type="text"
+              placeholder="Search batches…"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              className="flex-1 bg-transparent text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] outline-none"
+            />
+            {search && (
+              <button onClick={() => setSearch('')} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Pending invites */}
         {pendingInvites.length > 0 && (
           <div className="p-2 border-b border-[var(--color-border)]">
             <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wide px-2 mb-1.5">Pending Invites</p>
@@ -1226,79 +1782,90 @@ export default function GroupsPage() {
                     <p className="text-xs font-semibold text-[var(--color-text)] truncate">{inv.group?.name}</p>
                     <p className="text-[10px] text-[var(--color-text-muted)]">by {inv.group?.instructor?.name}</p>
                   </div>
-                  <Link
-                    to={`/groups/invite/${inv.token}`}
-                    className="text-[10px] font-semibold text-green-700 dark:text-green-400 hover:underline shrink-0"
-                  >
+                  <button
+                    onClick={() => setInvitePopup(inv)}
+                    className="text-[10px] font-semibold text-green-700 dark:text-green-400 hover:underline shrink-0">
                     View
-                  </Link>
+                  </button>
                 </div>
               ))}
             </div>
           </div>
         )}
 
-        {/* Pro gate for instructors */}
+        {/* Pro gate */}
         {isInstructorRole(user) && !canCreate && (
           <div className="mx-3 mt-3 p-3 rounded-xl border border-amber-200 dark:border-amber-800/30 bg-amber-50 dark:bg-amber-900/10">
             <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 mb-1">Pro Plan Required</p>
-            <p className="text-[10px] text-amber-700 dark:text-amber-400 mb-2">Upgrade to create and manage study groups.</p>
+            <p className="text-[10px] text-amber-700 dark:text-amber-400 mb-2">Upgrade to create and manage batches.</p>
             <Link to="/pricing" className="text-[10px] font-bold text-amber-700 dark:text-amber-400 hover:underline">View Plans →</Link>
           </div>
         )}
 
         {/* Group list */}
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="space-y-2 p-2">{[1,2,3].map(i => <div key={i} className="skeleton h-16 rounded-xl" />)}</div>
+            <div className="space-y-2 p-3">{[1,2,3].map(i => <div key={i} className="skeleton h-16 rounded-xl" />)}</div>
           ) : groups.length === 0 ? (
             <div className="text-center py-12 px-4">
               <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
-              <p className="text-sm font-medium text-[var(--color-text)]">No groups yet</p>
+              <p className="text-sm font-medium text-[var(--color-text)]">
+                {search ? 'No batches found' : 'No batches yet'}
+              </p>
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                {isInstructorRole(user) && canCreate ? 'Create your first group to get started.' : "You'll appear here once added to a group."}
+                {search
+                  ? `No results for "${search}"`
+                  : isInstructorRole(user) && canCreate
+                    ? 'Create your first batch to get started.'
+                    : "You'll appear here once added to a batch."}
               </p>
             </div>
           ) : (
-            groups.map(g => (
-              <div
-                key={g._id}
-                onClick={() => setSelectedGroupId(g._id)}
-                className={`group flex items-center gap-3 px-3 py-3 rounded-xl cursor-pointer transition-colors ${selectedGroupId === g._id ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/25' : 'hover:bg-[var(--color-bg-alt)]'}`}
-              >
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0 ${selectedGroupId === g._id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'}`}>
-                  {g.name?.[0]?.toUpperCase()}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <p className={`text-sm font-semibold truncate ${selectedGroupId === g._id ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>{g.name}</p>
-                  <p className="text-[10px] text-[var(--color-text-muted)] truncate">
-                    {g.lastMessage?.text
-                      ? `${g.lastMessage.sender?.name?.split(' ')[0]}: ${g.lastMessage.text.slice(0, 25)}…`
-                      : `${g.members?.length || 0} member${g.members?.length !== 1 ? 's' : ''}`}
-                  </p>
-                </div>
-                {/* Edit button (instructor only, show on hover) */}
-                {isInstructorRole(user) && (
-                  <div className="flex gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                    <button onClick={() => setEditGroup(g)} className="p-1 rounded hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)]">
-                      <Edit3 size={11} />
-                    </button>
+            <div className="divide-y divide-[var(--color-border)]">
+              {groups.map(g => (
+                <div
+                  key={g._id}
+                  onClick={() => setSelectedGroupId(g._id)}
+                  className={`flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors relative
+                    ${selectedGroupId === g._id
+                      ? 'bg-[var(--color-primary)]/10'
+                      : 'hover:bg-[var(--color-bg-alt)]'}`}
+                >
+                  {selectedGroupId === g._id && (
+                    <div className="absolute left-0 top-0 bottom-0 w-0.5 bg-[var(--color-primary)] rounded-r" />
+                  )}
+                  <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-sm font-bold shrink-0
+                    ${selectedGroupId === g._id ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)]'}`}>
+                    {g.name?.[0]?.toUpperCase()}
                   </div>
-                )}
-                {/* Last message time */}
-                {g.lastMessage && (
-                  <span className="text-[9px] text-[var(--color-text-muted)] shrink-0 ml-auto">{fmtTime(g.lastMessage.createdAt)}</span>
-                )}
-              </div>
-            ))
+                  <div className="flex-1 min-w-0">
+                    <p className={`text-sm font-semibold truncate ${selectedGroupId === g._id ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>
+                      {g.name}
+                    </p>
+                    <p className="text-[10px] text-[var(--color-text-muted)] truncate mt-0.5">
+                      {g.lastMessage?.text
+                        ? `${g.lastMessage.sender?.name?.split(' ')[0]}: ${g.lastMessage.text.slice(0, 30)}…`
+                        : `${g.members?.length || 0} member${g.members?.length !== 1 ? 's' : ''}`}
+                    </p>
+                  </div>
+                  {g.lastMessage && (
+                    <span className="text-[9px] text-[var(--color-text-muted)] shrink-0 ml-1">{fmtTime(g.lastMessage.createdAt)}</span>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </div>
 
         {/* Footer */}
         <div className="px-4 py-3 border-t border-[var(--color-border)] bg-[var(--color-bg-alt)]/30">
           <div className="flex items-center gap-1.5">
-            {isInstructorRole(user) ? <Shield size={11} className="text-amber-500" /> : <Info size={11} className="text-[var(--color-text-muted)]" />}
-            <span className="text-[10px] text-[var(--color-text-muted)]">{isInstructorRole(user) ? 'Instructor view' : 'Student view'}</span>
+            {isInstructorRole(user)
+              ? <Shield size={11} className="text-amber-500" />
+              : <Info   size={11} className="text-[var(--color-text-muted)]" />}
+            <span className="text-[10px] text-[var(--color-text-muted)]">
+              {isInstructorRole(user) ? 'Instructor view' : 'Student view'}
+            </span>
           </div>
         </div>
       </aside>
@@ -1317,11 +1884,12 @@ export default function GroupsPage() {
               <div className="w-20 h-20 rounded-3xl bg-[var(--color-primary)]/10 flex items-center justify-center mx-auto mb-4">
                 <MessageSquare size={36} className="text-[var(--color-primary)]" />
               </div>
-              <h3 className="font-bold text-[var(--color-text)] text-lg">Select a group</h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">Choose a group from the sidebar to start chatting.</p>
+              <h3 className="font-bold text-[var(--color-text)] text-lg">Select a batch</h3>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">Choose a batch from the sidebar to start chatting.</p>
               {isInstructorRole(user) && canCreate && (
-                <button onClick={() => setShowDrawer(true)} className="btn-primary mt-5 px-6 py-2.5 text-sm flex items-center gap-2 mx-auto">
-                  <Plus size={14} /> Create Group
+                <button onClick={() => setShowDrawer(true)}
+                  className="btn-primary mt-5 px-6 py-2.5 text-sm flex items-center gap-2 mx-auto">
+                  <Plus size={14} /> Create Batch
                 </button>
               )}
             </div>
@@ -1329,17 +1897,23 @@ export default function GroupsPage() {
         )}
       </div>
 
-      {/* Group drawer */}
+      {/* Create drawer */}
       {showDrawer && (
         <GroupDrawer
           onClose={() => setShowDrawer(false)}
           onSaved={(g) => setSelectedGroupId(g._id)}
         />
       )}
-      {editGroup && (
-        <GroupDrawer
-          initial={editGroup}
-          onClose={() => setEditGroup(null)}
+
+      {/* Invite popup */}
+      {invitePopup && (
+        <InvitePopup
+          invite={invitePopup}
+          onClose={() => setInvitePopup(null)}
+          onAccepted={(groupId) => {
+            setInvitePopup(null);
+            if (groupId) setSelectedGroupId(groupId);
+          }}
         />
       )}
     </div>

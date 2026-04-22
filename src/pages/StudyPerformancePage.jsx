@@ -11,252 +11,410 @@ import {
     Title,
     Tooltip,
 } from 'chart.js';
-import { AlertCircle, BookOpen, Brain, Flame, Lightbulb, Target, TrendingUp, Zap } from 'lucide-react';
+import {
+    AlertCircle, BookOpen, Brain, Filter, Flame, Lightbulb,
+    Target, TrendingUp, X, Zap,
+} from 'lucide-react';
+import { useMemo, useState } from 'react';
 import { Bar, Line } from 'react-chartjs-2';
 import { Link } from 'react-router-dom';
-import { profileApi } from '../services/api.js';
+import { profileApi, resultApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, Title, Tooltip, Legend, Filler);
 
-const CHART_DEFAULTS = {
-  responsive: true,
-  maintainAspectRatio: false,
-  plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
-};
-
 const LINE_OPTS = {
-  ...CHART_DEFAULTS,
-  scales: {
-    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-    y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 }, callback: v => `${v}%` } },
-  },
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 }, callback: v => `${v}%` } },
+    },
 };
 
 const BAR_OPTS = {
-  ...CHART_DEFAULTS,
-  scales: {
-    x: { grid: { display: false }, ticks: { font: { size: 10 } } },
-    y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 }, callback: v => `${v}%` } },
-  },
+    responsive: true, maintainAspectRatio: false,
+    plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false } },
+    scales: {
+        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+        y: { min: 0, max: 100, grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { font: { size: 10 }, callback: v => `${v}%` } },
+    },
 };
 
 export default function StudyPerformancePage() {
-  const { data: analytics, isLoading: aLoading } = useQuery({
-    queryKey: ['profileAnalytics'],
-    queryFn: () => profileApi.analytics().then(r => r.data),
-    staleTime: 60000,
-  });
+    const { data: analytics, isLoading: aLoading } = useQuery({
+        queryKey: ['profileAnalytics'],
+        queryFn: () => profileApi.analytics().then(r => r.data),
+        staleTime: 60000,
+    });
 
-  const { data: recData, isLoading: rLoading } = useQuery({
-    queryKey: ['profileRecommendation'],
-    queryFn: () => profileApi.recommendation().then(r => r.data),
-    staleTime: 120000,
-  });
+    const { data: recData, isLoading: rLoading } = useQuery({
+        queryKey: ['profileRecommendation'],
+        queryFn: () => profileApi.recommendation().then(r => r.data),
+        staleTime: 120000,
+    });
 
-  const trend = analytics?.trend || [];
-  const topicPerf = analytics?.topicPerf || {};
-  const totalExams = analytics?.totalExams || 0;
-  const streak = analytics?.streak || 0;
-  const rec = recData?.recommendation;
+    const { data: resultsData, isLoading: resLoading } = useQuery({
+        queryKey: ['myResults'],
+        queryFn: () => resultApi.getAll().then(r => r.data),
+        staleTime: 60000,
+    });
 
-  const avgScore = trend.length > 0
-    ? Math.round(trend.reduce((s, t) => s + t.percentage, 0) / trend.length)
-    : null;
+    const [filterExam, setFilterExam] = useState('all');
+    const [filterSubject, setFilterSubject] = useState('all');
+    const [filterTopic, setFilterTopic] = useState('all');
+    const [showFilters, setShowFilters] = useState(false);
 
-  const topicEntries = Object.entries(topicPerf);
-  const bestTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] > b[1] ? a : b) : null;
-  const worstTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] < b[1] ? a : b) : null;
+    const allResults = resultsData?.results || [];
+    const trend = analytics?.trend || [];
+    const topicPerfGlobal = analytics?.topicPerf || {};
+    const totalExams = analytics?.totalExams || 0;
+    const streak = analytics?.streak || 0;
+    const rec = recData?.recommendation;
 
-  const recentTrend = trend.slice(-10);
-  const lineData = {
-    labels: recentTrend.map((t) => { const d = new Date(t.date); return `${d.getDate()}/${d.getMonth() + 1}`; }),
-    datasets: [{
-      data: recentTrend.map(t => t.percentage),
-      borderColor: '#3b82f6',
-      backgroundColor: 'rgba(59,130,246,0.08)',
-      tension: 0.4,
-      fill: true,
-      pointBackgroundColor: '#3b82f6',
-      pointRadius: 3,
-    }],
-  };
+    // Build filter options from results
+    const examOptions = useMemo(() => {
+        const map = {};
+        allResults.forEach(r => {
+            const id = r.exam?._id || r.exam;
+            const title = r.exam?.title;
+            if (id && title) map[id] = title;
+        });
+        return Object.entries(map);
+    }, [allResults]);
 
-  const topicLabels = topicEntries.map(([k]) => k.length > 12 ? k.slice(0, 11) + '…' : k);
-  const topicValues = topicEntries.map(([, v]) => Math.round(v));
-  const barData = {
-    labels: topicLabels,
-    datasets: [{
-      data: topicValues,
-      backgroundColor: topicValues.map(v => v >= 80 ? 'rgba(34,197,94,0.7)' : v >= 50 ? 'rgba(59,130,246,0.7)' : 'rgba(239,68,68,0.65)'),
-      borderRadius: 5,
-      borderSkipped: false,
-    }],
-  };
+    const subjectOptions = useMemo(() => {
+        const set = new Set();
+        allResults.forEach(r => { if (r.exam?.subject) set.add(r.exam.subject); });
+        return [...set];
+    }, [allResults]);
 
-  if (aLoading) {
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in">
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
-          {[1, 2, 3, 4].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}
-        </div>
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div className="skeleton h-56 rounded-xl" />
-          <div className="skeleton h-56 rounded-xl" />
-        </div>
-        <div className="skeleton h-32 rounded-xl" />
-      </div>
-    );
-  }
+    const topicOptions = useMemo(() => {
+        const set = new Set(Object.keys(topicPerfGlobal));
+        allResults.forEach(r => {
+            if (r.topicAccuracy) Object.keys(r.topicAccuracy).forEach(t => set.add(t));
+        });
+        return [...set];
+    }, [allResults, topicPerfGlobal]);
 
-  if (totalExams === 0) {
-    return (
-      <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in text-center">
-        <BookOpen size={48} className="mx-auto mb-4 text-[var(--color-text-muted)] opacity-30" />
-        <h2 className="text-xl font-bold text-[var(--color-text)] mb-2">No data yet</h2>
-        <p className="text-[var(--color-text-muted)] text-sm mb-6">Complete at least one exam to see your performance insights.</p>
-        <Link to="/create-exam" className="btn-primary px-6 py-2.5 rounded-xl text-sm">Generate Your First Exam</Link>
-      </div>
-    );
-  }
+    // Apply filters to results
+    const filteredResults = useMemo(() => {
+        return allResults.filter(r => {
+            const examId = r.exam?._id || r.exam;
+            if (filterExam !== 'all' && examId !== filterExam) return false;
+            if (filterSubject !== 'all' && r.exam?.subject !== filterSubject) return false;
+            if (filterTopic !== 'all' && r.topicAccuracy && !(filterTopic in r.topicAccuracy)) return false;
+            return true;
+        });
+    }, [allResults, filterExam, filterSubject, filterTopic]);
 
-  return (
-    <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in space-y-5">
-      {/* ── Page header ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-blue-50 via-indigo-50/50 to-violet-50/30 dark:from-blue-900/20 dark:via-indigo-900/10 dark:to-violet-900/5 border border-blue-100 dark:border-blue-900/30 px-6 py-5">
-        <div className="absolute -top-8 -right-8 w-40 h-40 bg-indigo-200/30 dark:bg-indigo-700/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
-            <TrendingUp size={18} className="text-[var(--color-primary)]" />
-          </div>
-          <div>
-            <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Study Performance</h1>
-            <p className="text-xs text-[var(--color-text-muted)]">A full picture of how you're progressing</p>
-          </div>
-        </div>
-      </div>
+    const hasFilter = filterExam !== 'all' || filterSubject !== 'all' || filterTopic !== 'all';
 
-      {/* ── Row 1: Stat cards ── */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
-        {[
-          { icon: BookOpen, label: 'Exams Taken', value: totalExams, color: '#3b82f6' },
-          { icon: Target, label: 'Avg. Score', value: avgScore !== null ? `${avgScore}%` : '—', color: '#10b981' },
-          { icon: Flame, label: 'Streak', value: `${streak}d`, color: '#f97316' },
-          { icon: Zap, label: 'Topics', value: topicEntries.length, color: '#8b5cf6' },
-        ].map(({ icon: Icon, label, value, color }) => (
-          <div key={label} className="card flex items-center gap-3 p-4">
-            <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0" style={{ background: `${color}18` }}>
-              <Icon size={16} style={{ color }} />
-            </div>
-            <div>
-              <p className="text-[10px] text-[var(--color-text-muted)] leading-none mb-1">{label}</p>
-              <p className="text-xl font-extrabold text-[var(--color-text)] leading-none">{value}</p>
-            </div>
-          </div>
-        ))}
-      </div>
+    // Compute filtered analytics
+    const filteredTrend = useMemo(() => {
+        if (!hasFilter) return trend.slice(-10);
+        return filteredResults
+            .slice(-10)
+            .map(r => ({ date: r.createdAt, percentage: r.percentage }));
+    }, [filteredResults, trend, hasFilter]);
 
-      {/* ── Row 2: Charts side-by-side ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Score Trend */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-[var(--color-text)]">Score Trend</h2>
-            <span className="text-[10px] text-[var(--color-text-muted)]">Last {recentTrend.length} exams</span>
-          </div>
-          {recentTrend.length > 1 ? (
-            <div style={{ height: 180 }}><Line data={lineData} options={LINE_OPTS} /></div>
-          ) : (
-            <div className="flex items-center justify-center h-44 text-[var(--color-text-muted)] text-sm">
-              Take more exams to see your trend
-            </div>
-          )}
-        </div>
+    const filteredTopicPerf = useMemo(() => {
+        if (!hasFilter) return topicPerfGlobal;
+        if (filterTopic !== 'all') {
+            // Show only the selected topic
+            const val = topicPerfGlobal[filterTopic];
+            return val !== undefined ? { [filterTopic]: val } : {};
+        }
+        // Aggregate from filtered results
+        const acc = {};
+        const count = {};
+        filteredResults.forEach(r => {
+            if (r.topicAccuracy) {
+                Object.entries(r.topicAccuracy).forEach(([topic, val]) => {
+                    acc[topic] = (acc[topic] || 0) + val;
+                    count[topic] = (count[topic] || 0) + 1;
+                });
+            }
+        });
+        const result = {};
+        Object.keys(acc).forEach(t => { result[t] = acc[t] / count[t]; });
+        return result;
+    }, [filteredResults, topicPerfGlobal, filterTopic, hasFilter]);
 
-        {/* Topic Accuracy */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-bold text-[var(--color-text)]">Topic Accuracy</h2>
-            <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-muted)]">
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-green-400 inline-block" />≥80%</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-blue-400 inline-block" />50–79%</span>
-              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />&lt;50%</span>
-            </div>
-          </div>
-          {topicEntries.length > 0 ? (
-            <div style={{ height: 180 }}><Bar data={barData} options={BAR_OPTS} /></div>
-          ) : (
-            <div className="flex items-center justify-center h-44 text-[var(--color-text-muted)] text-sm">
-              No topic data yet
-            </div>
-          )}
-        </div>
-      </div>
+    const filteredAvgScore = filteredResults.length > 0
+        ? Math.round(filteredResults.reduce((s, r) => s + r.percentage, 0) / filteredResults.length)
+        : null;
 
-      {/* ── Row 3: Topics + AI Recommendation ── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Best topic */}
-        {bestTopic && (
-          <div className="card border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-green-100 dark:bg-green-900/30 flex items-center justify-center shrink-0">
-              <Target size={16} className="text-green-600 dark:text-green-400" />
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-green-600 dark:text-green-400 uppercase tracking-wide mb-0.5">Strongest</p>
-              <p className="text-sm font-bold text-[var(--color-text)]">{bestTopic[0]}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">{Math.round(bestTopic[1])}% accuracy</p>
-            </div>
-          </div>
-        )}
+    const topicEntries = Object.entries(filteredTopicPerf);
+    const bestTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] > b[1] ? a : b) : null;
+    const worstTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] < b[1] ? a : b) : null;
 
-        {/* Worst topic */}
-        {worstTopic && worstTopic[0] !== bestTopic?.[0] && (
-          <div className="card border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-900/10 p-4 flex items-start gap-3">
-            <div className="w-9 h-9 rounded-xl bg-red-100 dark:bg-red-900/30 flex items-center justify-center shrink-0">
-              <AlertCircle size={16} className="text-red-500 dark:text-red-400" />
-            </div>
-            <div>
-              <p className="text-[9px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wide mb-0.5">Needs Work</p>
-              <p className="text-sm font-bold text-[var(--color-text)]">{worstTopic[0]}</p>
-              <p className="text-xs text-[var(--color-text-muted)]">{Math.round(worstTopic[1])}% accuracy</p>
-            </div>
-          </div>
-        )}
+    const lineData = {
+        labels: filteredTrend.map(t => { const d = new Date(t.date); return `${d.getDate()}/${d.getMonth() + 1}`; }),
+        datasets: [{
+            data: filteredTrend.map(t => t.percentage),
+            borderColor: '#0d9488',
+            backgroundColor: 'rgba(13,148,136,0.10)',
+            tension: 0.4, fill: true,
+            pointBackgroundColor: '#0d9488', pointRadius: 4,
+        }],
+    };
 
-        {/* AI Recommendation */}
-        {!rLoading && (
-          <div className={`card border-[var(--color-primary)]/20 bg-gradient-to-br from-blue-50/60 to-indigo-50/40 dark:from-blue-900/10 dark:to-indigo-900/10 p-4 ${(!bestTopic || worstTopic?.[0] === bestTopic?.[0]) ? 'lg:col-span-2' : ''}`}>
-            <div className="flex items-center gap-2 mb-2">
-              <div className="w-7 h-7 rounded-lg bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
-                <Brain size={14} className="text-[var(--color-primary)]" />
-              </div>
-              <p className="text-xs font-bold text-[var(--color-text)]">AI Recommendation</p>
-            </div>
-            {rec ? (
-              <div className="space-y-2">
-                <div className="flex flex-wrap gap-1.5">
-                  <span className="inline-flex items-center gap-1 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-[10px] font-semibold px-2 py-0.5 rounded-full">
-                    <BookOpen size={9} /> {rec.topic}
-                  </span>
-                  <span className="inline-flex items-center gap-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize">
-                    <Zap size={9} /> {rec.difficulty}
-                  </span>
+    const topicLabels = topicEntries.map(([k]) => k.length > 14 ? k.slice(0, 13) + '…' : k);
+    const topicValues = topicEntries.map(([, v]) => Math.round(v));
+    const barData = {
+        labels: topicLabels,
+        datasets: [{
+            data: topicValues,
+            backgroundColor: topicValues.map(v => v >= 80 ? 'rgba(16,185,129,0.75)' : v >= 50 ? 'rgba(13,148,136,0.75)' : 'rgba(239,68,68,0.65)'),
+            borderRadius: 6, borderSkipped: false,
+        }],
+    };
+
+    if (aLoading || resLoading) {
+        return (
+            <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in">
+                <div className="skeleton h-28 rounded-2xl mb-6" />
+                <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 mb-6">
+                    {[1, 2, 3, 4].map(i => <div key={i} className="skeleton h-20 rounded-xl" />)}
                 </div>
-                <div className="flex items-start gap-1.5">
-                  <Lightbulb size={12} className="text-amber-500 mt-0.5 shrink-0" />
-                  <p className="text-xs text-[var(--color-text)] leading-relaxed">{rec.tip}</p>
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                    <div className="skeleton h-56 rounded-xl" />
+                    <div className="skeleton h-56 rounded-xl" />
                 </div>
-                <Link to="/create-exam" className="inline-flex items-center gap-1 btn-primary text-[10px] px-3 py-1.5 rounded-lg mt-1">
-                  Practice now →
-                </Link>
-              </div>
-            ) : (
-              <p className="text-xs text-[var(--color-text-muted)]">
-                Complete a few more exams to unlock personalized AI recommendations.
-              </p>
+                <div className="skeleton h-32 rounded-xl" />
+            </div>
+        );
+    }
+
+    if (totalExams === 0) {
+        return (
+            <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in text-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/30 dark:to-blue-900/20 flex items-center justify-center">
+                    <TrendingUp size={32} className="text-[var(--color-primary)]" />
+                </div>
+                <h2 className="text-xl font-bold text-[var(--color-text)] mb-2">No performance data yet</h2>
+                <p className="text-[var(--color-text-muted)] text-sm mb-6">Complete at least one exam to see your performance insights.</p>
+            </div>
+        );
+    }
+
+    return (
+        <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in space-y-5">
+            {/* Hero header */}
+            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-6 shadow-lg">
+                <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+                <div className="absolute -bottom-6 left-0 w-36 h-36 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
+                <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+                            <TrendingUp size={20} className="text-white" />
+                        </div>
+                        <div>
+                            <h1 className="text-xl font-extrabold text-white leading-tight">Performance</h1>
+                            <p className="text-sm text-teal-100 mt-0.5">Track your progress across all tests</p>
+                        </div>
+                    </div>
+                    <button
+                        onClick={() => setShowFilters(f => !f)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${showFilters || hasFilter ? 'bg-white/20 text-white ring-2 ring-white/40' : 'bg-white/15 text-white hover:bg-white/25'}`}
+                    >
+                        <Filter size={15} />
+                        {hasFilter ? 'Filters active' : 'Filter'}
+                        {hasFilter && <span className="w-5 h-5 bg-white/25 text-white rounded-full text-xs flex items-center justify-center">
+                            {[filterExam !== 'all', filterSubject !== 'all', filterTopic !== 'all'].filter(Boolean).length}
+                        </span>}
+                    </button>
+                </div>
+            </div>
+
+            {/* Filter panel */}
+            {showFilters && (
+                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4">
+                    <div className="flex items-center justify-between mb-3">
+                        <h3 className="text-sm font-semibold text-[var(--color-text)] flex items-center gap-2"><Filter size={14} /> Filter Performance</h3>
+                        {hasFilter && (
+                            <button onClick={() => { setFilterExam('all'); setFilterSubject('all'); setFilterTopic('all'); }}
+                                className="text-xs text-red-500 hover:underline flex items-center gap-1">
+                                <X size={12} /> Clear all
+                            </button>
+                        )}
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                        <div>
+                            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">By Test</label>
+                            <select value={filterExam} onChange={e => setFilterExam(e.target.value)} className="input w-full text-sm py-2">
+                                <option value="all">All Tests</option>
+                                {examOptions.map(([id, title]) => (
+                                    <option key={id} value={id}>{title.length > 30 ? title.slice(0, 30) + '…' : title}</option>
+                                ))}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">By Subject</label>
+                            <select value={filterSubject} onChange={e => setFilterSubject(e.target.value)} className="input w-full text-sm py-2">
+                                <option value="all">All Subjects</option>
+                                {subjectOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                            </select>
+                        </div>
+                        <div>
+                            <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">By Topic</label>
+                            <select value={filterTopic} onChange={e => setFilterTopic(e.target.value)} className="input w-full text-sm py-2">
+                                <option value="all">All Topics</option>
+                                {topicOptions.map(t => <option key={t} value={t}>{t}</option>)}
+                            </select>
+                        </div>
+                    </div>
+                    {hasFilter && (
+                        <p className="text-xs text-[var(--color-text-muted)] mt-3">
+                            Showing <strong className="text-[var(--color-primary)]">{filteredResults.length}</strong> results out of {allResults.length} total
+                        </p>
+                    )}
+                </div>
             )}
-          </div>
-        )}
-      </div>
-    </div>
-  );
+
+            {/* Stat cards */}
+            <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                {[
+                    { label: 'Exams Taken', value: hasFilter ? filteredResults.length : totalExams, icon: BookOpen, gradient: 'from-teal-400 to-cyan-500' },
+                    { label: 'Avg. Score', value: filteredAvgScore !== null ? `${filteredAvgScore}%` : '—', icon: Target, gradient: 'from-blue-400 to-indigo-500' },
+                    { label: 'Streak', value: `${streak}d`, icon: Flame, gradient: 'from-sky-400 to-blue-500' },
+                    { label: 'Topics', value: topicEntries.length, icon: Zap, gradient: 'from-teal-500 to-blue-600' },
+                ].map(({ label, value, icon: Icon, gradient }) => (
+                    <div key={label} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex items-center gap-3">
+                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0 shadow-sm`}>
+                            <Icon size={18} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-[10px] text-[var(--color-text-muted)] leading-none mb-1">{label}</p>
+                            <p className="text-xl font-extrabold text-[var(--color-text)] leading-none">{value}</p>
+                        </div>
+                    </div>
+                ))}
+            </div>
+
+            {/* Charts */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h2 className="text-sm font-bold text-[var(--color-text)]">Score Trend</h2>
+                            {hasFilter && <p className="text-[10px] text-[var(--color-primary)] mt-0.5">Filtered view</p>}
+                        </div>
+                        <span className="text-[10px] text-[var(--color-text-muted)]">Last {filteredTrend.length} exams</span>
+                    </div>
+                    {filteredTrend.length > 1 ? (
+                        <div style={{ height: 180 }}><Line data={lineData} options={LINE_OPTS} /></div>
+                    ) : (
+                        <div className="flex items-center justify-center h-44 text-[var(--color-text-muted)] text-sm">
+                            {hasFilter ? 'Not enough filtered data to show trend' : 'Take more exams to see your trend'}
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+                    <div className="flex items-center justify-between mb-3">
+                        <div>
+                            <h2 className="text-sm font-bold text-[var(--color-text)]">Topic Accuracy</h2>
+                            {filterTopic !== 'all' && <p className="text-[10px] text-[var(--color-primary)] mt-0.5">Topic: {filterTopic}</p>}
+                        </div>
+                        <div className="flex items-center gap-2 text-[9px] text-[var(--color-text-muted)]">
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-emerald-400 inline-block" />≥80%</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-teal-500 inline-block" />50–79%</span>
+                            <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-red-400 inline-block" />&lt;50%</span>
+                        </div>
+                    </div>
+                    {topicEntries.length > 0 ? (
+                        <div style={{ height: 180 }}><Bar data={barData} options={BAR_OPTS} /></div>
+                    ) : (
+                        <div className="flex items-center justify-center h-44 text-[var(--color-text-muted)] text-sm">
+                            {hasFilter ? 'No topic data for this filter' : 'No topic data yet'}
+                        </div>
+                    )}
+                </div>
+            </div>
+
+            {/* Per-test breakdown (when filtered by test) */}
+            {filterExam !== 'all' && filteredResults.length > 0 && (
+                <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+                    <h3 className="text-sm font-bold text-[var(--color-text)] mb-4">Attempt History</h3>
+                    <div className="space-y-2">
+                        {filteredResults.map((r, i) => (
+                            <div key={r._id} className="flex items-center gap-3 p-3 bg-[var(--color-bg-alt)] rounded-xl">
+                                <span className="text-xs text-[var(--color-text-muted)] w-6 text-center">#{i + 1}</span>
+                                <div className="flex-1 min-w-0">
+                                    <p className="text-xs font-medium text-[var(--color-text)]">{new Date(r.createdAt).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}</p>
+                                </div>
+                                <div className="h-1.5 w-20 bg-[var(--color-border)] rounded-full overflow-hidden">
+                                    <div className={`h-full rounded-full ${r.percentage >= 75 ? 'bg-emerald-500' : r.percentage >= 50 ? 'bg-amber-500' : 'bg-red-500'}`} style={{ width: `${r.percentage}%` }} />
+                                </div>
+                                <span className={`text-sm font-bold w-12 text-right ${r.percentage >= 75 ? 'text-emerald-500' : r.percentage >= 50 ? 'text-amber-500' : 'text-red-500'}`}>{r.percentage}%</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.passed ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400' : 'bg-red-100 text-red-600 dark:bg-red-900/20 dark:text-red-400'}`}>
+                                    {r.passed ? 'Pass' : 'Fail'}
+                                </span>
+                                <Link to={`/results/${r._id}`} className="text-xs text-[var(--color-primary)] hover:underline shrink-0">View</Link>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+
+            {/* Topics + AI Recommendation */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {bestTopic && (
+                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-900/20 dark:to-teal-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
+                            <Target size={16} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-0.5">Strongest</p>
+                            <p className="text-sm font-bold text-[var(--color-text)]">{bestTopic[0]}</p>
+                            <p className="text-xs text-[var(--color-text-muted)]">{Math.round(bestTopic[1])}% accuracy</p>
+                        </div>
+                    </div>
+                )}
+
+                {worstTopic && worstTopic[0] !== bestTopic?.[0] && (
+                    <div className="bg-gradient-to-br from-red-50 to-rose-50/50 dark:from-red-900/20 dark:to-rose-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3">
+                        <div className="w-9 h-9 rounded-xl bg-red-500 flex items-center justify-center shrink-0 shadow-sm">
+                            <AlertCircle size={16} className="text-white" />
+                        </div>
+                        <div>
+                            <p className="text-[9px] font-bold text-red-500 dark:text-red-400 uppercase tracking-wide mb-0.5">Needs Work</p>
+                            <p className="text-sm font-bold text-[var(--color-text)]">{worstTopic[0]}</p>
+                            <p className="text-xs text-[var(--color-text-muted)]">{Math.round(worstTopic[1])}% accuracy</p>
+                        </div>
+                    </div>
+                )}
+
+                {!rLoading && (
+                    <div className={`bg-gradient-to-br from-teal-50 to-blue-50/50 dark:from-teal-900/10 dark:to-blue-900/10 border border-teal-200 dark:border-teal-800/40 rounded-2xl p-4 ${(!bestTopic || worstTopic?.[0] === bestTopic?.[0]) ? 'lg:col-span-2' : ''}`}>
+                        <div className="flex items-center gap-2 mb-2">
+                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center shrink-0">
+                                <Brain size={14} className="text-white" />
+                            </div>
+                            <p className="text-xs font-bold text-[var(--color-text)]">AI Recommendation</p>
+                        </div>
+                        {rec ? (
+                            <div className="space-y-2">
+                                <div className="flex flex-wrap gap-1.5">
+                                    <span className="inline-flex items-center gap-1 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 text-[10px] font-semibold px-2 py-0.5 rounded-full">
+                                        <BookOpen size={9} /> {rec.topic}
+                                    </span>
+                                    <span className="inline-flex items-center gap-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize">
+                                        <Zap size={9} /> {rec.difficulty}
+                                    </span>
+                                </div>
+                                <div className="flex items-start gap-1.5">
+                                    <Lightbulb size={12} className="text-amber-500 mt-0.5 shrink-0" />
+                                    <p className="text-xs text-[var(--color-text)] leading-relaxed">{rec.tip}</p>
+                                </div>
+                            </div>
+                        ) : (
+                            <p className="text-xs text-[var(--color-text-muted)]">Complete a few more exams to unlock personalized AI recommendations.</p>
+                        )}
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 }

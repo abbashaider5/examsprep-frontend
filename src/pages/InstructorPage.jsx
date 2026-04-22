@@ -1,473 +1,117 @@
+import {
+  ArcElement, BarElement, CategoryScale,
+  Chart as ChartJS, Legend, LinearScale, Tooltip,
+} from 'chart.js';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  AlertCircle,
-  Award,
-  BarChart2, BookmarkCheck, Camera, CheckCircle,
-  ChevronRight, Clock, Code2,
-  Edit3,
-  Eye, EyeOff, FileText, FlipHorizontal,
-  Mail, Percent, RefreshCw,
-  RotateCw,
-  Send, Shield, Trophy, Users, X, Zap,
+  Award, BarChart2, BookmarkCheck, Clock, Download, Edit3,
+  Eye, FileText, Mail, Plus, RefreshCw, Send, Shield,
+  Timer, Trophy, Upload, Users, X, Zap,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import { Bar, Doughnut } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
+import * as XLSX from 'xlsx';
+import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { examApi, groupApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { useThemeStore } from '../store/index.js';
 
-function fmtTime(secs) {
-  if (!secs) return '—';
-  const m = Math.floor(secs / 60);
-  const s = secs % 60;
-  return m > 0 ? `${m}m ${s}s` : `${s}s`;
+ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
+
+function useChartColors() {
+  const { dark } = useThemeStore();
+  return {
+    text: dark ? '#cbd5e1' : '#334155',
+    muted: dark ? '#64748b' : '#94a3b8',
+    grid: dark ? '#1e293b' : '#f1f5f9',
+    surface: dark ? '#1e293b' : '#ffffff',
+    primary: '#0d9488',
+    green: '#10b981',
+    amber: '#f59e0b',
+    red: '#ef4444',
+  };
 }
 
-function fmtDate(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-}
-
-function fmtDateTime(d) {
-  if (!d) return '—';
-  return new Date(d).toLocaleString('en-IN', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
-}
-
-function ToggleSwitch({ checked, onChange, disabled = false }) {
-  return (
-    <label className="relative inline-flex items-center cursor-pointer">
-      <input type="checkbox" className="sr-only peer" checked={checked} disabled={disabled} onChange={onChange} />
-      <div className="w-9 h-5 bg-[var(--color-border)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
-    </label>
-  );
-}
-
-// ── Edit Exam Modal ───────────────────────────────────────────────────────────
-function EditExamModal({ exam, onClose }) {
-  const qc = useQueryClient();
-  const { user } = useAuthStore();
-  const isEnterprise = user?.plan === 'enterprise';
-
-  const [form, setForm] = useState({
-    title: exam.title || '',
-    subject: exam.subject || '',
-    difficulty: exam.difficulty || 'medium',
-    passingPercentage: exam.passingPercentage ?? 75,
-    allowReattempt: exam.allowReattempt ?? true,
-    showFlashcards: exam.showFlashcards ?? true,
-    showReview: exam.showReview ?? true,
-    certificateEnabled: exam.certificateEnabled ?? true,
-    proctored: exam.proctored ?? false,
-    screenshotEnabled: exam.screenshotEnabled ?? false,
-    enableCoding: exam.enableCoding ?? false,
-    allowCodeExecution: exam.allowCodeExecution ?? false,
-    showResultToUser: exam.showResultToUser ?? true,
-    showAnswersToUser: exam.showAnswersToUser ?? true,
-  });
-
-  const updateMut = useMutation({
-    mutationFn: (data) => examApi.update(exam._id, data),
-    onSuccess: () => {
-      toast.success('Exam updated!');
-      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
-      onClose();
-    },
-    onError: (err) => toast.error(err.response?.data?.message || 'Update failed'),
-  });
-
-  const regenMut = useMutation({
-    mutationFn: () => examApi.regenerate(exam._id, {}),
-    onSuccess: () => {
-      toast.success('Questions regenerated!');
-      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
-    },
-    onError: (err) => toast.error(err.response?.data?.message || 'Regeneration failed'),
-  });
-
-  const f = (key) => (val) => setForm(s => ({ ...s, [key]: val }));
-
-  const toggleRows = [
-    { key: 'allowReattempt', icon: RefreshCw, label: 'Allow Reattempt', iconCls: 'text-[var(--color-primary)]', bgCls: 'bg-blue-100 dark:bg-blue-900/30' },
-    { key: 'showFlashcards', icon: FlipHorizontal, label: 'Show Flashcards', iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
-    { key: 'showReview', icon: Eye, label: 'Show Answer Review (Study)', iconCls: 'text-green-600 dark:text-green-400', bgCls: 'bg-green-100 dark:bg-green-900/30' },
-    { key: 'certificateEnabled', icon: Award, label: 'Generate Certificate', iconCls: 'text-amber-600 dark:text-amber-400', bgCls: 'bg-amber-100 dark:bg-amber-900/30' },
-    { key: 'proctored', icon: Shield, label: 'AI Proctoring', iconCls: 'text-blue-600 dark:text-blue-400', bgCls: 'bg-blue-100 dark:bg-blue-900/30' },
-    { key: 'screenshotEnabled', icon: Camera, label: 'Screenshot Capture', disabled: !form.proctored, iconCls: 'text-rose-600 dark:text-rose-400', bgCls: 'bg-rose-100 dark:bg-rose-900/30' },
-    { key: 'enableCoding', icon: Code2, label: 'Coding Questions', disabled: !isEnterprise, iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
-    { key: 'allowCodeExecution', icon: Zap, label: 'Code Execution', disabled: !isEnterprise || !form.enableCoding, iconCls: 'text-slate-600 dark:text-slate-400', bgCls: 'bg-slate-100 dark:bg-slate-800' },
-    { key: 'showResultToUser', icon: Eye, label: 'Show Result to Candidate', iconCls: 'text-indigo-600 dark:text-indigo-400', bgCls: 'bg-indigo-100 dark:bg-indigo-900/30' },
-    { key: 'showAnswersToUser', icon: EyeOff, label: 'Show Answer Review (Post-exam)', iconCls: 'text-teal-600 dark:text-teal-400', bgCls: 'bg-teal-100 dark:bg-teal-900/30' },
-  ];
-
-  return (
-    <Modal onClose={onClose}>
-      <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-lg flex flex-col"
-        style={{ maxHeight: '90vh' }}
-      >
-        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)] shrink-0">
-          <h2 className="font-bold text-[var(--color-text)] flex items-center gap-2">
-            <Edit3 size={16} className="text-[var(--color-primary)]" /> Edit Exam
-          </h2>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"><X size={18} /></button>
-        </div>
-
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          {/* Basic fields */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="label text-xs">Title</label>
-              <input className="input text-sm" value={form.title} onChange={e => f('title')(e.target.value)} />
-            </div>
-            <div>
-              <label className="label text-xs">Subject</label>
-              <input className="input text-sm" value={form.subject} onChange={e => f('subject')(e.target.value)} />
-            </div>
-          </div>
-
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="label text-xs">Difficulty</label>
-              <select className="input text-sm" value={form.difficulty} onChange={e => f('difficulty')(e.target.value)}>
-                <option value="easy">Easy</option>
-                <option value="medium">Medium</option>
-                <option value="hard">Hard</option>
-              </select>
-            </div>
-            <div>
-              <label className="label text-xs">Passing %</label>
-              <div className="flex items-center gap-1.5">
-                <input className="input text-sm text-center" type="number" min={1} max={100} value={form.passingPercentage} onChange={e => f('passingPercentage')(e.target.value)} />
-                <Percent size={14} className="text-[var(--color-text-muted)] shrink-0" />
-              </div>
-            </div>
-          </div>
-
-          {/* Toggles */}
-          <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
-            {toggleRows.map(({ key, icon: Icon, label, disabled, iconCls, bgCls }, idx) => (
-              <div key={key} className={`flex items-center justify-between px-4 py-3 ${disabled ? 'opacity-50' : ''} ${idx < toggleRows.length - 1 ? 'border-b border-[var(--color-border)]' : ''}`}>
-                <div className="flex items-center gap-2.5">
-                  <div className={`w-6 h-6 rounded-md flex items-center justify-center ${bgCls}`}>
-                    <Icon size={12} className={iconCls} />
-                  </div>
-                  <span className="text-sm text-[var(--color-text)]">{label}</span>
-                </div>
-                <ToggleSwitch
-                  checked={!!form[key]}
-                  disabled={disabled}
-                  onChange={e => !disabled && f(key)(e.target.checked)}
-                />
-              </div>
-            ))}
-          </div>
-
-          {/* Regenerate section */}
-          <div className="border border-[var(--color-border)] rounded-xl p-4 bg-[var(--color-bg-alt)]">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)]">Regenerate Questions</p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Replace all questions with a fresh AI batch</p>
-              </div>
-              <button
-                onClick={() => regenMut.mutate()}
-                disabled={regenMut.isPending}
-                className="btn-secondary text-xs py-2 px-3 flex items-center gap-1.5 shrink-0 ml-3"
-              >
-                <RotateCw size={13} className={regenMut.isPending ? 'animate-spin' : ''} />
-                {regenMut.isPending ? 'Generating...' : 'Regenerate'}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex gap-3 p-5 border-t border-[var(--color-border)] shrink-0">
-          <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
-          <button
-            onClick={() => updateMut.mutate(form)}
-            disabled={updateMut.isPending}
-            className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5"
-          >
-            {updateMut.isPending ? <><div className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Saving...</> : <><CheckCircle size={14} /> Save Changes</>}
-          </button>
-        </div>
-      </div>
-    </Modal>
-  );
-} 
-function ReportPanel({ examId, onClose }) {
-  const [expandedRow, setExpandedRow] = useState(null);
-  const [tab, setTab] = useState('candidates'); // 'candidates' | 'screenshots'
-
-  const { data, isLoading, error } = useQuery({
-    queryKey: ['examReport', examId],
-    queryFn: () => instructorApi.getExamReport(examId).then(r => r.data),
-    enabled: !!examId,
-  });
-
-  const { data: ssData, isLoading: ssLoading } = useQuery({
-    queryKey: ['examScreenshots', examId],
-    queryFn: () => instructorApi.getExamScreenshots(examId).then(r => r.data),
-    enabled: !!examId && tab === 'screenshots',
-  });
-
-  if (isLoading) {
-    return (
-      <Modal onClose={onClose}>
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 w-full max-w-4xl">
-          <div className="space-y-3">{[1,2,3,4].map(i => <div key={i} className="skeleton h-12" />)}</div>
-        </div>
-      </Modal>
-    );
-  }
-
-  if (error) {
-    return (
-      <Modal onClose={onClose}>
-        <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-8 text-center">
-          <AlertCircle size={40} className="mx-auto mb-3 text-red-500" />
-          <p className="text-[var(--color-text-muted)]">Failed to load report.</p>
-          <button onClick={onClose} className="btn-secondary mt-4 text-sm">Close</button>
-        </div>
-      </Modal>
-    );
-  }
-
-  const { exam, rows = [], summary = {} } = data || {};
-  const screenshotsEnabled = exam?.screenshotEnabled;
-
-  return (
-    <Modal onClose={onClose}>
-      <div
-        className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-4xl flex flex-col"
-        style={{ maxHeight: '90vh' }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)] shrink-0">
-          <div>
-            <h2 className="font-bold text-[var(--color-text)]">{exam?.title}</h2>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{exam?.subject} · {exam?.difficulty} · {exam?.questions?.length || 0} questions</p>
-          </div>
-          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)] p-1"><X size={20} /></button>
-        </div>
-
-        {/* Summary stats */}
-        <div className="grid grid-cols-3 sm:grid-cols-6 gap-3 p-5 border-b border-[var(--color-border)] shrink-0">
-          {[
-            { label: 'Invited', value: summary.totalInvites || 0, color: 'text-blue-500' },
-            { label: 'Accepted', value: summary.accepted || 0, color: 'text-purple-500' },
-            { label: 'Pending', value: summary.pending || 0, color: 'text-amber-500' },
-            { label: 'Attempted', value: summary.attempted || 0, color: 'text-cyan-500' },
-            { label: 'Passed', value: summary.passed || 0, color: 'text-green-500' },
-            { label: 'Avg Score', value: `${summary.avgScore || 0}%`, color: 'text-[var(--color-primary)]' },
-          ].map(s => (
-            <div key={s.label} className="text-center">
-              <div className={`text-xl font-bold ${s.color}`}>{s.value}</div>
-              <div className="text-[10px] text-[var(--color-text-muted)]">{s.label}</div>
-            </div>
-          ))}
-        </div>
-
-        {/* Tabs */}
-        <div className="flex border-b border-[var(--color-border)] px-5 shrink-0">
-          {[
-            { key: 'candidates', label: 'Candidates', icon: Users },
-            ...(screenshotsEnabled ? [{ key: 'screenshots', label: 'Screenshots', icon: Camera }] : []),
-          ].map(({ key, label, icon: Icon }) => (
-            <button
-              key={key}
-              onClick={() => setTab(key)}
-              className={`flex items-center gap-1.5 text-sm px-4 py-3 border-b-2 transition-colors -mb-px ${tab === key ? 'border-[var(--color-primary)] text-[var(--color-primary)] font-semibold' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
-            >
-              <Icon size={13} /> {label}
-            </button>
-          ))}
-        </div>
-
-        {/* Tab content */}
-        <div className="overflow-y-auto flex-1 p-5">
-          {tab === 'candidates' && (
-            <>
-              {rows.length === 0 ? (
-                <div className="text-center py-10">
-                  <Mail size={32} className="mx-auto mb-2 text-[var(--color-border)]" />
-                  <p className="text-sm text-[var(--color-text-muted)]">No invites sent yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {rows.map(row => (
-                    <div key={row._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden">
-                      <div
-                        className="flex items-center gap-3 p-3 cursor-pointer hover:bg-[var(--color-bg-alt)] transition-colors"
-                        onClick={() => setExpandedRow(expandedRow === row._id ? null : row._id)}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-medium text-[var(--color-text)] truncate">{row.name || row.email}</span>
-                            {row.name && <span className="text-xs text-[var(--color-text-muted)] truncate">{row.email}</span>}
-                          </div>
-                        </div>
-
-                        <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0 ${
-                          row.inviteStatus === 'accepted' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                          row.inviteStatus === 'expired' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                          'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                        } capitalize`}>
-                          {row.inviteStatus}
-                        </span>
-
-                        {row.latestResult ? (
-                          <div className="flex items-center gap-3 shrink-0 text-right">
-                            <div>
-                              <div className={`text-sm font-bold ${row.latestResult.passed ? 'text-green-500' : 'text-red-500'}`}>
-                                {row.latestResult.percentage}%
-                              </div>
-                              <div className="text-[10px] text-[var(--color-text-muted)]">{row.latestResult.passed ? 'Passed' : 'Failed'}</div>
-                            </div>
-                            <div className="hidden sm:block">
-                              <div className="text-xs font-medium text-[var(--color-text)]">{fmtTime(row.latestResult.timeTaken)}</div>
-                              <div className="text-[10px] text-[var(--color-text-muted)]">Time</div>
-                            </div>
-                            <div className="hidden sm:block">
-                              <div className="text-xs text-[var(--color-text)]">{fmtDateTime(row.latestResult.attemptedAt)}</div>
-                              <div className="text-[10px] text-[var(--color-text-muted)]">Attempted</div>
-                            </div>
-                            {row.totalAttempts > 1 && (
-                              <div className="hidden sm:block">
-                                <div className="text-xs font-medium text-[var(--color-primary)]">{row.totalAttempts}×</div>
-                                <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
-                              </div>
-                            )}
-                            {row.screenshotCount > 0 && (
-                              <div className="hidden sm:flex items-center gap-1 text-[10px] text-[var(--color-text-muted)]">
-                                <Camera size={10} /> {row.screenshotCount}
-                              </div>
-                            )}
-                            {row.latestResult.proctored && (
-                              <Shield size={13} className={row.latestResult.violations > 0 ? 'text-red-500' : 'text-green-500'} title="AI Proctored" />
-                            )}
-                          </div>
-                        ) : (
-                          <span className="text-xs text-[var(--color-text-muted)] shrink-0">Not attempted</span>
-                        )}
-
-                        <ChevronRight size={14} className={`text-[var(--color-text-muted)] transition-transform shrink-0 ${expandedRow === row._id ? 'rotate-90' : ''}`} />
-                      </div>
-
-                      {expandedRow === row._id && (
-                        <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-alt)] p-4">
-                          {row.allAttempts.length === 0 ? (
-                            <p className="text-xs text-[var(--color-text-muted)]">No attempts yet.</p>
-                          ) : (
-                            <div className="space-y-2">
-                              <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-2">All Attempts</p>
-                              {row.allAttempts.map((attempt, i) => (
-                                <div key={attempt.resultId} className="flex items-center gap-3 text-xs py-2 border-b border-[var(--color-border)] last:border-0">
-                                  <span className="text-[var(--color-text-muted)] w-5 shrink-0">#{i + 1}</span>
-                                  <span className={`font-bold w-12 shrink-0 ${attempt.passed ? 'text-green-500' : 'text-red-500'}`}>
-                                    {attempt.percentage}%
-                                  </span>
-                                  <span className={`w-12 shrink-0 px-1.5 py-0.5 rounded text-[10px] font-semibold text-center ${attempt.passed ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                    {attempt.passed ? 'Pass' : 'Fail'}
-                                  </span>
-                                  <span className="flex items-center gap-1 text-[var(--color-text-muted)]">
-                                    <Clock size={10} /> {fmtTime(attempt.timeTaken)}
-                                  </span>
-                                  {attempt.proctored && (
-                                    <span className={`flex items-center gap-1 ${attempt.violations > 0 ? 'text-red-500' : 'text-green-600 dark:text-green-400'}`}>
-                                      <Shield size={10} /> {attempt.violations > 0 ? `${attempt.violations} violation${attempt.violations !== 1 ? 's' : ''}` : 'Clean'}
-                                    </span>
-                                  )}
-                                  <span className="ml-auto text-[var(--color-text-muted)]">{fmtDateTime(attempt.attemptedAt)}</span>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {row.bestResult && row.totalAttempts > 1 && (
-                            <div className="mt-3 pt-3 border-t border-[var(--color-border)] flex items-center gap-2 text-xs">
-                              <Trophy size={12} className="text-amber-500" />
-                              <span className="text-[var(--color-text-muted)]">Best: <span className="font-semibold text-[var(--color-text)]">{row.bestResult.percentage}%</span> on {fmtDateTime(row.bestResult.attemptedAt)}</span>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-
-          {tab === 'screenshots' && (
-            <>
-              {ssLoading ? (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {[1,2,3,4,5,6].map(i => <div key={i} className="skeleton rounded-xl aspect-[4/3]" />)}
-                </div>
-              ) : !ssData?.screenshots?.length ? (
-                <div className="text-center py-10">
-                  <Camera size={32} className="mx-auto mb-2 text-[var(--color-border)]" />
-                  <p className="text-sm text-[var(--color-text-muted)]">No screenshots captured yet.</p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
-                  {ssData.screenshots.map(ss => (
-                    <div key={ss._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-alt)]">
-                      <div className="aspect-[4/3] bg-black">
-                        <img src={ss.imageUrl || ss.imageData} alt="screenshot" className="w-full h-full object-cover" />
-                      </div>
-                      <div className="p-2.5">
-                        <p className="text-xs font-medium text-[var(--color-text)] truncate">{ss.user?.name || ss.user?.email || 'Unknown'}</p>
-                        <p className="text-[10px] text-[var(--color-text-muted)]">{new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
-                        {ss.result && (
-                          <span className={`mt-1 inline-block text-[10px] font-semibold px-1.5 py-0.5 rounded ${ss.result.passed ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                            {ss.result.percentage}%
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </Modal>
-  );
+function diffBadgeClass(d) {
+  return d === 'easy' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+    : d === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+    : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400';
 }
 
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function InstructorPage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
+  const navigate = useNavigate();
+  const c = useChartColors();
+
   const [selectedExam, setSelectedExam] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteMode, setInviteMode] = useState('email'); // 'email' | 'group'
+  const [inviteMode, setInviteMode] = useState('email');
+  const [inviteEmailTab, setInviteEmailTab] = useState('single');
   const [inviteGroupId, setInviteGroupId] = useState('');
+  const [inviteParsedEmails, setInviteParsedEmails] = useState([]);
+  const [inviteFileName, setInviteFileName] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
-  const [reportExamId, setReportExamId] = useState(null);
   const [editExam, setEditExam] = useState(null);
+  const inviteFileRef = useRef(null);
+
+  const closeInviteModal = () => {
+    setShowInviteModal(false);
+    setInviteEmail('');
+    setInviteEmailTab('single');
+    setInviteParsedEmails([]);
+    setInviteFileName('');
+    setInviteGroupId('');
+  };
+
+  const handleInviteFile = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setInviteFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = (evt) => {
+      try {
+        const wb = XLSX.read(evt.target.result, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        const emails = [];
+        for (const row of rows) {
+          for (const cell of row) {
+            const val = String(cell || '').trim().toLowerCase();
+            if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) emails.push(val);
+          }
+        }
+        const unique = [...new Set(emails)];
+        if (!unique.length) { toast.error('No valid emails found in file'); return; }
+        setInviteParsedEmails(unique);
+        toast.success(`Found ${unique.length} email(s)`);
+      } catch { toast.error('Failed to parse file'); }
+    };
+    reader.readAsArrayBuffer(file);
+    if (inviteFileRef.current) inviteFileRef.current.value = '';
+  };
+
+  const downloadInviteSample = () => {
+    const ws = XLSX.utils.aoa_to_sheet([['Name', 'Email'], ['Alice Smith', 'alice@example.com'], ['Bob Jones', 'bob@example.com']]);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Invites');
+    XLSX.writeFile(wb, 'invite_sample.xlsx');
+  };
 
   const { data: analyticsData, isLoading } = useQuery({
     queryKey: ['instructorAnalytics'],
     queryFn: () => instructorApi.getAnalytics().then(r => r.data),
   });
 
-  const { data: inviteData, isLoading: loadingInvites } = useQuery({
-    queryKey: ['examInvites', selectedExam?._id],
-    queryFn: () => instructorApi.getExamInvites(selectedExam._id).then(r => r.data),
-    enabled: !!selectedExam,
-  });
-
   const inviteMut = useMutation({
     mutationFn: ({ examId, email }) => instructorApi.sendInvite(examId, email),
     onSuccess: () => {
       toast.success('Invite sent!');
-      setInviteEmail('');
-      setShowInviteModal(false);
-      qc.invalidateQueries({ queryKey: ['examInvites', selectedExam?._id] });
+      closeInviteModal();
       qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to send invite'),
@@ -477,12 +121,26 @@ export default function InstructorPage() {
     mutationFn: ({ examId, groupId }) => instructorApi.sendGroupInvite(examId, groupId),
     onSuccess: (res) => {
       toast.success(res.data.message);
-      setShowInviteModal(false);
-      setInviteGroupId('');
-      qc.invalidateQueries({ queryKey: ['examInvites', selectedExam?._id] });
+      closeInviteModal();
       qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to invite group'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to invite batch'),
+  });
+
+  const bulkInviteMut = useMutation({
+    mutationFn: async ({ examId, emails }) => {
+      const results = await Promise.allSettled(emails.map(email => instructorApi.sendInvite(examId, email)));
+      const ok  = results.filter(r => r.status === 'fulfilled').length;
+      const err = results.filter(r => r.status === 'rejected').length;
+      return { ok, err };
+    },
+    onSuccess: ({ ok, err }) => {
+      if (ok > 0) toast.success(`${ok} invite${ok !== 1 ? 's' : ''} sent!`);
+      if (err > 0) toast.error(`${err} invite${err !== 1 ? 's' : ''} failed`);
+      closeInviteModal();
+      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
+    },
+    onError: () => toast.error('Failed to send invites'),
   });
 
   const { data: groupsData } = useQuery({
@@ -499,261 +157,582 @@ export default function InstructorPage() {
     );
   }
 
-  const { totalExams = 0, totalInvites = 0, acceptedInvites = 0, totalAttempts = 0, avgScore = 0, exams = [] } = analyticsData || {};
+  const {
+    totalExams = 0, totalInvites = 0, acceptedInvites = 0,
+    totalAttempts = 0, avgScore = 0, exams = []
+  } = analyticsData || {};
+
   const pendingInvites = totalInvites - acceptedInvites;
   const totalPassCount = exams.reduce((a, e) => a + (e.stats?.passCount || 0), 0);
   const passRate = totalAttempts > 0 ? Math.round((totalPassCount / totalAttempts) * 100) : 0;
 
+  // ── Chart data ──────────────────────────────────────────────────────────────
+  const topExams = [...exams]
+    .filter(e => (e.stats?.count || e.timesAttempted || 0) > 0)
+    .sort((a, b) => (b.stats?.count || 0) - (a.stats?.count || 0))
+    .slice(0, 6);
+
+  const scoreBarData = {
+    labels: topExams.map(e => e.title.length > 16 ? e.title.slice(0, 16) + '…' : e.title),
+    datasets: [{
+      label: 'Avg Score %',
+      data: topExams.map(e => e.stats?.avgScore ? Math.round(e.stats.avgScore) : 0),
+      backgroundColor: topExams.map(e => {
+        const s = e.stats?.avgScore || 0;
+        return s >= 70 ? `${c.green}cc` : s >= 50 ? `${c.amber}cc` : `${c.red}cc`;
+      }),
+      borderRadius: 6, borderSkipped: false,
+    }],
+  };
+
+  const totalFail = totalAttempts - totalPassCount;
+  const doughnutData = {
+    labels: ['Passed', 'Failed'],
+    datasets: [{
+      data: [totalPassCount || 0, totalFail || 0],
+      backgroundColor: [`${c.green}cc`, `${c.red}cc`],
+      borderColor: [c.green, c.red],
+      borderWidth: 2,
+    }],
+  };
+
+  const chartBaseOpts = {
+    responsive: true, maintainAspectRatio: false,
+    plugins: {
+      legend: { display: false },
+      tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8, padding: 10 },
+    },
+    scales: {
+      x: { grid: { color: c.grid }, ticks: { color: c.muted, font: { size: 10 } } },
+      y: { grid: { color: c.grid }, ticks: { color: c.muted, font: { size: 10 } }, beginAtZero: true, max: 100 },
+    },
+  };
+
+  const openInviteFor = (exam) => {
+    setSelectedExam(exam);
+    setShowInviteModal(true);
+  };
+
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-50 via-blue-50/60 to-indigo-50/40 dark:from-teal-900/20 dark:via-blue-900/10 dark:to-indigo-900/5 border border-teal-100 dark:border-teal-900/30 px-6 py-5 mb-6">
-        <div className="absolute -top-8 -right-8 w-40 h-40 bg-teal-200/30 dark:bg-teal-700/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative flex items-center justify-between">
+
+      {/* ── Header ── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
+        <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute -bottom-8 left-0 w-40 h-40 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-teal-500/10 flex items-center justify-center shrink-0">
-              <BookmarkCheck size={18} className="text-teal-600 dark:text-teal-400" />
+            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
+              <BookmarkCheck size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="text-lg font-extrabold text-[var(--color-text)] leading-tight">Instructor Dashboard</h1>
-              <p className="text-xs text-[var(--color-text-muted)]">Manage tests, track candidates, view analytics.</p>
+              <h1 className="text-xl font-extrabold text-white leading-tight">Instructor Dashboard</h1>
+              <p className="text-sm text-teal-100 mt-0.5">Manage tests, track students, view performance analytics.</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <Link
-              to="/instructor/analytics"
-              className="btn-secondary flex items-center gap-1.5 text-sm shrink-0"
-            >
-              <BarChart2 size={14} /> Analytics
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link to="/instructor/analytics" className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+              <BarChart2 size={14} /> Reports
             </Link>
-            <Link to="/create-exam" className="btn-primary flex items-center gap-1.5 text-sm shrink-0">
+            <Link to="/batches" className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
+              <Users size={14} /> Batches
+            </Link>
+            <Link to="/create-exam" className="flex items-center gap-1.5 bg-white text-teal-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors shadow-sm">
               <Zap size={14} /> Create Test
             </Link>
           </div>
         </div>
       </div>
 
-      {/* Stats — compact 6-card grid */}
-      <div className="grid grid-cols-3 md:grid-cols-6 gap-3 mb-6">
+      {/* ── Stats ── */}
+      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
-          { label: 'Tests', value: totalExams, icon: BookmarkCheck, color: 'text-blue-500', bg: 'bg-blue-50 dark:bg-blue-900/20' },
-          { label: 'Invites', value: totalInvites, icon: Mail, color: 'text-purple-500', bg: 'bg-purple-50 dark:bg-purple-900/20' },
-          { label: 'Accepted', value: acceptedInvites, icon: Users, color: 'text-green-500', bg: 'bg-green-50 dark:bg-green-900/20' },
-          { label: 'Pending', value: pendingInvites, icon: Clock, color: 'text-amber-500', bg: 'bg-amber-50 dark:bg-amber-900/20' },
-          { label: 'Attempts', value: totalAttempts, icon: BarChart2, color: 'text-indigo-500', bg: 'bg-indigo-50 dark:bg-indigo-900/20' },
-          { label: 'Pass Rate', value: `${passRate}%`, icon: Trophy, color: 'text-teal-500', bg: 'bg-teal-50 dark:bg-teal-900/20' },
+          { label: 'Tests',     value: totalExams,       icon: BookmarkCheck, gradient: 'from-teal-400 to-cyan-500' },
+          { label: 'Students',  value: acceptedInvites,  icon: Users,         gradient: 'from-blue-400 to-indigo-500' },
+          { label: 'Attempts',  value: totalAttempts,    icon: BarChart2,     gradient: 'from-cyan-400 to-teal-500' },
+          { label: 'Avg Score', value: avgScore ? `${Math.round(avgScore)}%` : '—', icon: Trophy, gradient: 'from-amber-400 to-orange-500' },
+          { label: 'Pass Rate', value: `${passRate}%`,   icon: Shield,        gradient: 'from-green-400 to-emerald-500' },
+          { label: 'Pending',   value: pendingInvites,   icon: Clock,         gradient: 'from-sky-400 to-blue-500' },
         ].map(s => (
-          <div key={s.label} className="card p-3 flex flex-col gap-1.5">
-            <div className={`w-7 h-7 rounded-lg flex items-center justify-center ${s.bg}`}>
-              <s.icon size={14} className={s.color} />
+          <div key={s.label} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 flex items-center gap-2.5">
+            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center shadow-sm shrink-0`}>
+              <s.icon size={14} className="text-white" />
             </div>
-            <div className="text-lg font-bold text-[var(--color-text)] leading-none">{s.value}</div>
-            <div className="text-[10px] text-[var(--color-text-muted)]">{s.label}</div>
+            <div className="min-w-0">
+              <div className="text-base font-bold text-[var(--color-text)] leading-none truncate">{s.value}</div>
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{s.label}</div>
+            </div>
           </div>
         ))}
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Exam list */}
-        <div className="lg:col-span-2">
-          <div className="card flex flex-col" style={{ maxHeight: '480px' }}>
-            <h2 className="font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2 text-sm shrink-0">
-              <BarChart2 size={15} className="text-[var(--color-primary)]" /> Your Tests
-            </h2>
-            {exams.length === 0 ? (
-              <div className="text-center py-10">
-                <BookmarkCheck size={36} className="mx-auto mb-2 text-[var(--color-border)]" />
-                <p className="text-sm text-[var(--color-text-muted)]">No tests yet.</p>
-                <Link to="/create-exam" className="text-xs text-[var(--color-primary)] hover:underline mt-1 inline-block">Create your first test</Link>
+      {/* ── Quick Actions ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+        {[
+          { label: 'Create Test',  icon: Zap,      to: '/create-exam',           color: 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/30' },
+          { label: 'Create Batch', icon: Plus,     to: '/batches',               color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30' },
+          { label: 'View Reports', icon: BarChart2, to: '/instructor/analytics', color: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30' },
+          { label: 'Certificates', icon: Trophy,   to: '/certificates',          color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30' },
+        ].map(action => (
+          <Link
+            key={action.label}
+            to={action.to}
+            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${action.color}`}
+          >
+            <action.icon size={16} className="shrink-0" />
+            {action.label}
+          </Link>
+        ))}
+      </div>
+
+      {/* ── Charts ── */}
+      {exams.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
+          {/* Pass vs Fail doughnut */}
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Pass vs Fail</h3>
+            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Overall across all tests</p>
+            <div style={{ height: 180 }}>
+              <Doughnut data={doughnutData} options={{
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: {
+                  legend: { display: true, position: 'bottom', labels: { color: c.muted, font: { size: 11 }, boxWidth: 12, padding: 12 } },
+                  tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8 },
+                },
+              }} />
+            </div>
+            <div className="flex justify-center gap-4 mt-3">
+              <div className="text-center">
+                <p className="text-lg font-bold text-emerald-600">{totalPassCount}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Passed</p>
+              </div>
+              <div className="w-px bg-[var(--color-border)]" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-red-500">{totalFail}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Failed</p>
+              </div>
+              <div className="w-px bg-[var(--color-border)]" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-[var(--color-primary)]">{passRate}%</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Avg Score per test bar */}
+          <div className="lg:col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Avg Score by Test</h3>
+            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Top {topExams.length} tests by attempt count</p>
+            {topExams.length === 0 ? (
+              <div className="flex items-center justify-center h-[180px] text-sm text-[var(--color-text-muted)]">
+                No attempt data yet
               </div>
             ) : (
-              <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-                {exams.map(exam => (
-                  <div
-                    key={exam._id}
-                    className={`flex items-center justify-between p-3 rounded-xl border cursor-pointer transition-all hover:border-[var(--color-primary)] ${selectedExam?._id === exam._id ? 'border-[var(--color-primary)] bg-blue-50/50 dark:bg-blue-900/10' : 'border-[var(--color-border)]'}`}
-                    onClick={() => setSelectedExam(exam)}
-                  >
-                    <div className="min-w-0 flex-1">
-                      <p className="font-medium text-sm text-[var(--color-text)] truncate">{exam.title}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty}</p>
-                    </div>
-                    <div className="flex items-center gap-2 ml-3 shrink-0">
-                      <div className="text-center hidden sm:block">
-                        <div className="text-xs font-bold text-[var(--color-text)]">{exam.inviteCount || 0}</div>
-                        <div className="text-[10px] text-[var(--color-text-muted)]">Invites</div>
-                      </div>
-                      <div className="text-center">
-                        <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count || exam.timesAttempted || 0}</div>
-                        <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
-                      </div>
-                      <div className="text-center hidden md:block">
-                        <div className="text-xs font-bold text-teal-600">{exam.stats?.avgScore ? `${Math.round(exam.stats.avgScore)}%` : '—'}</div>
-                        <div className="text-[10px] text-[var(--color-text-muted)]">Avg</div>
-                      </div>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setEditExam(exam); }}
-                        className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"
-                        title="Edit exam"
-                      >
-                        <Edit3 size={11} /> Edit
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setReportExamId(exam._id); }}
-                        className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"
-                        title="View report"
-                      >
-                        <FileText size={11} /> Report
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setSelectedExam(exam); setShowInviteModal(true); }}
-                        className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
-                      >
-                        <Send size={11} /> Invite
-                      </button>
-                    </div>
-                  </div>
-                ))}
+              <div style={{ height: 180 }}>
+                <Bar data={scoreBarData} options={{
+                  ...chartBaseOpts,
+                  scales: {
+                    ...chartBaseOpts.scales,
+                    y: { ...chartBaseOpts.scales.y, ticks: { ...chartBaseOpts.scales.y.ticks, callback: v => `${v}%` } },
+                  },
+                  plugins: { ...chartBaseOpts.plugins, legend: { display: false } },
+                }} />
               </div>
             )}
           </div>
         </div>
+      )}
 
-        {/* Invite details panel */}
-        <div>
-          {selectedExam ? (
-            <div className="card flex flex-col" style={{ maxHeight: '480px' }}>
-              <div className="flex items-center justify-between mb-4 shrink-0">
-                <h2 className="font-semibold text-sm text-[var(--color-text)] truncate">{selectedExam.title}</h2>
-                <button onClick={() => setShowInviteModal(true)} className="btn-primary text-xs py-1 px-3 flex items-center gap-1 shrink-0 ml-2">
-                  <Send size={11} /> Invite
-                </button>
+      {/* ── Tests List ── */}
+      <div className="card">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-semibold text-[var(--color-text)] flex items-center gap-2 text-sm">
+            <BarChart2 size={15} className="text-[var(--color-primary)]" /> Your Tests
+            {exams.length > 0 && <span className="text-xs text-[var(--color-text-muted)] font-normal">({exams.length} total)</span>}
+          </h2>
+          <Link to="/create-exam" className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5">
+            <Zap size={12} /> New Test
+          </Link>
+        </div>
+
+        {exams.length === 0 ? (
+          <div className="text-center py-16">
+            <BookmarkCheck size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
+            <p className="font-medium text-[var(--color-text)] mb-1">No tests yet</p>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Create your first AI-powered test and invite your students.</p>
+            <Link to="/create-exam" className="btn-primary px-5 py-2 inline-flex items-center gap-2 text-sm">
+              <Zap size={14} /> Create Your First Test
+            </Link>
+          </div>
+        ) : (
+          <div className="space-y-2">
+            {exams.map(exam => (
+              <div
+                key={exam._id}
+                className="flex items-center gap-3 p-3.5 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)]/40 transition-all hover:bg-[var(--color-bg-alt)]/40"
+              >
+                <div className="min-w-0 flex-1">
+                  <p className="font-medium text-sm text-[var(--color-text)] truncate">{exam.title}</p>
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
+                    <span className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty}</span>
+                    {exam.proctored && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-semibold">
+                        <Shield size={8} /> Proctored
+                      </span>
+                    )}
+                    {exam.certificate !== false && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full font-semibold">
+                        <Award size={8} /> Certificate
+                      </span>
+                    )}
+                    {exam.allowReattempt && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-semibold">
+                        <RefreshCw size={8} /> Reattempt
+                      </span>
+                    )}
+                    {(exam.questions?.length || exam.questionCount) ? (
+                      <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-1.5 py-0.5 rounded-full">
+                        {exam.questions?.length || exam.questionCount}q
+                      </span>
+                    ) : null}
+                    {exam.expiryDate && (() => {
+                      const expired = new Date(exam.expiryDate) < new Date();
+                      return expired ? (
+                        <span className="flex items-center gap-0.5 text-[10px] bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400 px-1.5 py-0.5 rounded-full font-semibold">
+                          <Timer size={9} /> Expired
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-0.5 text-[10px] bg-amber-50 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 px-1.5 py-0.5 rounded-full">
+                          <Timer size={9} /> {new Date(exam.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </span>
+                      );
+                    })()}
+                  </div>
+                </div>
+
+                <div className="hidden sm:flex items-center gap-4 shrink-0">
+                  <div className="text-center">
+                    <div className="text-xs font-bold text-[var(--color-text)]">{exam.inviteCount || 0}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Invited</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count || exam.timesAttempted || 0}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
+                  </div>
+                  <div className="text-center hidden md:block">
+                    <div className="text-xs font-bold text-teal-600">{exam.stats?.avgScore ? `${Math.round(exam.stats.avgScore)}%` : '—'}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Avg Score</div>
+                  </div>
+                  <div className="text-center hidden lg:block">
+                    <div className="text-xs font-bold text-green-600">{exam.stats?.passCount ?? '—'}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Passed</div>
+                  </div>
+                  <div className="text-center hidden xl:block">
+                    <div className="text-xs font-bold text-amber-600">
+                      {exam.stats?.count ? `${Math.round((exam.stats.passCount / exam.stats.count) * 100)}%` : '—'}
+                    </div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</div>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    onClick={() => setEditExam(exam)}
+                    className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1"
+                    title="Edit test"
+                  >
+                    <Edit3 size={11} /> Edit
+                  </button>
+                  <button
+                    onClick={() => navigate(`/instructor/report/${exam._id}`)}
+                    className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1"
+                    title="View report"
+                  >
+                    <FileText size={11} /> Report
+                  </button>
+                  <button
+                    onClick={() => openInviteFor(exam)}
+                    className="btn-primary text-xs py-1 px-2.5 flex items-center gap-1"
+                  >
+                    <Mail size={11} /> Invite
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* ── Invite Modal — two-column layout ── */}
+      {showInviteModal && selectedExam && (
+        <Modal onClose={closeInviteModal}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-3xl flex overflow-hidden" style={{ minHeight: '500px', maxHeight: '90vh' }}>
+
+            {/* LEFT: Test details */}
+            <div className="w-64 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-1">Test</p>
+                <h4 className="font-bold text-sm text-[var(--color-text)] leading-snug">{selectedExam.title}</h4>
               </div>
 
-              {loadingInvites ? (
-                <div className="space-y-2">{[1,2,3].map(i => <div key={i} className="skeleton h-12" />)}</div>
-              ) : inviteData?.invites?.length === 0 ? (
-                <div className="text-center py-8">
-                  <Mail size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
-                  <p className="text-xs text-[var(--color-text-muted)]">No invites sent yet.</p>
-                </div>
-              ) : (
-                <div className="space-y-2 overflow-y-auto flex-1 pr-1">
-                  {inviteData?.invites?.map(inv => (
-                    <div key={inv._id} className="flex items-center justify-between py-2 border-b border-[var(--color-border)] last:border-0">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-xs font-medium text-[var(--color-text)] truncate">{inv.email}</p>
-                        {inv.result && (
-                          <p className="text-[10px] text-green-600">Score: {inv.result.percentage}% · {inv.result.passed ? 'Passed' : 'Failed'}</p>
-                        )}
-                      </div>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ml-2 shrink-0 ${
-                        inv.status === 'accepted' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' :
-                        inv.status === 'expired' ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400' :
-                        'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'
-                      } capitalize`}>
-                        {inv.status}
+              {/* Subject + Difficulty */}
+              <div className="flex flex-wrap gap-1.5">
+                {selectedExam.subject && (
+                  <span className="text-[10px] font-semibold bg-[var(--color-bg)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                    {selectedExam.subject}
+                  </span>
+                )}
+                {selectedExam.difficulty && (
+                  <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${diffBadgeClass(selectedExam.difficulty)}`}>
+                    {selectedExam.difficulty}
+                  </span>
+                )}
+              </div>
+
+              {/* Test settings */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Settings</p>
+                <div className="space-y-1.5">
+                  {[
+                    { label: 'AI Proctoring', value: selectedExam.proctored, icon: Shield },
+                    { label: 'Reattempt', value: selectedExam.allowReattempt, icon: RefreshCw },
+                    { label: 'Show Answers', value: selectedExam.showAnswersAfter, icon: Eye },
+                    { label: 'Certificate', value: selectedExam.certificate !== false, icon: Award },
+                  ].map(item => (
+                    <div key={item.label} className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--color-text-muted)] flex items-center gap-1.5">
+                        <item.icon size={11} className="shrink-0" /> {item.label}
+                      </span>
+                      <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                        item.value
+                          ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                          : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                      }`}>
+                        {item.value ? 'On' : 'Off'}
                       </span>
                     </div>
                   ))}
+                  {selectedExam.passingPercentage != null && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs text-[var(--color-text-muted)]">Passing Score</span>
+                      <span className="text-xs font-bold text-[var(--color-text)]">{selectedExam.passingPercentage}%</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Expiry */}
+              {selectedExam.expiryDate && (
+                <div className="flex items-start gap-1.5">
+                  <Timer size={11} className="text-amber-500 mt-0.5 shrink-0" />
+                  <div>
+                    <p className="text-[10px] font-semibold text-[var(--color-text-muted)]">Expires</p>
+                    <p className="text-xs text-[var(--color-text)]">
+                      {new Date(selectedExam.expiryDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                    </p>
+                    {new Date(selectedExam.expiryDate) < new Date() && (
+                      <p className="text-[10px] text-red-500 font-semibold mt-0.5">Expired</p>
+                    )}
+                  </div>
                 </div>
               )}
 
-              <div className="border-t border-[var(--color-border)] pt-3 mt-3 shrink-0">
-                <button
-                  onClick={() => setReportExamId(selectedExam._id)}
-                  className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
-                >
-                  <FileText size={12} /> View Detailed Report
-                </button>
+              {/* Stats */}
+              <div>
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Stats</p>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: 'Invited',   value: selectedExam.inviteCount || 0, color: 'text-[var(--color-text)]' },
+                    { label: 'Attempts',  value: selectedExam.stats?.count || selectedExam.timesAttempted || 0, color: 'text-[var(--color-primary)]' },
+                    { label: 'Avg Score', value: selectedExam.stats?.avgScore ? `${Math.round(selectedExam.stats.avgScore)}%` : '—', color: 'text-teal-600' },
+                    { label: 'Passed',    value: selectedExam.stats?.passCount ?? '—', color: 'text-green-600' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-[var(--color-bg)] rounded-lg p-2 text-center">
+                      <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
+                      <p className="text-[9px] text-[var(--color-text-muted)] mt-0.5">{s.label}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
-          ) : (
-            <div className="card text-center py-12">
-              <Users size={32} className="mx-auto mb-2 text-[var(--color-border)]" />
-              <p className="text-sm text-[var(--color-text-muted)]">Select a test to view invites</p>
-            </div>
-          )}
-        </div>
-      </div>
 
-      {/* Invite Modal */}
-      {showInviteModal && selectedExam && (
-        <Modal onClose={() => setShowInviteModal(false)}>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl max-w-sm w-full">
-            <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
-              <h3 className="font-semibold text-[var(--color-text)]">Send Test Invite</h3>
-              <button onClick={() => setShowInviteModal(false)} className="p-1 rounded-lg hover:bg-[var(--color-bg-alt)]"><X size={18} className="text-[var(--color-text-muted)]" /></button>
-            </div>
-            <div className="p-5">
-              <p className="text-sm text-[var(--color-text-muted)] mb-4">
-                Inviting to: <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>
-              </p>
+            {/* RIGHT: Invite form */}
+            <div className="flex-1 flex flex-col min-w-0">
+              {/* Header */}
+              <div className="flex items-start justify-between p-5 border-b border-[var(--color-border)] shrink-0">
+                <div>
+                  <h3 className="font-semibold text-[var(--color-text)] text-base">Send Test Invite</h3>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Invite students to attempt this test</p>
+                </div>
+                <button onClick={closeInviteModal} className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)] shrink-0">
+                  <X size={18} className="text-[var(--color-text-muted)]" />
+                </button>
+              </div>
 
               {/* Mode toggle */}
-              <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl mb-4">
-                <button
-                  onClick={() => setInviteMode('email')}
-                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${inviteMode === 'email' ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)]'}`}
-                >
-                  By Email
-                </button>
-                <button
-                  onClick={() => setInviteMode('group')}
-                  className={`flex-1 py-2 text-xs font-medium rounded-lg transition-colors ${inviteMode === 'group' ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm' : 'text-[var(--color-text-muted)]'}`}
-                >
-                  By Group
-                </button>
+              <div className="px-5 pt-4 shrink-0">
+                <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
+                  {[
+                    { id: 'email', label: 'By Email', icon: Mail },
+                    { id: 'group', label: 'By Batch', icon: Users },
+                  ].map(m => (
+                    <button
+                      key={m.id}
+                      onClick={() => setInviteMode(m.id)}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                        inviteMode === m.id
+                          ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
+                          : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                      }`}
+                    >
+                      <m.icon size={14} /> {m.label}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {inviteMode === 'email' ? (
-                <>
-                  <input
-                    type="email"
-                    placeholder="candidate@email.com"
-                    value={inviteEmail}
-                    onChange={e => setInviteEmail(e.target.value)}
-                    className="input w-full mb-4"
-                  />
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
-                    <button
-                      onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
-                      disabled={!inviteEmail || inviteMut.isPending}
-                      className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Send size={14} /> {inviteMut.isPending ? 'Sending...' : 'Send Invite'}
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  {(groupsData?.groups || []).length === 0 ? (
-                    <p className="text-sm text-[var(--color-text-muted)] text-center py-4">No groups yet. Create one in the <Link to="/groups" className="text-[var(--color-primary)] hover:underline">Groups</Link> page.</p>
-                  ) : (
-                    <select
-                      className="input w-full mb-4 text-sm"
-                      value={inviteGroupId}
-                      onChange={e => setInviteGroupId(e.target.value)}
-                    >
-                      <option value="">Select a group…</option>
-                      {(groupsData?.groups || []).map(g => (
-                        <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
+              {/* Form content */}
+              <div className="flex flex-col flex-1 px-5 pt-4 pb-5 min-h-0">
+                {inviteMode === 'email' ? (
+                  <>
+                    {/* Email sub-tabs */}
+                    <div className="flex gap-3 mb-4 border-b border-[var(--color-border)] shrink-0">
+                      {[
+                        { id: 'single', label: 'Single Email' },
+                        { id: 'bulk', label: 'Upload Excel / CSV' },
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => setInviteEmailTab(t.id)}
+                          className={`pb-2 text-sm font-medium border-b-2 transition-colors ${
+                            inviteEmailTab === t.id
+                              ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
+                              : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                          }`}
+                        >
+                          {t.label}
+                        </button>
                       ))}
-                    </select>
-                  )}
-                  <div className="flex gap-3">
-                    <button onClick={() => setShowInviteModal(false)} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
-                    <button
-                      onClick={() => groupInviteMut.mutate({ examId: selectedExam._id, groupId: inviteGroupId })}
-                      disabled={!inviteGroupId || groupInviteMut.isPending}
-                      className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
-                    >
-                      <Users size={14} /> {groupInviteMut.isPending ? 'Sending...' : 'Invite Group'}
-                    </button>
+                    </div>
+
+                    {inviteEmailTab === 'single' ? (
+                      <div className="flex flex-col flex-1 min-h-0">
+                        <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Student Email Address</label>
+                        <input
+                          type="email"
+                          placeholder="student@email.com"
+                          value={inviteEmail}
+                          onChange={e => setInviteEmail(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter' && inviteEmail) inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail }); }}
+                          className="input w-full shrink-0"
+                          autoFocus
+                        />
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-2 shrink-0">
+                          The student will receive an email with a direct link to access this test.
+                        </p>
+                        <div className="flex gap-3 mt-auto shrink-0 pt-4">
+                          <button onClick={closeInviteModal} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                          <button
+                            onClick={() => inviteMut.mutate({ examId: selectedExam._id, email: inviteEmail })}
+                            disabled={!inviteEmail || inviteMut.isPending}
+                            className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Mail size={14} /> {inviteMut.isPending ? 'Sending…' : 'Send Invite'}
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col flex-1 min-h-0">
+                        <div
+                          onClick={() => inviteFileRef.current?.click()}
+                          className="border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)]/50 rounded-xl p-5 text-center cursor-pointer transition-colors shrink-0"
+                        >
+                          <Upload size={20} className="mx-auto mb-2 text-[var(--color-text-muted)]" />
+                          <p className="text-sm font-medium text-[var(--color-text)]">
+                            {inviteFileName || 'Click to upload .xlsx / .xls / .csv'}
+                          </p>
+                          <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
+                            Emails are extracted automatically from any column
+                          </p>
+                          <input ref={inviteFileRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleInviteFile} />
+                        </div>
+                        <button
+                          onClick={downloadInviteSample}
+                          className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] hover:underline mt-2 shrink-0 w-fit"
+                        >
+                          <Download size={11} /> Download sample file
+                        </button>
+                        {inviteParsedEmails.length > 0 && (
+                          <div className="flex-1 overflow-y-auto mt-3 min-h-0">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-xs font-medium text-[var(--color-text)]">{inviteParsedEmails.length} email{inviteParsedEmails.length !== 1 ? 's' : ''} found</span>
+                              <button onClick={() => { setInviteParsedEmails([]); setInviteFileName(''); }} className="text-[11px] text-red-500 hover:underline">Clear</button>
+                            </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {inviteParsedEmails.map(e => (
+                                <span key={e} className="inline-flex items-center gap-1 text-[11px] bg-[var(--color-bg-alt)] text-[var(--color-text)] px-2 py-0.5 rounded-full border border-[var(--color-border)]">
+                                  {e}
+                                  <button onClick={() => setInviteParsedEmails(p => p.filter(x => x !== e))} className="hover:text-red-500"><X size={9} /></button>
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        <div className="flex gap-3 mt-auto shrink-0 pt-3">
+                          <button onClick={closeInviteModal} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                          <button
+                            onClick={() => bulkInviteMut.mutate({ examId: selectedExam._id, emails: inviteParsedEmails })}
+                            disabled={!inviteParsedEmails.length || bulkInviteMut.isPending}
+                            className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                          >
+                            <Mail size={14} /> {bulkInviteMut.isPending ? 'Sending…' : `Send ${inviteParsedEmails.length || ''} Invite${inviteParsedEmails.length !== 1 ? 's' : ''}`}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  /* Batch tab */
+                  <div className="flex flex-col flex-1 min-h-0">
+                    <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Select Batch</label>
+                    {(groupsData?.groups || []).length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center py-6 px-4">
+                          <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
+                          <p className="text-sm text-[var(--color-text-muted)]">No batches yet.</p>
+                          <Link to="/batches" onClick={closeInviteModal} className="text-xs text-[var(--color-primary)] hover:underline mt-1 inline-block">
+                            Create a batch first
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <select className="input w-full text-sm shrink-0" value={inviteGroupId} onChange={e => setInviteGroupId(e.target.value)}>
+                          <option value="">Choose a batch…</option>
+                          {(groupsData?.groups || []).map(g => (
+                            <option key={g._id} value={g._id}>{g.name} ({g.members?.length || 0} members)</option>
+                          ))}
+                        </select>
+                        {inviteGroupId && (
+                          <p className="text-[11px] text-[var(--color-text-muted)] mt-2 shrink-0">
+                            All members of this batch will receive a test invite for <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>.
+                          </p>
+                        )}
+                      </>
+                    )}
+                    <div className="flex gap-3 mt-auto shrink-0 pt-3">
+                      <button onClick={closeInviteModal} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                      <button
+                        onClick={() => groupInviteMut.mutate({ examId: selectedExam._id, groupId: inviteGroupId })}
+                        disabled={!inviteGroupId || groupInviteMut.isPending}
+                        className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Users size={14} /> {groupInviteMut.isPending ? 'Sending…' : 'Invite Batch'}
+                      </button>
+                    </div>
                   </div>
-                </>
-              )}
+                )}
+              </div>
             </div>
           </div>
         </Modal>
@@ -761,9 +740,6 @@ export default function InstructorPage() {
 
       {/* Edit Exam Modal */}
       {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} />}
-
-      {/* Report Modal */}
-      {reportExamId && <ReportPanel examId={reportExamId} onClose={() => setReportExamId(null)} />}
     </div>
   );
 }
