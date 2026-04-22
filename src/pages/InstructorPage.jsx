@@ -1,12 +1,13 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArcElement, BarElement, CategoryScale,
   Chart as ChartJS, Legend, LinearScale, Tooltip,
 } from 'chart.js';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award, BarChart2, BookmarkCheck, Clock, Download, Edit3,
-  Eye, FileText, Mail, Plus, RefreshCw, Send, Shield,
-  Timer, Trophy, Upload, Users, X, Zap,
+  Eye, FileText, Mail, Plus, RefreshCw,
+  Shield,
+  Timer, Trophy, Upload, Users, X, Zap
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
@@ -15,9 +16,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
-import { examApi, groupApi, instructorApi } from '../services/api.js';
-import { useAuthStore } from '../store/index.js';
-import { useThemeStore } from '../store/index.js';
+import { groupApi, instructorApi } from '../services/api.js';
+import { useAuthStore, useThemeStore } from '../store/index.js';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
 
@@ -375,16 +375,17 @@ export default function InstructorPage() {
                   <p className="font-medium text-sm text-[var(--color-text)] truncate">{exam.title}</p>
                   <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                     <span className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty}</span>
-                    {exam.proctored && (
-                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-semibold">
-                        <Shield size={8} /> Proctored
-                      </span>
-                    )}
                     {exam.certificate !== false && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full font-semibold">
                         <Award size={8} /> Certificate
                       </span>
                     )}
+                    {exam.proctored && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-violet-100 text-violet-600 dark:bg-violet-900/30 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-semibold">
+                        <Shield size={8} /> Proctored
+                      </span>
+                    )}
+                    
                     {exam.allowReattempt && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-semibold">
                         <RefreshCw size={8} /> Reattempt

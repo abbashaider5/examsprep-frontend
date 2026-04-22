@@ -1,8 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
 import {
   BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
-  Lightbulb, Mail, Plus, RotateCcw, Search, Shield, Star,
-  Target, Timer, TrendingUp, Upload, UserCheck, Users, X, Zap,
+  Lightbulb, Mail,
+  RotateCcw, Search, Shield, Star,
+  Target, Timer, TrendingUp, Upload, UserCheck, Users, X
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';

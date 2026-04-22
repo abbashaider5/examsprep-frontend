@@ -1115,10 +1115,9 @@ function MembersTab({ group, isOwner }) {
   const [showInvite,   setShowInvite]   = useState(false);
   const [inviteTab,    setInviteTab]    = useState('email'); // 'email' | 'file'
   const [emailInput,   setEmailInput]   = useState('');
-  const [emailList,    setEmailList]    = useState([]);
+  const [inviteEmails, setInviteEmails] = useState([]); // unified list shown in preview
   const [inviting,     setInviting]     = useState(false);
   const [memberSearch, setMemberSearch] = useState('');
-  const [parsedEmails, setParsedEmails] = useState([]);
   const [fileName,     setFileName]     = useState('');
 
   const { data: invitesData } = useQuery({
@@ -1142,7 +1141,8 @@ function MembersTab({ group, isOwner }) {
       const { results } = res.data;
       toast.success(`${results?.sent?.length || 0} invite(s) sent`);
       if (results?.skipped?.length) toast(`${results.skipped.length} skipped`, { icon: '⚠️' });
-      setParsedEmails([]); setFileName('');
+      setInviteEmails([]); setFileName('');
+      setShowInvite(false);
       qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
@@ -1151,23 +1151,23 @@ function MembersTab({ group, isOwner }) {
   const addEmail = () => {
     const e = emailInput.trim().toLowerCase();
     if (!e || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e)) { toast.error('Enter a valid email'); return; }
-    if (emailList.includes(e)) { toast.error('Already added'); return; }
-    setEmailList(p => [...p, e]);
+    if (inviteEmails.includes(e)) { toast.error('Already added'); return; }
+    setInviteEmails(p => [...p, e]);
     setEmailInput('');
   };
 
   const sendManualInvites = async () => {
-    if (!emailList.length) return;
+    if (!inviteEmails.length) return;
     setInviting(true);
     let sent = 0;
-    for (const email of emailList) {
+    for (const email of inviteEmails) {
       try { await groupApi.inviteMember(group._id, email); sent++; }
       catch (err) { toast.error(`${email}: ${err.response?.data?.message || 'Failed'}`); }
     }
     setInviting(false);
     if (sent) {
       toast.success(`${sent} invite${sent !== 1 ? 's' : ''} sent`);
-      setEmailList([]);
+      setInviteEmails([]);
       setShowInvite(false);
     }
     qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
@@ -1191,10 +1191,10 @@ function MembersTab({ group, isOwner }) {
             if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) emails.push(val);
           }
         }
-        const unique = [...new Set(emails)];
-        if (!unique.length) { toast.error('No valid emails found in file'); return; }
-        setParsedEmails(unique);
-        toast.success(`Found ${unique.length} email(s)`);
+        const unique = [...new Set(emails)].filter(e => !inviteEmails.includes(e));
+        if (!unique.length) { toast.error('No new valid emails found in file'); return; }
+        setInviteEmails(p => [...p, ...unique]);
+        toast.success(`Added ${unique.length} email(s) from file`);
       } catch { toast.error('Failed to parse file'); }
     };
     reader.readAsArrayBuffer(file);
@@ -1225,82 +1225,137 @@ function MembersTab({ group, isOwner }) {
         </div>
       )}
 
-      {/* Invite panel */}
+      {/* Add Members Modal */}
       {isOwner && showInvite && (
-        <div className="mx-4 mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 overflow-hidden">
-          {/* Tabs */}
-          <div className="flex border-b border-[var(--color-border)]">
-            {[['email', 'Email Invite'], ['file', 'Upload File']].map(([key, lbl]) => (
-              <button key={key} onClick={() => setInviteTab(key)}
-                className={`flex-1 py-2 text-xs font-semibold transition-colors
-                  ${inviteTab === key ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] -mb-px' : 'text-[var(--color-text-muted)]'}`}>
-                {lbl}
-              </button>
-            ))}
-          </div>
+        <Modal onClose={() => { setShowInvite(false); setInviteEmails([]); setEmailInput(''); setFileName(''); }}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-2xl flex overflow-hidden" style={{ height: '80vh', maxHeight: '600px' }}>
 
-          <div className="p-3 space-y-2.5">
-            {inviteTab === 'email' ? (
-              <>
-                <div className="flex gap-2">
-                  <input type="email" placeholder="student@email.com" value={emailInput}
-                    onChange={e => setEmailInput(e.target.value)}
-                    onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
-                    className="input flex-1 text-sm py-2" />
-                  <button onClick={addEmail} disabled={!emailInput}
-                    className="btn-secondary px-3 disabled:opacity-50 text-sm flex items-center gap-1">
-                    <Plus size={13} /> Add
-                  </button>
-                </div>
-                {emailList.length > 0 && (
-                  <div className="flex flex-wrap gap-1.5 p-2 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] max-h-24 overflow-y-auto">
-                    {emailList.map(e => (
-                      <span key={e} className="flex items-center gap-1 text-[10px] bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 px-2 py-0.5 rounded-full">
-                        {e}
-                        <button onClick={() => setEmailList(p => p.filter(x => x !== e))} className="hover:text-red-500"><X size={9} /></button>
-                      </span>
-                    ))}
-                  </div>
+            {/* LEFT — preview (fixed width, internal scroll) */}
+            <div className="w-56 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 flex flex-col min-h-0">
+              <div className="px-4 py-4 border-b border-[var(--color-border)] shrink-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Members to Add</p>
+                {inviteEmails.length > 0 && (
+                  <p className="text-xs font-bold text-[var(--color-primary)] mt-0.5">{inviteEmails.length} email{inviteEmails.length !== 1 ? 's' : ''}</p>
                 )}
-                <button onClick={sendManualInvites} disabled={!emailList.length || inviting}
-                  className="btn-primary w-full text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50">
-                  <UserPlus size={13} />
-                  {inviting ? 'Sending…' : `Send ${emailList.length || ''} Invite${emailList.length !== 1 ? 's' : ''}`}
-                </button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-center justify-between">
-                  <p className="text-xs text-[var(--color-text-muted)]">Upload .xlsx or .csv with email column</p>
-                  <button onClick={downloadSample}
-                    className="flex items-center gap-1 text-[10px] text-[var(--color-primary)] hover:underline">
-                    <Download size={10} /> Sample
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {inviteEmails.length === 0 ? (
+                  <p className="text-xs text-center text-[var(--color-text-muted)] py-8 px-2">
+                    Add emails on the right to see a preview here
+                  </p>
+                ) : inviteEmails.map(email => (
+                  <div key={email} className="flex items-center gap-2 px-2.5 py-2 rounded-lg bg-[var(--color-surface)] border border-[var(--color-border)] group">
+                    <span className="text-[11px] text-[var(--color-text)] flex-1 min-w-0 truncate">{email}</span>
+                    <button
+                      onClick={() => setInviteEmails(p => p.filter(e => e !== email))}
+                      className="opacity-0 group-hover:opacity-100 text-[var(--color-text-muted)] hover:text-red-500 shrink-0 transition-opacity"
+                    >
+                      <X size={10} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {inviteEmails.length > 0 && (
+                <div className="p-2 border-t border-[var(--color-border)] shrink-0">
+                  <button
+                    onClick={() => setInviteEmails([])}
+                    className="text-[10px] text-red-500 hover:underline w-full text-center"
+                  >
+                    Clear all
                   </button>
                 </div>
-                <button onClick={() => fileInputRef.current?.click()}
-                  className="w-full flex items-center justify-center gap-2 py-3 rounded-lg border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-xs transition-colors">
-                  <Upload size={14} />
-                  {fileName ? fileName : 'Click to select file'}
+              )}
+            </div>
+
+            {/* RIGHT — input */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] shrink-0">
+                <div>
+                  <h3 className="font-semibold text-[var(--color-text)]">Add Members</h3>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Invite students to <strong>{group.name}</strong></p>
+                </div>
+                <button onClick={() => { setShowInvite(false); setInviteEmails([]); setEmailInput(''); setFileName(''); }}
+                  className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)]">
+                  <X size={16} className="text-[var(--color-text-muted)]" />
                 </button>
-                <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
-                {parsedEmails.length > 0 && (
+              </div>
+
+              {/* Tabs */}
+              <div className="flex border-b border-[var(--color-border)] shrink-0">
+                {[['email', 'Single Email'], ['file', 'Upload Excel / CSV']].map(([key, lbl]) => (
+                  <button key={key} onClick={() => setInviteTab(key)}
+                    className={`flex-1 py-2.5 text-xs font-semibold transition-colors ${
+                      inviteTab === key
+                        ? 'text-[var(--color-primary)] border-b-2 border-[var(--color-primary)] -mb-px'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                    }`}>
+                    {lbl}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5 space-y-4">
+                {inviteTab === 'email' ? (
                   <>
-                    <div className="p-2 bg-[var(--color-surface)] rounded-lg border border-[var(--color-border)] max-h-20 overflow-y-auto">
-                      {parsedEmails.map((e, i) => (
-                        <p key={i} className="text-[10px] text-[var(--color-text-muted)] truncate">{e}</p>
-                      ))}
+                    <div>
+                      <label className="text-xs font-semibold text-[var(--color-text-muted)] mb-1.5 block">Student Email Address</label>
+                      <div className="flex gap-2">
+                        <input type="email" placeholder="student@email.com" value={emailInput}
+                          onChange={e => setEmailInput(e.target.value)}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+                          className="input flex-1 text-sm py-2" />
+                        <button onClick={addEmail} disabled={!emailInput}
+                          className="btn-secondary px-4 disabled:opacity-50 text-sm flex items-center gap-1 shrink-0">
+                          <Plus size={13} /> Add
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
+                        Press <kbd className="px-1 py-0.5 bg-[var(--color-bg-alt)] rounded text-[9px] font-mono">Enter</kbd> or click Add. Added emails appear in the preview.
+                      </p>
                     </div>
-                    <button onClick={() => bulkMut.mutate(parsedEmails)} disabled={bulkMut.isPending}
-                      className="btn-primary w-full text-xs py-2 flex items-center justify-center gap-1.5 disabled:opacity-50">
-                      <UserPlus size={13} />
-                      {bulkMut.isPending ? 'Sending…' : `Invite ${parsedEmails.length} Member${parsedEmails.length !== 1 ? 's' : ''}`}
+                  </>
+                ) : (
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <p className="text-xs text-[var(--color-text-muted)]">Upload .xlsx or .csv with an email column</p>
+                      <button onClick={downloadSample}
+                        className="flex items-center gap-1 text-[10px] text-[var(--color-primary)] hover:underline">
+                        <Download size={10} /> Sample
+                      </button>
+                    </div>
+                    <button onClick={() => fileInputRef.current?.click()}
+                      className="w-full flex items-center justify-center gap-2 py-8 rounded-xl border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] text-sm transition-colors">
+                      <Upload size={18} />
+                      {fileName ? fileName : 'Click to select file'}
                     </button>
+                    <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" className="hidden" onChange={handleFileUpload} />
+                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                      Emails from the file will be added to the preview list on the left.
+                    </p>
                   </>
                 )}
-              </>
-            )}
+              </div>
+
+              {/* Footer CTA */}
+              <div className="px-5 py-4 border-t border-[var(--color-border)] shrink-0 space-y-2">
+                <button
+                  onClick={() => bulkMut.mutate(inviteEmails)}
+                  disabled={!inviteEmails.length || bulkMut.isPending || inviting}
+                  className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <UserPlus size={14} />
+                  {bulkMut.isPending ? 'Sending…' : `Confirm & Add ${inviteEmails.length || ''} Member${inviteEmails.length !== 1 ? 's' : ''}`}
+                </button>
+                {inviteEmails.length > 0 && (
+                  <p className="text-[10px] text-center text-[var(--color-text-muted)]">
+                    {inviteEmails.length} email{inviteEmails.length !== 1 ? 's' : ''} queued — review the list on the left before confirming
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
-        </div>
+        </Modal>
       )}
 
       {/* Search */}
@@ -1412,6 +1467,8 @@ function MembersTab({ group, isOwner }) {
 function TestsTab({ group, isOwner }) {
   const qc             = useQueryClient();
   const [showShare, setShowShare] = useState(false);
+  const [selectedShareExam, setSelectedShareExam] = useState(null);
+  const [shareExpiry, setShareExpiry] = useState('');
 
   const { data: myExamsData } = useQuery({
     queryKey: ['instructorAnalytics'],
@@ -1546,37 +1603,156 @@ function TestsTab({ group, isOwner }) {
       )}
 
       {showShare && (
-        <Modal onClose={() => setShowShare(false)}>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-sm">
-            <div className="flex items-center justify-between p-5 border-b border-[var(--color-border)]">
-              <h3 className="font-semibold text-[var(--color-text)]">Share Test with Batch</h3>
-              <button onClick={() => setShowShare(false)} className="p-1 rounded hover:bg-[var(--color-bg-alt)]">
-                <X size={16} className="text-[var(--color-text-muted)]" />
-              </button>
-            </div>
-            <div className="p-5 space-y-2 max-h-80 overflow-y-auto">
-              {myExams.length === 0 ? (
-                <p className="text-sm text-center text-[var(--color-text-muted)] py-4">
-                  No tests yet. <Link to="/create-exam" className="text-[var(--color-primary)] hover:underline">Create one first.</Link>
-                </p>
-              ) : myExams.map(exam => {
-                const alreadyShared = sharedExams.some(se => (se.exam?._id || se.exam)?.toString() === exam._id?.toString());
-                return (
-                  <div key={exam._id} className="flex items-center gap-3 p-3 rounded-xl border border-[var(--color-border)]">
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-[var(--color-text)] truncate">{exam.title}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">{exam.subject}</p>
-                    </div>
+        <Modal onClose={() => { setShowShare(false); setSelectedShareExam(null); setShareExpiry(''); }}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-2xl flex overflow-hidden" style={{ height: '80vh', maxHeight: '600px' }}>
+
+            {/* LEFT — test list (fixed width, internal scroll) */}
+            <div className="w-56 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 flex flex-col min-h-0">
+              <div className="px-4 py-4 border-b border-[var(--color-border)] shrink-0">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Your Tests</p>
+              </div>
+              <div className="flex-1 overflow-y-auto p-2 space-y-1">
+                {myExams.length === 0 ? (
+                  <p className="text-xs text-center text-[var(--color-text-muted)] py-6 px-2">
+                    No tests yet.{' '}
+                    <Link to="/create-exam" className="text-[var(--color-primary)] hover:underline">Create one.</Link>
+                  </p>
+                ) : myExams.map(exam => {
+                  const isSelected = selectedShareExam?._id === exam._id;
+                  const alreadyShared = sharedExams.some(se => (se.exam?._id || se.exam)?.toString() === exam._id?.toString());
+                  return (
                     <button
-                      onClick={() => !alreadyShared && shareMut.mutate(exam._id)}
-                      disabled={alreadyShared || shareMut.isPending}
-                      className={`text-xs px-3 py-1.5 rounded-lg font-medium transition-colors shrink-0 ${alreadyShared ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 cursor-default' : 'btn-primary'}`}
+                      key={exam._id}
+                      onClick={() => !alreadyShared && setSelectedShareExam(exam)}
+                      className={`w-full text-left px-3 py-2.5 rounded-xl transition-all ${
+                        alreadyShared ? 'opacity-50 cursor-not-allowed' :
+                        isSelected ? 'bg-[var(--color-primary)]/10 border border-[var(--color-primary)]/30' :
+                        'hover:bg-[var(--color-bg)] border border-transparent'
+                      }`}
                     >
-                      {alreadyShared ? <><Check size={11} className="inline mr-1" />Shared</> : 'Share'}
+                      <p className="text-xs font-medium text-[var(--color-text)] truncate">{exam.title}</p>
+                      <p className="text-[10px] text-[var(--color-text-muted)] truncate mt-0.5">{exam.subject}</p>
+                      {alreadyShared && (
+                        <span className="text-[9px] font-bold text-green-600 dark:text-green-400 flex items-center gap-0.5 mt-0.5">
+                          <Check size={9} /> Shared
+                        </span>
+                      )}
                     </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* RIGHT — details + action */}
+            <div className="flex-1 flex flex-col min-w-0 min-h-0">
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] shrink-0">
+                <div>
+                  <h3 className="font-semibold text-[var(--color-text)]">Share Test with Batch</h3>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Select a test to share with <strong>{group.name}</strong></p>
+                </div>
+                <button onClick={() => { setShowShare(false); setSelectedShareExam(null); setShareExpiry(''); }}
+                  className="p-1.5 rounded-lg hover:bg-[var(--color-bg-alt)]">
+                  <X size={16} className="text-[var(--color-text-muted)]" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-5">
+                {selectedShareExam ? (
+                  <div className="space-y-5">
+                    {/* Test details */}
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Test Details</p>
+                      <h4 className="font-bold text-sm text-[var(--color-text)] leading-snug mb-2">{selectedShareExam.title}</h4>
+                      <div className="flex flex-wrap gap-1.5 mb-4">
+                        {selectedShareExam.subject && (
+                          <span className="text-[10px] font-medium bg-[var(--color-bg-alt)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                            {selectedShareExam.subject}
+                          </span>
+                        )}
+                        {selectedShareExam.difficulty && (
+                          <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${
+                            selectedShareExam.difficulty === 'easy' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
+                            : selectedShareExam.difficulty === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/20 dark:text-amber-400'
+                            : 'bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400'
+                          }`}>{selectedShareExam.difficulty}</span>
+                        )}
+                        {selectedShareExam.proctored && (
+                          <span className="text-[10px] font-semibold bg-violet-100 text-violet-700 dark:bg-violet-900/20 dark:text-violet-400 px-2 py-0.5 rounded-full">
+                            Proctored
+                          </span>
+                        )}
+                      </div>
+
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Settings</p>
+                      <div className="space-y-1.5">
+                        {[
+                          { label: 'AI Proctoring', value: selectedShareExam.proctored },
+                          { label: 'Reattempt',     value: selectedShareExam.allowReattempt },
+                          { label: 'Certificate',   value: selectedShareExam.certificate !== false },
+                          { label: 'Show Answers',  value: selectedShareExam.showAnswersAfter },
+                        ].map(({ label, value }) => (
+                          <div key={label} className="flex items-center justify-between">
+                            <span className="text-xs text-[var(--color-text-muted)]">{label}</span>
+                            <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                              value ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : 'bg-[var(--color-border)] text-[var(--color-text-muted)]'
+                            }`}>{value ? 'On' : 'Off'}</span>
+                          </div>
+                        ))}
+                        {selectedShareExam.passingPercentage != null && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-[var(--color-text-muted)]">Passing Score</span>
+                            <span className="text-xs font-bold text-[var(--color-text)]">{selectedShareExam.passingPercentage}%</span>
+                          </div>
+                        )}
+                        {selectedShareExam.questions?.length > 0 && (
+                          <div className="flex items-center justify-between">
+                            <span className="text-xs text-[var(--color-text-muted)]">Questions</span>
+                            <span className="text-xs font-bold text-[var(--color-text)]">{selectedShareExam.questions.length}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Optional expiry */}
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-1.5">
+                        Expiry <span className="normal-case font-normal">(optional override)</span>
+                      </p>
+                      <input
+                        type="datetime-local"
+                        value={shareExpiry}
+                        onChange={e => setShareExpiry(e.target.value)}
+                        className="input w-full text-sm py-2"
+                      />
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-1">Leave blank to use the test's existing expiry setting.</p>
+                    </div>
                   </div>
-                );
-              })}
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full py-12 text-center">
+                    <div className="w-12 h-12 rounded-2xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center mb-3">
+                      <BookOpen size={20} className="text-[var(--color-text-muted)] opacity-50" />
+                    </div>
+                    <p className="text-sm text-[var(--color-text-muted)]">Select a test from the list to preview details</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Footer CTA */}
+              <div className="px-5 py-4 border-t border-[var(--color-border)] shrink-0">
+                <button
+                  onClick={() => {
+                    if (!selectedShareExam?._id) return;
+                    shareMut.mutate(selectedShareExam._id);
+                  }}
+                  disabled={!selectedShareExam || shareMut.isPending}
+                  className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  <Zap size={14} />
+                  {shareMut.isPending ? 'Sharing…' : selectedShareExam ? `Share "${selectedShareExam.title}"` : 'Select a test first'}
+                </button>
+              </div>
             </div>
           </div>
         </Modal>
