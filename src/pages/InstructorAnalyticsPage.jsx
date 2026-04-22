@@ -1,21 +1,24 @@
 import { useQuery } from '@tanstack/react-query';
 import {
-    ArcElement,
-    BarElement,
-    CategoryScale,
-    Chart as ChartJS,
-    Filler,
-    Legend,
-    LinearScale,
-    LineElement,
-    PointElement,
-    Tooltip,
+  ArcElement,
+  BarElement,
+  CategoryScale,
+  Chart as ChartJS,
+  Filler,
+  Legend,
+  LinearScale,
+  LineElement,
+  PointElement,
+  Tooltip,
 } from 'chart.js';
 import {
-    ArrowLeft, Award, BarChart2, BookOpen, Brain, ChevronDown, ChevronRight,
-    Filter, Lightbulb, TrendingUp, TrendingDown, Users, X, Zap,
+  ArrowLeft, Award, BarChart2, BookOpen, Brain, ChevronDown, ChevronRight,
+  Filter, Lightbulb,
+  TrendingDown,
+  TrendingUp,
+  Users, X, Zap,
 } from 'lucide-react';
-import { useState, useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import { Link, useNavigate } from 'react-router-dom';
 import { instructorApi } from '../services/api.js';
@@ -95,7 +98,7 @@ const TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'tests', label: 'Tests' },
     { id: 'students', label: 'Students' },
-    { id: 'groups', label: 'Groups' },
+    { id: 'groups', label: 'Batches' },
     { id: 'aiInsights', label: 'AI Insights' },
 ];
 
@@ -344,7 +347,7 @@ export default function InstructorAnalyticsPage() {
                         </button>
                         <div>
                             <h1 className="text-xl font-extrabold text-white leading-tight">Analytics Dashboard</h1>
-                            <p className="text-sm text-teal-100 mt-0.5">Performance insights across all your tests & groups</p>
+                            <p className="text-sm text-teal-100 mt-0.5">Performance insights across all your tests & batches</p>
                         </div>
                     </div>
                     {/* Quick stats */}
@@ -607,10 +610,10 @@ export default function InstructorAnalyticsPage() {
                             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/30 dark:to-blue-900/20 flex items-center justify-center mx-auto mb-4">
                                 <Users size={24} className="text-[var(--color-primary)]" />
                             </div>
-                            <p className="font-semibold text-[var(--color-text)] mb-1">No groups yet</p>
-                            <p className="text-sm text-[var(--color-text-muted)]">Create groups and invite students to see group-wise analytics.</p>
+                            <p className="font-semibold text-[var(--color-text)] mb-1">No batches yet</p>
+                            <p className="text-sm text-[var(--color-text-muted)]">Create batches and invite students to see batch-wise analytics.</p>
                             <Link to="/batches" className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors">
-                                Manage Groups <ChevronRight size={14} />
+                                Manage Batches <ChevronRight size={14} />
                             </Link>
                         </div>
                     ) : (
@@ -735,18 +738,16 @@ export default function InstructorAnalyticsPage() {
                     </div>
 
                     {/* Filters */}
-                    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4">
+                    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 space-y-3">
                         <div className="flex flex-col sm:flex-row gap-3">
-                            <div className="flex-1">
-                                <input type="text" placeholder="Search student by name or email…" value={aiSearch}
-                                    onChange={e => setAiSearch(e.target.value)}
-                                    className="input w-full text-sm py-2" />
-                            </div>
+                            <input type="text" placeholder="Search student by name or email…" value={aiSearch}
+                                onChange={e => setAiSearch(e.target.value)}
+                                className="input flex-1 text-sm py-2" />
                             {groupPerformance.length > 0 && (
                                 <select
                                     value={aiGroupFilter}
                                     onChange={e => setAiGroupFilter(e.target.value)}
-                                    className="input text-sm py-2 pr-8"
+                                    className="input text-sm py-2 w-full sm:w-48 shrink-0"
                                 >
                                     <option value="all">All Batches</option>
                                     {groupPerformance.map(g => (
@@ -754,22 +755,22 @@ export default function InstructorAnalyticsPage() {
                                     ))}
                                 </select>
                             )}
-                            <div className="flex gap-2 flex-wrap">
-                                {['all', 'weak', 'average', 'strong'].map(f => (
-                                    <button key={f} onClick={() => setAiFilter(f)}
-                                        className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border ${
-                                            aiFilter === f
-                                                ? f === 'weak' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
-                                                : f === 'average' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                                                : f === 'strong' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                                                : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20'
-                                                : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-bg-alt)]'
-                                        }`}
-                                    >
-                                        {f === 'all' ? 'All Students' : f}
-                                    </button>
-                                ))}
-                            </div>
+                        </div>
+                        <div className="flex gap-2 flex-wrap">
+                            {['all', 'weak', 'average', 'strong'].map(f => (
+                                <button key={f} onClick={() => setAiFilter(f)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border ${
+                                        aiFilter === f
+                                            ? f === 'weak' ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                                            : f === 'average' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                                            : f === 'strong' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                                            : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20'
+                                            : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-bg-alt)]'
+                                    }`}
+                                >
+                                    {f === 'all' ? 'All Students' : f}
+                                </button>
+                            ))}
                         </div>
                     </div>
 

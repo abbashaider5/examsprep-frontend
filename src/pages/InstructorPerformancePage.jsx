@@ -179,22 +179,20 @@ export default function InstructorPerformancePage() {
       </div>
 
       {/* Search + filter bar */}
-      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4">
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 space-y-3">
         <div className="flex flex-col sm:flex-row gap-3">
-          <div className="flex-1">
-            <input
-              type="text"
-              placeholder="Search by student name or email…"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              className="input w-full text-sm py-2"
-            />
-          </div>
+          <input
+            type="text"
+            placeholder="Search by student name or email…"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            className="input flex-1 text-sm py-2"
+          />
           {groupPerformance.length > 0 && (
             <select
               value={groupFilter}
               onChange={e => setGroupFilter(e.target.value)}
-              className="input text-sm py-2 pr-8"
+              className="input text-sm py-2 w-full sm:w-48 shrink-0"
             >
               <option value="all">All Batches</option>
               {groupPerformance.map(g => (
@@ -202,25 +200,25 @@ export default function InstructorPerformancePage() {
               ))}
             </select>
           )}
-          <div className="flex gap-2 flex-wrap">
-            {['all', 'weak', 'average', 'strong'].map(f => (
-              <button key={f} onClick={() => setFilter(f)}
-                className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border ${
-                  filter === f
-                    ? f === 'weak'    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
-                    : f === 'average' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
-                    : f === 'strong'  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                    : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20'
-                    : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-bg-alt)]'
-                }`}
-              >
-                {f === 'all' ? 'All Students' : f}
-              </button>
-            ))}
-          </div>
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {['all', 'weak', 'average', 'strong'].map(f => (
+            <button key={f} onClick={() => setFilter(f)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-semibold capitalize transition-all border ${
+                filter === f
+                  ? f === 'weak'    ? 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800'
+                  : f === 'average' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800'
+                  : f === 'strong'  ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                  : 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] border-[var(--color-primary)]/20'
+                  : 'text-[var(--color-text-muted)] border-[var(--color-border)] hover:bg-[var(--color-bg-alt)]'
+              }`}
+            >
+              {f === 'all' ? 'All Students' : f}
+            </button>
+          ))}
         </div>
         {(search || filter !== 'all' || groupFilter !== 'all') && (
-          <p className="text-xs text-[var(--color-text-muted)] mt-2">
+          <p className="text-xs text-[var(--color-text-muted)]">
             Showing <strong className="text-[var(--color-primary)]">{filteredStudents.length}</strong> of {aiStudents.length} students
             {filter !== 'all' && ` · filtered by "${filter}"`}
             {groupFilter !== 'all' && ` · ${groupPerformance.find(g => g._id?.toString() === groupFilter)?.name || 'batch'}`}
