@@ -87,7 +87,7 @@ export default function App() {
           <Route path="instructor" element={<Navigate to="/instructor-dashboard" replace />} />
           <Route path="instructor-dashboard" element={<Guard instructorOnly><InstructorPage /></Guard>} />
           <Route path="instructor/analytics" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
-          <Route path="test-reports" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
+          <Route path="test-reports" element={<Navigate to="/instructor/analytics" replace />} />
           <Route path="instructor/performance" element={<Guard instructorOnly><InstructorPerformancePage /></Guard>} />
           <Route path="instructor/report/:examId" element={<Guard instructorOnly><InstructorReportPage /></Guard>} />
           <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />

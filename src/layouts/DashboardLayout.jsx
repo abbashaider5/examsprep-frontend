@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
+import TourGuide from '../components/TourGuide.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
 import { Link, Outlet, useLocation } from 'react-router-dom';
@@ -366,6 +367,7 @@ export default function DashboardLayout() {
       {showFeedback && (
         <FeedbackModal mode="direct" trigger="general" onClose={() => setShowFeedback(false)} />
       )}
+      <TourGuide role={isInstructor ? 'instructor' : 'student'} />
     </div>
   );
 }

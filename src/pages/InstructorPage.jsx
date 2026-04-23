@@ -244,6 +244,8 @@ export default function InstructorPage() {
         </div>
       </div>
 
+      
+
       {/* ── Stats ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
@@ -266,8 +268,8 @@ export default function InstructorPage() {
         ))}
       </div>
 
-      {/* ── Quick Actions ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
+            {/* ── Quick Actions ── */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-6">
         {[
           { label: 'Create Test',  icon: Zap,      to: '/create-exam',           color: 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/30' },
           { label: 'Create Batch', icon: Plus,     to: '/batches',               color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30' },
@@ -285,65 +287,7 @@ export default function InstructorPage() {
         ))}
       </div>
 
-      {/* ── Charts ── */}
-      {exams.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 mb-6">
-          {/* Pass vs Fail doughnut */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
-            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Pass vs Fail</h3>
-            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Overall across all tests</p>
-            <div style={{ height: 180 }}>
-              <Doughnut data={doughnutData} options={{
-                responsive: true, maintainAspectRatio: false, cutout: '65%',
-                plugins: {
-                  legend: { display: true, position: 'bottom', labels: { color: c.muted, font: { size: 11 }, boxWidth: 12, padding: 12 } },
-                  tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8 },
-                },
-              }} />
-            </div>
-            <div className="flex justify-center gap-4 mt-3">
-              <div className="text-center">
-                <p className="text-lg font-bold text-emerald-600">{totalPassCount}</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Passed</p>
-              </div>
-              <div className="w-px bg-[var(--color-border)]" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-red-500">{totalFail}</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Failed</p>
-              </div>
-              <div className="w-px bg-[var(--color-border)]" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-[var(--color-primary)]">{passRate}%</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Avg Score per test bar */}
-          <div className="lg:col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
-            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Avg Score by Test</h3>
-            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Top {topExams.length} tests by attempt count</p>
-            {topExams.length === 0 ? (
-              <div className="flex items-center justify-center h-[180px] text-sm text-[var(--color-text-muted)]">
-                No attempt data yet
-              </div>
-            ) : (
-              <div style={{ height: 180 }}>
-                <Bar data={scoreBarData} options={{
-                  ...chartBaseOpts,
-                  scales: {
-                    ...chartBaseOpts.scales,
-                    y: { ...chartBaseOpts.scales.y, ticks: { ...chartBaseOpts.scales.y.ticks, callback: v => `${v}%` } },
-                  },
-                  plugins: { ...chartBaseOpts.plugins, legend: { display: false } },
-                }} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Tests List ── */}
+            {/* ── Tests List ── */}
       <div className="card">
         <div className="flex items-center justify-between mb-4">
           <h2 className="font-semibold text-[var(--color-text)] flex items-center gap-2 text-sm">
@@ -463,6 +407,66 @@ export default function InstructorPage() {
           </div>
         )}
       </div>
+
+      {/* ── Charts ── */}
+      {exams.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 my-6">
+          {/* Pass vs Fail doughnut */}
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Pass vs Fail</h3>
+            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Overall across all tests</p>
+            <div style={{ height: 180 }}>
+              <Doughnut data={doughnutData} options={{
+                responsive: true, maintainAspectRatio: false, cutout: '65%',
+                plugins: {
+                  legend: { display: true, position: 'bottom', labels: { color: c.muted, font: { size: 11 }, boxWidth: 12, padding: 12 } },
+                  tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8 },
+                },
+              }} />
+            </div>
+            <div className="flex justify-center gap-4 mt-3">
+              <div className="text-center">
+                <p className="text-lg font-bold text-emerald-600">{totalPassCount}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Passed</p>
+              </div>
+              <div className="w-px bg-[var(--color-border)]" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-red-500">{totalFail}</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Failed</p>
+              </div>
+              <div className="w-px bg-[var(--color-border)]" />
+              <div className="text-center">
+                <p className="text-lg font-bold text-[var(--color-primary)]">{passRate}%</p>
+                <p className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Avg Score per test bar */}
+          <div className="lg:col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Avg Score by Test</h3>
+            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Top {topExams.length} tests by attempt count</p>
+            {topExams.length === 0 ? (
+              <div className="flex items-center justify-center h-[180px] text-sm text-[var(--color-text-muted)]">
+                No attempt data yet
+              </div>
+            ) : (
+              <div style={{ height: 180 }}>
+                <Bar data={scoreBarData} options={{
+                  ...chartBaseOpts,
+                  scales: {
+                    ...chartBaseOpts.scales,
+                    y: { ...chartBaseOpts.scales.y, ticks: { ...chartBaseOpts.scales.y.ticks, callback: v => `${v}%` } },
+                  },
+                  plugins: { ...chartBaseOpts.plugins, legend: { display: false } },
+                }} />
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+
 
       {/* ── Invite Modal — two-column layout ── */}
       {showInviteModal && selectedExam && (

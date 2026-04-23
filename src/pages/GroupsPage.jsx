@@ -1580,7 +1580,12 @@ function TestsTab({ group, isOwner }) {
                   </div>
                 </div>
                 <div className="flex items-center gap-2 shrink-0">
-                  {isExpired && !attempted ? (
+                  {isOwner ? (
+                    <Link to={`/instructor/report/${exam._id}`}
+                      className="text-xs px-3 py-1.5 rounded-lg bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 font-medium shrink-0">
+                      View Report
+                    </Link>
+                  ) : isExpired && !attempted ? (
                     <span className="text-xs px-3 py-1.5 rounded-lg bg-red-50 dark:bg-red-900/20 text-red-400 shrink-0">Expired</span>
                   ) : canAttempt ? (
                     <Link to={`/exam/${exam._id}`} className="btn-primary text-xs px-3 py-1.5 shrink-0">
