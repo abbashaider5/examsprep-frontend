@@ -16,6 +16,7 @@ import DashboardPage from './pages/DashboardPage.jsx';
 import EditQuestionsPage from './pages/EditQuestionsPage.jsx';
 import ExamPage from './pages/ExamPage.jsx';
 import HomePage from './pages/HomePage.jsx';
+import ForgotPasswordPage from './pages/ForgotPasswordPage.jsx';
 import GroupsPage, { GroupInviteAcceptPage } from './pages/GroupsPage.jsx';
 import InstructorAnalyticsPage from './pages/InstructorAnalyticsPage.jsx';
 import InstructorPage from './pages/InstructorPage.jsx';
@@ -67,6 +68,7 @@ export default function App() {
         <Route element={<AuthLayout />}>
           <Route path="login" element={<LoginPage />} />
           <Route path="signup" element={<SignupPage />} />
+          <Route path="forgot-password" element={<ForgotPasswordPage />} />
         </Route>
 
         {/* Fullscreen exam (no layout) */}
@@ -86,8 +88,8 @@ export default function App() {
           <Route path="admin" element={<Guard adminOnly><AdminPage /></Guard>} />
           <Route path="instructor" element={<Navigate to="/instructor-dashboard" replace />} />
           <Route path="instructor-dashboard" element={<Guard instructorOnly><InstructorPage /></Guard>} />
-          <Route path="instructor/analytics" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
-          <Route path="test-reports" element={<Navigate to="/instructor/analytics" replace />} />
+          <Route path="test-reports" element={<Guard instructorOnly><InstructorAnalyticsPage /></Guard>} />
+          <Route path="instructor/analytics" element={<Navigate to="/test-reports" replace />} />
           <Route path="instructor/performance" element={<Guard instructorOnly><InstructorPerformancePage /></Guard>} />
           <Route path="instructor/report/:examId" element={<Guard instructorOnly><InstructorReportPage /></Guard>} />
           <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />

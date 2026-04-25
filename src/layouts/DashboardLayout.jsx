@@ -7,7 +7,6 @@ import {
 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import FeedbackModal from '../components/FeedbackModal.jsx';
-import TourGuide from '../components/TourGuide.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
 import { Link, Outlet, useLocation } from 'react-router-dom';
@@ -29,7 +28,7 @@ const INSTRUCTOR_SIDEBAR_NAV = [
   {
     id: 'reports', icon: BarChart2, label: 'Reports',
     children: [
-      { to: '/instructor/analytics', icon: BarChart2, label: 'Analytics' },
+      { to: '/test-reports', icon: BarChart2, label: 'Analytics' },
       { to: '/instructor/performance', icon: Brain, label: 'AI Insights' },
       { to: '/test-reports', icon: BookmarkCheck, label: 'Test Reports' },
     ],
@@ -53,7 +52,7 @@ const STUDENT_NAV = [
 const ALL_NAV_FLAT = [
   ...STUDENT_NAV,
   { to: '/instructor-dashboard', label: 'Dashboard' },
-  { to: '/instructor/analytics', label: 'Reports' },
+  { to: '/test-reports', label: 'Reports' },
   { to: '/instructor/performance', label: 'AI Insights' },
   { to: '/test-reports', label: 'Test Reports' },
 ];
@@ -68,7 +67,7 @@ const ROLE_COLORS = {
 function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false }) {
   const { pathname } = useLocation();
   const active = pathname === to
-    || (to === '/instructor/analytics' && (pathname === '/instructor/analytics' || pathname.startsWith('/instructor/report')))
+    || (to === '/test-reports' && (pathname === '/test-reports' || pathname.startsWith('/instructor/report')))
     || (to === '/instructor/performance' && pathname === '/instructor/performance');
   return (
     <Link
@@ -176,7 +175,7 @@ export default function DashboardLayout() {
     ALL_NAV_FLAT.find(n => n.to === pathname)?.label
     || (pathname === '/admin' ? 'Admin Panel'
       : pathname.startsWith('/instructor/report') ? 'Exam Report'
-      : pathname === '/instructor/analytics' ? 'Reports'
+      : pathname === '/test-reports' ? 'Reports'
       : pathname === '/instructor/performance' ? 'AI Insights'
       : pathname === '/create-exam' ? 'Create Test'
       : pathname === '/batches' ? 'Batches'
@@ -367,7 +366,6 @@ export default function DashboardLayout() {
       {showFeedback && (
         <FeedbackModal mode="direct" trigger="general" onClose={() => setShowFeedback(false)} />
       )}
-      <TourGuide role={isInstructor ? 'instructor' : 'student'} />
     </div>
   );
 }
