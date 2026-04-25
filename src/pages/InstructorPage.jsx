@@ -246,7 +246,7 @@ export default function InstructorPage() {
 
       
 
-      {/* ── Stats ── */}
+      {/* ── Stats edit ── */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
         {[
           { label: 'Tests',     value: totalExams,       icon: BookmarkCheck, gradient: 'from-teal-400 to-cyan-500' },
