@@ -4,8 +4,8 @@ import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
-import { authApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { authApi } from '../services/api.js';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -220,7 +220,7 @@ export default function LoginPage() {
       </div>
 
       <GoogleAuthButton
-        label="Continue with Google"
+        label=""
         disabled={google.isPending}
         onCredential={(payload) => {
           google.mutate(payload, {
