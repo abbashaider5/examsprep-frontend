@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { GoogleOAuthProvider } from '@react-oauth/google';
 import { Toaster } from 'react-hot-toast';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from './store/index.js';
@@ -26,6 +27,7 @@ import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MaintenancePage from './pages/MaintenancePage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
+import NotificationDetailPage from './pages/NotificationDetailPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
@@ -34,6 +36,7 @@ import SignupPage from './pages/SignupPage.jsx';
 import StudyModePage from './pages/StudyModePage.jsx';
 import StudyPerformancePage from './pages/StudyPerformancePage.jsx';
 import TermsPage from './pages/TermsPage.jsx';
+import TicketsPage from './pages/TicketsPage.jsx';
 import VerifyCertPage from './pages/VerifyCertPage.jsx';
 
 const Guard = ({ children, adminOnly, instructorOnly }) => {
@@ -47,10 +50,12 @@ const Guard = ({ children, adminOnly, instructorOnly }) => {
 export default function App() {
   const { init } = useThemeStore();
   useEffect(() => { init(); }, [init]);
+  const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
   return (
-    <BrowserRouter>
-      <Toaster position="top-right" toastOptions={{ duration: 3500, style: { borderRadius: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' } }} />
+    <GoogleOAuthProvider clientId={googleClientId || 'missing-google-client-id'}>
+      <BrowserRouter>
+        <Toaster position="top-right" toastOptions={{ duration: 3500, style: { borderRadius: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' } }} />
 
       <Routes>
         {/* Public marketing pages */}
@@ -95,6 +100,8 @@ export default function App() {
           <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />
           <Route path="groups" element={<GroupsPage />} />
           <Route path="batches" element={<GroupsPage />} />
+          <Route path="notifications/:id" element={<NotificationDetailPage />} />
+          <Route path="tickets" element={<Guard instructorOnly><TicketsPage /></Guard>} />
         </Route>
 
         {/* Group invite accept (needs auth but no layout) */}
@@ -102,7 +109,8 @@ export default function App() {
 
         <Route path="maintenance" element={<MaintenancePage />} />
         <Route path="*" element={<NotFoundPage />} />
-      </Routes>
-    </BrowserRouter>
+        </Routes>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
   );
 }

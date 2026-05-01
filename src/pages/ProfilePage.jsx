@@ -9,6 +9,7 @@ import { useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import Modal from '../components/Modal.jsx';
 import { paymentApi, profileApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -22,9 +23,9 @@ const PLAN_INFO = {
 
 const TABS = [
   { id: 'account',      label: 'Account',      icon: User },
-  { id: 'subscription', label: 'Subscription', icon: CreditCard, instructorOnly: true },
-  { id: 'billing',      label: 'Billing',      icon: BarChart2, instructorOnly: true },
-  { id: 'preferences',  label: 'Preferences',  icon: Settings, instructorOnly: true },
+  { id: 'subscription', label: 'Subscription', icon: CreditCard, instructorOnly: true, hideForUserRole: true },
+  { id: 'billing',      label: 'Billing',      icon: BarChart2, instructorOnly: true, hideForUserRole: true },
+  { id: 'preferences',  label: 'Preferences',  icon: Settings, instructorOnly: true, hideForUserRole: true },
   { id: 'performance',  label: 'Performance',  icon: Star },
 ];
 
@@ -35,6 +36,7 @@ export default function ProfilePage() {
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
   const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' });
+  const [twoFactorAction, setTwoFactorAction] = useState(null);
 
   // Instructor preferences — persisted in localStorage
   const PREF_KEY = 'instructor_prefs';
@@ -74,7 +76,8 @@ export default function ProfilePage() {
 
   const updateMut = useMutation({
     mutationFn: (data) => profileApi.update(data),
-    onSuccess: () => {
+    onSuccess: (res) => {
+      if (res?.data?.user) setUser(res.data.user);
       qc.invalidateQueries({ queryKey: ['me'] });
       toast.success('Profile updated');
       setEditing(false);
@@ -102,12 +105,35 @@ export default function ProfilePage() {
   const PlanIcon = planInfo.icon;
   const isFreePlan = plan === 'free';
   const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
-  const visibleTabs = TABS.filter(t => !t.instructorOnly || isInstructor || !isFreePlan);
+  const visibleTabs = TABS.filter((t) => {
+    if (user?.role === 'user' && t.hideForUserRole) return false;
+    return !t.instructorOnly || isInstructor || !isFreePlan;
+  });
   const transactions = txnData?.transactions || [];
   const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const fmtAmount = (paise) => `₹${(paise / 100).toFixed(0)}`;
   const usedExams = (user?.monthlyLimit || 3) - (user?.remaining ?? user?.monthlyLimit ?? 3);
   const usagePct = Math.min(100, (usedExams / (user?.monthlyLimit || 3)) * 100);
+
+  const handleToggleTwoFactor = () => {
+    setTwoFactorAction(!user?.twoFactorEnabled ? 'enable' : 'disable');
+  };
+
+  const confirmToggleTwoFactor = () => {
+    const enabling = twoFactorAction === 'enable';
+    updateMut.mutate(
+      { twoFactorEnabled: enabling },
+      {
+        onSuccess: (res) => {
+          if (res?.data?.user) setUser(res.data.user);
+          qc.invalidateQueries({ queryKey: ['me'] });
+          toast.success(`2FA ${enabling ? 'enabled' : 'disabled'}`);
+          setTwoFactorAction(null);
+        },
+        onError: () => setTwoFactorAction(null),
+      }
+    );
+  };
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in max-w-4xl">
@@ -265,6 +291,31 @@ export default function ProfilePage() {
                 className="btn-primary py-2 px-6 text-sm disabled:opacity-50"
               >
                 {changePwMut.isPending ? 'Updating...' : 'Update Password'}
+              </button>
+            </div>
+          </div>
+
+          {/* Two-factor authentication */}
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
+              <Shield size={15} className="text-[var(--color-primary)]" /> Security
+            </h3>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <p className="text-sm font-medium text-[var(--color-text)] flex items-center gap-1.5">
+                  <Lock size={14} className="text-[var(--color-primary)]" /> Two-Factor Authentication (2FA)
+                </p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  Add an extra verification step during login to improve account security.
+                </p>
+              </div>
+              <button
+                onClick={handleToggleTwoFactor}
+                disabled={updateMut.isPending}
+                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 mt-0.5 ${user?.twoFactorEnabled ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
+                title="Toggle two-factor authentication"
+              >
+                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${user?.twoFactorEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
               </button>
             </div>
           </div>
@@ -580,6 +631,61 @@ export default function ProfilePage() {
             </div>
           )}
         </div>
+      )}
+
+      {twoFactorAction && (
+        <Modal onClose={() => setTwoFactorAction(null)}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-md p-5">
+            <div className="flex items-start justify-between gap-3 mb-3">
+              <div>
+                <h3 className="text-lg font-bold text-[var(--color-text)]">
+                  {twoFactorAction === 'enable' ? 'Enable Two-Factor Authentication' : 'Disable Two-Factor Authentication'}
+                </h3>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                  {twoFactorAction === 'enable'
+                    ? 'This adds an OTP step to every login for stronger account security.'
+                    : 'This removes the OTP step and lowers sign-in security.'}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setTwoFactorAction(null)}
+                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="rounded-xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] p-3 mb-4">
+              <ul className="space-y-1.5 text-xs text-[var(--color-text-muted)]">
+                <li>• Account: <span className="text-[var(--color-text)] font-medium">{user?.email}</span></li>
+                <li>• New state: <span className="text-[var(--color-text)] font-medium">{twoFactorAction === 'enable' ? '2FA Enabled' : '2FA Disabled'}</span></li>
+                <li>• Impact: {twoFactorAction === 'enable' ? 'OTP will be required on login.' : 'Login will use password only.'}</li>
+              </ul>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => setTwoFactorAction(null)}
+                className="btn-secondary flex-1 py-2.5 text-sm"
+                disabled={updateMut.isPending}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmToggleTwoFactor}
+                className={`flex-1 py-2.5 text-sm rounded-lg font-semibold text-white ${twoFactorAction === 'enable' ? 'bg-[var(--color-primary)] hover:opacity-90' : 'bg-red-500 hover:bg-red-600'}`}
+                disabled={updateMut.isPending}
+              >
+                {updateMut.isPending
+                  ? (twoFactorAction === 'enable' ? 'Enabling...' : 'Disabling...')
+                  : (twoFactorAction === 'enable' ? 'Confirm Enable' : 'Confirm Disable')}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

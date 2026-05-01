@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import { authApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
@@ -125,7 +126,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 }
 
 export default function SignupPage() {
-  const { signup, verifyOtp } = useAuth();
+  const { signup, google, verifyOtp } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
@@ -240,6 +241,24 @@ export default function SignupPage() {
             : 'Create Account'}
         </button>
       </form>
+
+      <div className="my-5 flex items-center gap-3">
+        <div className="h-px flex-1 bg-[var(--color-border)]" />
+        <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">or</span>
+        <div className="h-px flex-1 bg-[var(--color-border)]" />
+      </div>
+
+      <GoogleAuthButton
+        label="Sign up with Google"
+        disabled={google.isPending}
+        onCredential={(payload) => {
+          google.mutate({ ...payload, role: 'user' }, {
+            onSuccess: (res) => {
+              if (res.data.requiresOTP) setOtpEmail(res.data.email);
+            },
+          });
+        }}
+      />
 
       <p className="text-xs text-center text-[var(--color-text-muted)] mt-4">
         By signing up, you agree to our{' '}

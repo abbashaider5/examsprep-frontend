@@ -12,6 +12,7 @@ import {
   Lightbulb,
   Loader,
   Lock,
+  Chrome,
   Maximize,
   Monitor,
   Play,
@@ -22,6 +23,9 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
+import * as faceapi from 'face-api.js';
+import * as cocoSsd from '@tensorflow-models/coco-ssd';
+import * as tf from '@tensorflow/tfjs';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Webcam from 'react-webcam';
@@ -47,7 +51,9 @@ export default function ExamPage() {
   const [totalTime, setTotalTime] = useState(0);
   const [violations, setViolations] = useState(0);
   const [warning, setWarning] = useState(null);
+  const [proctoringEvents, setProctoringEvents] = useState([]);
   const [codeAnswers, setCodeAnswers] = useState({});
+  const [textAnswers, setTextAnswers] = useState({});
   const [codeOutputs, setCodeOutputs] = useState({}); // { [questionIndex]: { output, stderr, exitCode } }
   const [runningCode, setRunningCode] = useState(false);
   const [revealedAnswers, setRevealedAnswers] = useState(new Set());
@@ -57,22 +63,46 @@ export default function ExamPage() {
   // Preflight state
   const [cameraReady, setCameraReady] = useState(false);
   const [cameraError, setCameraError] = useState(null);
-  const [networkOk] = useState(true);
+  const [micReady, setMicReady] = useState(false);
+  const [micError, setMicError] = useState(null);
+  const [networkOk, setNetworkOk] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [fullscreenOk, setFullscreenOk] = useState(false);
+
+  // Live network status (used in preflight)
+  useEffect(() => {
+    const update = () => setNetworkOk(typeof navigator !== 'undefined' ? navigator.onLine : true);
+    update();
+    window.addEventListener('online', update);
+    window.addEventListener('offline', update);
+    return () => {
+      window.removeEventListener('online', update);
+      window.removeEventListener('offline', update);
+    };
+  }, []);
 
   // Refs — stale-closure-safe
   const answersRef = useRef({});
   const flaggedRef = useRef(new Set());
   const violationsRef = useRef(0);
   const lastViolationTime = useRef(0);
+  const lastViolationByTypeRef = useRef({});
   const startedAt = useRef(null);
   const timerRef = useRef(null);
   const webcamRef = useRef(null);
   const faceDetectorRef = useRef(null);
   const faceCheckInterval = useRef(null);
   const codeAnswersRef = useRef({});
+  const textAnswersRef = useRef({});
   const screenshotCountRef = useRef(0);
   const screenshotIntervalRef = useRef(null);
+  const proctoringEventsRef = useRef([]);
+  const audioMonitorIntervalRef = useRef(null);
+  const audioStreamRef = useRef(null);
+  const audioContextRef = useRef(null);
+  const analyserRef = useRef(null);
+  const faceApiReadyRef = useRef(false);
+  const cocoModelRef = useRef(null);
+  const objectCheckIntervalRef = useRef(null);
 
   // When an invite token is present, validate it first (public endpoint — no auth required)
   const { data: inviteValidation, isLoading: inviteLoading, error: inviteError } = useQuery({
@@ -138,17 +168,20 @@ export default function ExamPage() {
     const currentFlagged = flaggedRef.current;
     const currentViolations = violationsRef.current;
     const currentCodeAnswers = codeAnswersRef.current;
+    const currentTextAnswers = textAnswersRef.current;
+    const currentProctoringEvents = proctoringEventsRef.current;
 
     if (!exam) return;
     const answersArray = exam.questions.map((_, i) => ({
       questionIndex: i,
       selectedOption: currentAnswers[i] ?? null,
       code: currentCodeAnswers[i] || '',
+      textAnswer: currentTextAnswers[i] || '',
       flagged: currentFlagged.has(i),
       timeTaken: 0,
       isCorrect: false,
     }));
-    submitMut.mutate({ examId: id, answers: answersArray, timeTaken, violations: currentViolations });
+    submitMut.mutate({ examId: id, answers: answersArray, timeTaken, violations: currentViolations, proctoringEvents: currentProctoringEvents });
   }, [submitMut, exam, id]);
 
   // ── Timer ─────────────────────────────────────────────────
@@ -172,41 +205,71 @@ export default function ExamPage() {
     return () => clearInterval(timerRef.current);
   }, [phase]); // eslint-disable-line
 
+  const pushProctoringEvent = useCallback((event) => {
+    const payload = {
+      type: event.type || 'violation',
+      severity: event.severity || 'warning',
+      source: event.source || 'client',
+      message: event.message || 'Proctoring event',
+      timestamp: new Date().toISOString(),
+    };
+    setProctoringEvents(prev => [...prev.slice(-499), payload]);
+  }, []);
+
+  const raiseViolation = useCallback((reason, meta = {}) => {
+    const now = Date.now();
+    const typeKey = meta.type || 'violation';
+    const cooldown = meta.cooldownMs ?? 1200;
+    const lastByType = lastViolationByTypeRef.current[typeKey] || 0;
+    if (now - lastByType < cooldown) return;
+    lastViolationByTypeRef.current[typeKey] = now;
+
+    const shouldCount = meta.count !== false;
+    if (shouldCount) {
+      violationsRef.current += 1;
+      setViolations(violationsRef.current);
+    }
+    pushProctoringEvent({
+      type: meta.type || 'violation',
+      source: meta.source || 'runtime',
+      severity: shouldCount
+        ? (violationsRef.current >= 3 ? 'critical' : violationsRef.current === 2 ? 'warning' : 'info')
+        : (meta.severity || 'info'),
+      message: reason,
+    });
+
+    if (shouldCount && violationsRef.current >= 3) {
+      setWarning(`${reason} — 3 violations reached. Auto-submitting…`);
+      setTimeout(() => doSubmit(true), 1200);
+    } else if (shouldCount && violationsRef.current === 2) {
+      setWarning(`${reason} FINAL WARNING — next violation will auto-submit.`);
+      setTimeout(() => setWarning(null), 5000);
+    } else if (shouldCount) {
+      setWarning(`${reason} Violation 1/3 — 2 more will auto-submit.`);
+      setTimeout(() => setWarning(null), 3500);
+    } else {
+      setWarning(reason);
+      setTimeout(() => setWarning(null), 2500);
+    }
+  }, [doSubmit, pushProctoringEvent]);
+
   // ── Proctoring effects ────────────────────────────────────
   useEffect(() => {
     if (phase !== 'exam' || isPractice) return;
 
-    const VIOLATION_COOLDOWN = 2000; // 2s debounce between violations
-
-    const addViolation = (reason) => {
-      const now = Date.now();
-      if (now - lastViolationTime.current < VIOLATION_COOLDOWN) return;
-      lastViolationTime.current = now;
-
-      violationsRef.current += 1;
-      setViolations(violationsRef.current);
-      if (violationsRef.current >= 3) {
-        setWarning('3 violations detected. Exam auto-submitted.');
-        setTimeout(() => doSubmit(true), 1500);
-      } else {
-        setWarning(`${reason} Warning ${violationsRef.current}/3`);
-        setTimeout(() => setWarning(null), 4000);
-      }
-    };
-
     // Visibility / tab switch
     const onVisChange = () => {
-      if (document.hidden) addViolation('Tab switch detected!');
+      if (document.hidden) raiseViolation('Tab switch detected!', { type: 'tab_switch', source: 'visibility' });
     };
 
     // Window blur (alt-tab, switching apps)
-    const onBlur = () => addViolation('Window focus lost!');
+    const onBlur = () => raiseViolation('Window focus lost!', { type: 'window_blur', source: 'window' });
 
     // Fullscreen exit
     const onFSChange = () => {
       if (!document.fullscreenElement && exam?.proctored) {
         document.documentElement.requestFullscreen?.().catch(() => {
-          addViolation('Fullscreen exited!');
+          raiseViolation('Fullscreen exited!', { type: 'fullscreen_exit', source: 'fullscreen' });
         });
       }
     };
@@ -248,59 +311,403 @@ export default function ExamPage() {
       document.removeEventListener('paste', preventDefault);
       document.removeEventListener('selectstart', preventDefault);
     };
-  }, [phase, isPractice]); // eslint-disable-line
+  }, [phase, isPractice, exam?.proctored, raiseViolation]);
 
-  // ── Face Detection ────────────────────────────────────────
+  // ── Camera / Face Monitoring ──────────────────────────────
   useEffect(() => {
     if (phase !== 'exam' || isPractice || !exam?.proctored) return;
-    if (!('FaceDetector' in window)) return; // gracefully skip if unsupported
 
-    try {
-      faceDetectorRef.current = new window.FaceDetector({ fastMode: false, maxDetectedFaces: 5 });
-    } catch {
-      return; // FaceDetector constructor failed, skip silently
+    let trackRef = null;
+    let onEndedRef = null;
+    const tickMs = 500;
+    const graceMs = 1500;
+    const graceUntil = Date.now() + graceMs;
+
+    let noFaceMs = 0;
+    let multiFaceMs = 0;
+    let darkMs = 0;
+    let noVideoMs = 0;
+    let mounted = true;
+
+    // Helper: sample average brightness of the center 40×40 pixels of the video frame
+    const getFrameBrightness = (video) => {
+      try {
+        const c = document.createElement('canvas');
+        c.width = 40; c.height = 40;
+        const ctx = c.getContext('2d');
+        const sx = Math.max(0, (video.videoWidth / 2) - 20);
+        const sy = Math.max(0, (video.videoHeight / 2) - 20);
+        ctx.drawImage(video, sx, sy, 40, 40, 0, 0, 40, 40);
+        const d = ctx.getImageData(0, 0, 40, 40).data;
+        let sum = 0;
+        for (let i = 0; i < d.length; i += 4) sum += (d[i] + d[i + 1] + d[i + 2]) / 3;
+        return sum / (d.length / 4); // 0–255
+      } catch { return 128; }
+    };
+
+    // ── 1. Stream track monitoring: detect camera closed / revoked ──
+    const attachTrackListener = () => {
+      const stream = webcamRef.current?.stream;
+      const track = stream?.getVideoTracks()?.[0];
+      if (!track) return false;
+      onEndedRef = () => raiseViolation('Camera was closed!', { type: 'camera_closed', source: 'camera', cooldownMs: 800 });
+      track.addEventListener('ended', onEndedRef);
+      trackRef = track;
+      return true;
+    };
+
+    if (!attachTrackListener()) {
+      let retries = 0;
+      const retryId = setInterval(() => {
+        if (attachTrackListener() || retries++ > 10) clearInterval(retryId);
+      }, 500);
     }
 
-    faceCheckInterval.current = setInterval(async () => {
-      const video = webcamRef.current?.video;
-      if (!video || video.readyState < 2 || submitMut.isPending || submitMut.isSuccess) return;
+    // ── 2. Initialize face-api.js (TinyFaceDetector) ──
+    const initFaceApi = async () => {
       try {
-        const faces = await faceDetectorRef.current.detect(video);
-        const now = Date.now();
-        if (now - lastViolationTime.current < 2000) return; // respect cooldown for face checks too
+        // Warm up TF backend (helps reduce first-detect lag)
+        await tf.ready();
+        await tf.setBackend('webgl').catch(() => {});
+        await tf.ready();
 
-        if (faces.length === 0) {
-          lastViolationTime.current = now;
-          violationsRef.current += 1;
-          setViolations(violationsRef.current);
-          setWarning('No face detected! Please stay in frame.');
-          setTimeout(() => setWarning(null), 4000);
-          if (violationsRef.current >= 3) {
-            setWarning('3 violations detected. Exam auto-submitted.');
-            setTimeout(() => doSubmit(true), 1500);
+        const modelUrl = '/models/face-api';
+        await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
+        faceApiReadyRef.current = true;
+      } catch {
+        faceApiReadyRef.current = false;
+      }
+    };
+
+    // Fallback: FaceDetector (Chrome only) if face-api fails
+    if ('FaceDetector' in window) {
+      try { faceDetectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 }); }
+      catch { faceDetectorRef.current = null; }
+    }
+
+    initFaceApi();
+
+    // ── 3. Face checks with stability + tolerance ──
+    faceCheckInterval.current = setInterval(async () => {
+      if (!mounted) return;
+      if (submitMut.isPending || submitMut.isSuccess) return;
+      if (Date.now() < graceUntil) return;
+
+      // Track state check
+      const video = webcamRef.current?.video;
+      const stream = webcamRef.current?.stream || video?.srcObject;
+      const track = stream?.getVideoTracks?.()?.[0];
+      const streamActive = !!stream && (stream.active !== false);
+      const trackEnded = !!track && track.readyState === 'ended';
+      const trackMuted = !!track && track.muted === true;
+      const trackDisabled = !!track && track.enabled === false;
+
+      if (!stream || !track || !streamActive || trackEnded || trackMuted || trackDisabled) {
+        noVideoMs += tickMs;
+        // Soft prompt quickly so user knows camera is not active
+        if (noVideoMs >= 1000) {
+          raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
+        }
+        // Count as violation if it stays off
+        if (noVideoMs >= 2500) {
+          raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
+          noVideoMs = 0;
+        }
+        return;
+      }
+
+      // Ensure we have actual frames (some browsers keep a stream but stop delivering frames)
+      if (!video || video.readyState < 2 || video.videoWidth === 0) {
+        noVideoMs += tickMs;
+        if (noVideoMs >= 1000) {
+          raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
+        }
+        if (noVideoMs >= 2500) {
+          raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
+          noVideoMs = 0;
+        }
+        return;
+      }
+      noVideoMs = 0;
+
+      // Camera blocked check (very dark frame)
+      const brightness = getFrameBrightness(video);
+      if (brightness < 5) darkMs += tickMs;
+      else darkMs = 0;
+      if (darkMs >= 1500) {
+        // warn first, then count if persists much longer
+        raiseViolation('Camera appears very dark/covered. Improve lighting or uncover the camera.', { type: 'camera_blocked_warn', source: 'camera', count: false, cooldownMs: 3000 });
+      }
+      if (darkMs >= 4500) {
+        raiseViolation('Camera appears to be covered for a long duration.', { type: 'camera_blocked', source: 'camera', cooldownMs: 4500 });
+        darkMs = 0;
+        return;
+      }
+
+      // Primary: face-api.js TinyFaceDetector
+      if (faceApiReadyRef.current) {
+        try {
+          // More stable settings to reduce false negatives in Chrome
+          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+          const faces = await faceapi.detectAllFaces(video, opts);
+          if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
+
+          if (!faces || faces.length === 0) {
+            noFaceMs += tickMs;
+            multiFaceMs = 0;
+
+            // Soft warning after short continuous miss
+            if (noFaceMs >= 1500) {
+              raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face-api', count: false, cooldownMs: 2500 });
+            }
+            // Count only if it persists longer (prevents false positives terminating exams)
+            if (noFaceMs >= 3500) {
+              raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face-api', cooldownMs: 4500 });
+              noFaceMs = 0;
+            }
+          } else if (faces.length > 1) {
+            noFaceMs = 0;
+            multiFaceMs += tickMs;
+            if (multiFaceMs >= 1000) {
+              raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face-api', count: false, cooldownMs: 2500 });
+            }
+            if (multiFaceMs >= 2000) {
+              raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face-api', cooldownMs: 4500 });
+              multiFaceMs = 0;
+            }
+          } else {
+            noFaceMs = 0;
+            multiFaceMs = 0;
           }
-        } else if (faces.length > 1) {
-          lastViolationTime.current = now;
-          violationsRef.current += 1;
-          setViolations(violationsRef.current);
-          setWarning(`Multiple faces detected (${faces.length})! Violation ${violationsRef.current}/3`);
-          setTimeout(() => setWarning(null), 4000);
-          if (violationsRef.current >= 3) {
-            setTimeout(() => doSubmit(true), 1500);
+          return;
+        } catch {
+          // fall through to FaceDetector
+        }
+      }
+
+      // Fallback: Chrome FaceDetector
+      if (faceDetectorRef.current) {
+        faceDetectorRef.current.detect(video).then((faces) => {
+          if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
+          if (!faces || faces.length === 0) {
+            noFaceMs += tickMs;
+            multiFaceMs = 0;
+            if (noFaceMs >= 1500) {
+              raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
+            }
+            if (noFaceMs >= 3500) {
+              raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face_detector', cooldownMs: 4500 });
+              noFaceMs = 0;
+            }
+          } else if (faces.length > 1) {
+            noFaceMs = 0;
+            multiFaceMs += tickMs;
+            if (multiFaceMs >= 1000) {
+              raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
+            }
+            if (multiFaceMs >= 2000) {
+              raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face_detector', cooldownMs: 4500 });
+              multiFaceMs = 0;
+            }
+          } else {
+            noFaceMs = 0;
+            multiFaceMs = 0;
           }
+        }).catch(() => {});
+      }
+    }, tickMs);
+
+    // ── 4. Object detection (coco-ssd) every ~1.2s ──
+    const initCoco = async () => {
+      try {
+        await tf.ready();
+        await tf.setBackend('webgl').catch(() => {});
+        await tf.ready();
+        cocoModelRef.current = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
+      } catch {
+        cocoModelRef.current = null;
+      }
+    };
+    initCoco();
+
+    let phoneStreak = 0;
+    let laptopStreak = 0;
+    let bookStreak = 0;
+    let objNoVideoMs = 0;
+
+    objectCheckIntervalRef.current = setInterval(async () => {
+      if (!mounted) return;
+      if (submitMut.isPending || submitMut.isSuccess) return;
+      const model = cocoModelRef.current;
+      const video = webcamRef.current?.video;
+      const stream = webcamRef.current?.stream || video?.srcObject;
+      const track = stream?.getVideoTracks?.()?.[0];
+
+      if (!model) return;
+      if (!stream || !track || track.readyState === 'ended' || track.muted === true || track.enabled === false || !video || video.readyState < 2 || video.videoWidth === 0) {
+        objNoVideoMs += 1200;
+        if (objNoVideoMs >= 2400) {
+          raiseViolation('Camera feed not active, object detection paused.', { type: 'object_detection_paused', source: 'coco-ssd', count: false, cooldownMs: 3000 });
+          objNoVideoMs = 0;
+        }
+        return;
+      }
+      objNoVideoMs = 0;
+
+      try {
+        const preds = await model.detect(video);
+        if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
+        const top = (cls) => preds.find(p => p.class === cls && (p.score || 0) >= 0.5);
+
+        const hasPhone = !!top('cell phone');
+        const hasLaptop = !!(top('laptop') || top('tv') || top('monitor'));
+        const hasBook = !!top('book');
+
+        phoneStreak = hasPhone ? phoneStreak + 1 : 0;
+        laptopStreak = hasLaptop ? laptopStreak + 1 : 0;
+        bookStreak = hasBook ? bookStreak + 1 : 0;
+
+        if (phoneStreak === 1) {
+          raiseViolation('Possible mobile phone detected. Ensure no phone is in frame.', { type: 'phone_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
+        } else if (phoneStreak >= 2) {
+          raiseViolation('Mobile phone detected in frame. Please remove it immediately.', { type: 'phone', source: 'coco-ssd', cooldownMs: 4500 });
+          phoneStreak = 0;
+        }
+
+        if (laptopStreak === 1) {
+          raiseViolation('Possible laptop/secondary screen detected. Ensure only the exam screen is visible.', { type: 'laptop_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
+        } else if (laptopStreak >= 2) {
+          raiseViolation('Laptop/secondary screen detected. Only the exam screen is allowed.', { type: 'laptop', source: 'coco-ssd', cooldownMs: 4500 });
+          laptopStreak = 0;
+        }
+
+        if (bookStreak === 1) {
+          raiseViolation('Possible book/study material detected. Ensure your desk is clear.', { type: 'study_material_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
+        } else if (bookStreak >= 2) {
+          raiseViolation('Book/study material detected. Remove it from your desk area.', { type: 'study_material', source: 'coco-ssd', cooldownMs: 4500 });
+          bookStreak = 0;
         }
       } catch {
-        // FaceDetector.detect() failed — skip silently
+        // ignore per tick
       }
-    }, 8000);
+    }, 1200);
 
-    return () => clearInterval(faceCheckInterval.current);
-  }, [phase, isPractice]); // eslint-disable-line
+    return () => {
+      mounted = false;
+      clearInterval(faceCheckInterval.current);
+      clearInterval(objectCheckIntervalRef.current);
+      if (trackRef && onEndedRef) trackRef.removeEventListener('ended', onEndedRef);
+    };
+  }, [phase, isPractice, exam?.proctored, raiseViolation, submitMut.isPending, submitMut.isSuccess]); // eslint-disable-line
+
+  // ── Audio Monitoring (real-time) ───────────────────────────
+  useEffect(() => {
+    if (phase !== 'exam' || isPractice || !exam?.proctored) return;
+    let mounted = true;
+    let speechLikeStreak = 0;
+    let noiseStreak = 0;
+
+    const initAudio = async () => {
+      try {
+        // Prefer stream granted during preflight (avoids mid-exam permission prompts)
+        const stream = audioStreamRef.current || await navigator.mediaDevices.getUserMedia({
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+          video: false,
+        });
+        if (!mounted) {
+          stream.getTracks().forEach(t => t.stop());
+          return;
+        }
+        audioStreamRef.current = stream;
+        const Ctx = window.AudioContext || window.webkitAudioContext;
+        if (!Ctx) return;
+        const ctx = new Ctx();
+        audioContextRef.current = ctx;
+        const analyser = ctx.createAnalyser();
+        analyser.fftSize = 1024;
+        analyser.smoothingTimeConstant = 0.3;
+        const source = ctx.createMediaStreamSource(stream);
+        source.connect(analyser);
+        analyserRef.current = analyser;
+
+        const data = new Uint8Array(analyser.fftSize);
+        audioMonitorIntervalRef.current = setInterval(() => {
+          if (!analyserRef.current) return;
+          analyserRef.current.getByteTimeDomainData(data);
+          let sumSq = 0;
+          let crossings = 0;
+          for (let i = 1; i < data.length; i++) {
+            const n = (data[i] - 128) / 128;
+            const p = (data[i - 1] - 128) / 128;
+            sumSq += n * n;
+            if ((p >= 0 && n < 0) || (p < 0 && n >= 0)) crossings++;
+          }
+          const rms = Math.sqrt(sumSq / data.length);
+          const zcr = crossings / data.length;
+
+          if (rms > 0.18) {
+            noiseStreak += 1;
+            if (noiseStreak === 2) {
+              raiseViolation('High background noise detected. Please move to a quieter place.', { type: 'audio_noise_warn', source: 'microphone', count: false, cooldownMs: 3000 });
+            }
+            if (noiseStreak >= 5) {
+              raiseViolation('Excessive background noise detected on microphone.', { type: 'audio_noise', source: 'microphone', cooldownMs: 4500 });
+              noiseStreak = 0;
+            }
+          } else {
+            noiseStreak = 0;
+          }
+
+          // Heuristic: sustained high RMS + dense zero-crossings often indicates active speech around candidate
+          if (rms > 0.12 && zcr > 0.18) {
+            speechLikeStreak += 1;
+            if (speechLikeStreak === 2) {
+              raiseViolation('Possible nearby conversation detected. Please ensure a quiet environment.', { type: 'audio_voice_warn', source: 'microphone', count: false, cooldownMs: 3000 });
+            }
+            if (speechLikeStreak >= 5) {
+              raiseViolation('Suspicious human voice activity detected near candidate.', { type: 'audio_voice', source: 'microphone', cooldownMs: 4500 });
+              speechLikeStreak = 0;
+            }
+          } else {
+            speechLikeStreak = 0;
+          }
+        }, 700);
+      } catch {
+        pushProctoringEvent({
+          type: 'audio_monitor_unavailable',
+          severity: 'info',
+          source: 'microphone',
+          message: 'Microphone access unavailable during exam.',
+        });
+      }
+    };
+
+    initAudio();
+    return () => {
+      mounted = false;
+      clearInterval(audioMonitorIntervalRef.current);
+      if (audioStreamRef.current) {
+        audioStreamRef.current.getTracks().forEach(t => t.stop());
+      }
+      if (audioContextRef.current) {
+        audioContextRef.current.close().catch(() => {});
+      }
+      analyserRef.current = null;
+      audioStreamRef.current = null;
+      audioContextRef.current = null;
+    };
+  }, [phase, isPractice, exam?.proctored, raiseViolation, pushProctoringEvent]);
 
   // ── Keep answers/flagged/code refs in sync ─────────────────────
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { flaggedRef.current = flagged; }, [flagged]);
   useEffect(() => { codeAnswersRef.current = codeAnswers; }, [codeAnswers]);
+  useEffect(() => { textAnswersRef.current = textAnswers; }, [textAnswers]);
+  useEffect(() => { proctoringEventsRef.current = proctoringEvents; }, [proctoringEvents]);
 
   // ── Random Screenshot Capture ──────────────────────────────
   useEffect(() => {
@@ -500,7 +907,7 @@ export default function ExamPage() {
 
 
   if (phase === 'preflight') {
-    const allReady = cameraReady && fullscreenOk && networkOk;
+    const allReady = cameraReady && micReady && fullscreenOk && networkOk;
     return (
       <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center px-4 py-8">
         <div className="w-full max-w-4xl">
@@ -511,28 +918,38 @@ export default function ExamPage() {
             </div>
             <h2 className="text-2xl font-bold text-[var(--color-text)]">Pre-Exam System Check</h2>
             <p className="text-[var(--color-text-muted)] text-sm mt-1.5">This is a proctored exam. Please complete all checks before proceeding.</p>
+            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-alt)] text-xs text-[var(--color-text-muted)]">
+              <Chrome size={14} className="text-[var(--color-primary)]" />
+              Recommended browser: <span className="font-semibold text-[var(--color-text)]">Google Chrome</span>
+            </div>
           </div>
 
-          {/* 2-column layout */}
+          {/* Layout */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* Left: System checks */}
-            <div className="card space-y-3">
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
-                <Monitor size={15} className="text-[var(--color-primary)]" />
+            {/* Left: System checks (compact like previous UI) */}
+            <div className="card space-y-2.5">
+              <h3 className="text-xs font-semibold text-[var(--color-text)] mb-2 flex items-center gap-2">
+                <Monitor size={14} className="text-[var(--color-primary)]" />
                 System Requirements
               </h3>
 
               {/* Camera check */}
-              <div className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${cameraReady ? 'border-green-300 bg-green-50 dark:bg-green-900/20' : cameraError ? 'border-red-300 bg-red-50 dark:bg-red-900/20' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'}`}>
+              <div className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${
+                cameraReady ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
+                : cameraError ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
+                : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'
+              }`}>
                 {cameraReady
-                  ? <CheckCircle size={18} className="text-green-500 shrink-0" />
+                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
                   : cameraError
-                  ? <CameraOff size={18} className="text-red-500 shrink-0" />
-                  : <Camera size={18} className="text-[var(--color-text-muted)] shrink-0" />}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-[var(--color-text)]">Camera Access</div>
-                  <div className={`text-xs mt-0.5 ${cameraReady ? 'text-green-600' : cameraError ? 'text-red-500' : 'text-[var(--color-text-muted)]'}`}>
-                    {cameraReady ? 'Camera ready and active' : cameraError ? cameraError : 'Required for face monitoring'}
+                  ? <CameraOff size={16} className="text-red-500 shrink-0" />
+                  : <Camera size={16} className="text-[var(--color-text-muted)] shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-[var(--color-text)]">Camera</div>
+                  <div className={`text-[11px] mt-0.5 leading-snug ${
+                    cameraReady ? 'text-green-600' : cameraError ? 'text-red-500' : 'text-[var(--color-text-muted)]'
+                  }`}>
+                    {cameraReady ? 'Allowed (face monitoring enabled)' : cameraError ? cameraError : 'Allow for face monitoring'}
                   </div>
                 </div>
                 {!cameraReady && !cameraError && (
@@ -545,7 +962,44 @@ export default function ExamPage() {
                         setCameraError(e.name === 'NotAllowedError' ? 'Camera access denied' : 'Camera not found');
                       }
                     }}
-                    className="text-xs btn-primary py-1.5 px-3 shrink-0"
+                    className="text-[11px] btn-primary py-1.5 px-3 shrink-0"
+                  >
+                    Allow
+                  </button>
+                )}
+              </div>
+
+              {/* Microphone check */}
+              <div className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${
+                micReady ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
+                : micError ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
+                : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'
+              }`}>
+                {micReady
+                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
+                  : micError
+                  ? <AlertTriangle size={16} className="text-red-500 shrink-0" />
+                  : <Users size={16} className="text-[var(--color-text-muted)] shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-[var(--color-text)]">Microphone</div>
+                  <div className={`text-[11px] mt-0.5 leading-snug ${
+                    micReady ? 'text-green-600' : micError ? 'text-red-500' : 'text-[var(--color-text-muted)]'
+                  }`}>
+                    {micReady ? 'Allowed (audio monitoring enabled)' : micError ? micError : 'Allow for audio monitoring'}
+                  </div>
+                </div>
+                {!micReady && !micError && (
+                  <button
+                    onClick={async () => {
+                      try {
+                        const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+                        audioStreamRef.current = stream;
+                        setMicReady(true);
+                      } catch (e) {
+                        setMicError(e.name === 'NotAllowedError' ? 'Microphone access denied' : 'Microphone not available');
+                      }
+                    }}
+                    className="text-[11px] btn-primary py-1.5 px-3 shrink-0"
                   >
                     Allow
                   </button>
@@ -553,14 +1007,16 @@ export default function ExamPage() {
               </div>
 
               {/* Fullscreen check */}
-              <div className={`flex items-center gap-3 p-3.5 rounded-xl border transition-all ${fullscreenOk ? 'border-green-300 bg-green-50 dark:bg-green-900/20' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'}`}>
+              <div className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${
+                fullscreenOk ? 'border-green-300 bg-green-50 dark:bg-green-900/20' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'
+              }`}>
                 {fullscreenOk
-                  ? <CheckCircle size={18} className="text-green-500 shrink-0" />
-                  : <Maximize size={18} className="text-[var(--color-text-muted)] shrink-0" />}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-[var(--color-text)]">Fullscreen Mode</div>
-                  <div className={`text-xs mt-0.5 ${fullscreenOk ? 'text-green-600' : 'text-[var(--color-text-muted)]'}`}>
-                    {fullscreenOk ? 'Fullscreen enabled' : 'Required to prevent tab switching'}
+                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
+                  : <Maximize size={16} className="text-[var(--color-text-muted)] shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-[var(--color-text)]">Fullscreen</div>
+                  <div className={`text-[11px] mt-0.5 leading-snug ${fullscreenOk ? 'text-green-600' : 'text-[var(--color-text-muted)]'}`}>
+                    {fullscreenOk ? 'Enabled' : 'Enable to prevent switching'}
                   </div>
                 </div>
                 {!fullscreenOk && (
@@ -570,53 +1026,48 @@ export default function ExamPage() {
                         .then(() => setFullscreenOk(true))
                         .catch(() => setFullscreenOk(true));
                     }}
-                    className="text-xs btn-primary py-1.5 px-3 shrink-0"
+                    className="text-[11px] btn-primary py-1.5 px-3 shrink-0"
                   >
                     Enable
                   </button>
                 )}
               </div>
 
-              {/* Network check */}
-              <div className={`flex items-center gap-3 p-3.5 rounded-xl border ${networkOk ? 'border-green-300 bg-green-50 dark:bg-green-900/20' : 'border-yellow-300 bg-yellow-50'}`}>
+              {/* Internet check */}
+              <div className={`flex items-center gap-2.5 p-3 rounded-xl border ${
+                networkOk ? 'border-green-300 bg-green-50 dark:bg-green-900/20' : 'border-yellow-300 bg-yellow-50 dark:bg-yellow-900/20'
+              }`}>
                 {networkOk
-                  ? <CheckCircle size={18} className="text-green-500 shrink-0" />
-                  : <Wifi size={18} className="text-yellow-500 shrink-0" />}
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-[var(--color-text)]">Internet Connection</div>
-                  <div className={`text-xs mt-0.5 ${networkOk ? 'text-green-600' : 'text-yellow-600'}`}>
-                    {networkOk ? 'Stable connection detected' : 'Unstable connection — may affect submission'}
+                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
+                  : <Wifi size={16} className="text-yellow-600 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-[var(--color-text)]">Internet</div>
+                  <div className={`text-[11px] mt-0.5 leading-snug ${networkOk ? 'text-green-600' : 'text-yellow-700 dark:text-yellow-300'}`}>
+                    {networkOk ? 'Connected' : 'Offline — reconnect before starting'}
                   </div>
                 </div>
               </div>
 
-              {/* Browser check */}
-              <div className="flex items-center gap-3 p-3.5 rounded-xl border border-green-300 bg-green-50 dark:bg-green-900/20">
-                <CheckCircle size={18} className="text-green-500 shrink-0" />
-                <div className="flex-1">
-                  <div className="text-sm font-medium text-[var(--color-text)]">Browser Compatibility</div>
-                  <div className="text-xs mt-0.5 text-green-600">Compatible browser detected</div>
-                </div>
-              </div>
-
-              {cameraError && (
-                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl text-xs text-red-700 dark:text-red-400 flex items-start gap-2">
+              {(cameraError || micError) && (
+                <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl text-[11px] text-red-700 dark:text-red-400 flex items-start gap-2">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
-                  Camera access is required for proctored exams. Please allow camera access in your browser settings and refresh the page.
+                  <div className="leading-snug">
+                    Permissions are required for proctored exams. Allow them in browser settings and refresh the page.
+                  </div>
                 </div>
               )}
 
               {/* Actions */}
-              <div className="flex gap-3 pt-2">
-                <button onClick={() => navigate(-1)} className="btn-secondary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5">
-                  <ChevronLeft size={15} /> Cancel
+              <div className="flex gap-3 pt-1.5">
+                <button onClick={() => navigate(-1)} className="btn-secondary flex-1 py-2 text-xs flex items-center justify-center gap-1.5">
+                  <ChevronLeft size={14} /> Cancel
                 </button>
                 <button
                   onClick={() => setPhase('instructions')}
-                  disabled={!cameraReady}
-                  className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  disabled={!allReady}
+                  className="btn-primary flex-1 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
-                  {allReady ? <><CheckCircle size={15} /> Continue</> : <><Lock size={15} /> Complete Checks</>}
+                  <CheckCircle size={14} /> Continue
                 </button>
               </div>
             </div>
@@ -656,7 +1107,7 @@ export default function ExamPage() {
                 <div className="flex items-start gap-2">
                   <Shield size={14} className="text-[var(--color-primary)] shrink-0 mt-0.5" />
                   <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-                    <strong className="text-[var(--color-text)]">AI Proctoring:</strong> Your camera will be monitored for face detection throughout the exam. Tab switching and fullscreen exit will trigger violation warnings.
+                    <strong className="text-[var(--color-text)]">AI Proctoring:</strong> Camera and microphone are monitored in real-time (face visibility, extra person/device/material, suspicious audio, tab switching, fullscreen exit).
                   </p>
                 </div>
               </div>
@@ -793,7 +1244,9 @@ export default function ExamPage() {
   // ── Phase: EXAM ───────────────────────────────────────────
   const q = exam.questions[current];
   const answered = exam.questions.filter((qq, i) =>
-    qq.type === 'coding' ? !!codeAnswers[i] : answers[i] !== undefined
+    qq.type === 'coding' ? !!codeAnswers[i] :
+    qq.type === 'descriptive' ? !!(textAnswers[i]?.trim()) :
+    answers[i] !== undefined
   ).length;
   const minutes = Math.floor((timeLeft || 0) / 60);
   const seconds = (timeLeft || 0) % 60;
@@ -865,8 +1318,16 @@ export default function ExamPage() {
 
       {/* ── Violation Warning Banner ── */}
       {warning && (
-        <div className="bg-red-500 text-white text-center py-2.5 text-sm font-semibold animate-fade-in z-20 sticky top-14 flex items-center justify-center gap-2">
-          <AlertTriangle size={16} /> {warning}
+        <div className={`text-white text-center py-2.5 text-sm font-semibold animate-fade-in z-20 sticky top-14 flex items-center justify-center gap-2 ${
+          violations >= 3 ? 'bg-red-600' : violations === 2 ? 'bg-orange-500' : 'bg-amber-500'
+        }`}>
+          <AlertTriangle size={16} />
+          <span>{warning}</span>
+          {violations >= 3 && (
+            <span className="text-xs ml-1 opacity-90 flex items-center gap-1">
+              <span className="w-2 h-2 rounded-full bg-white animate-ping inline-block" /> Auto-submitting…
+            </span>
+          )}
         </div>
       )}
 
@@ -903,7 +1364,7 @@ export default function ExamPage() {
               <p className="text-[var(--color-text)] text-base sm:text-lg leading-relaxed font-medium">{q.question}</p>
             </div>
 
-            {/* Options / Code Editor */}
+            {/* Options / Code Editor / Descriptive */}
             {q.type === 'coding' ? (
               <div className="space-y-3">
                 {q.starterCode && !codeAnswers[current] && (
@@ -985,6 +1446,36 @@ export default function ExamPage() {
                         </pre>
                       </div>
                     )}
+                  </div>
+                )}
+              </div>
+            ) : q.type === 'descriptive' ? (
+              <div className="space-y-3">
+                <div className="p-3 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-xl text-xs text-teal-700 dark:text-teal-300 flex items-start gap-2">
+                  <span>✍</span>
+                  <span>Write a detailed answer below. Your response will be evaluated by AI based on accuracy, completeness, and clarity.</span>
+                </div>
+                <textarea
+                  className="w-full rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] text-sm p-4 focus:outline-none focus:border-[var(--color-primary)] resize-y transition-all leading-relaxed"
+                  style={{ minHeight: 200 }}
+                  placeholder="Write your answer here..."
+                  value={textAnswers[current] || ''}
+                  onChange={e => setTextAnswers(a => ({ ...a, [current]: e.target.value }))}
+                />
+                <div className="flex items-center justify-between text-xs text-[var(--color-text-muted)]">
+                  <span>{(textAnswers[current] || '').split(/\s+/).filter(Boolean).length} words</span>
+                  {(textAnswers[current] || '').length > 0 && (
+                    <span className="text-teal-600 dark:text-teal-400">Answer saved</span>
+                  )}
+                </div>
+                {q.keyPoints?.length > 0 && (
+                  <div className="p-3 bg-[var(--color-bg-alt)] rounded-xl">
+                    <p className="text-xs font-semibold text-[var(--color-text-muted)] mb-2">Key concepts to address:</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {q.keyPoints.map((kp, ki) => (
+                        <span key={ki} className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">{kp}</span>
+                      ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -1078,7 +1569,7 @@ export default function ExamPage() {
                 className={`w-8 h-8 rounded-lg text-xs font-semibold transition-all ${
                   i === current
                     ? 'bg-[var(--color-primary)] text-white scale-105 shadow-sm'
-                    : (exam.questions[i]?.type === 'coding' ? !!codeAnswers[i] : answers[i] !== undefined)
+                    : (exam.questions[i]?.type === 'coding' ? !!codeAnswers[i] : exam.questions[i]?.type === 'descriptive' ? !!(textAnswers[i]?.trim()) : answers[i] !== undefined)
                     ? 'bg-emerald-500 text-white'
                     : flagged.has(i)
                     ? 'bg-amber-400 text-white'
@@ -1098,10 +1589,10 @@ export default function ExamPage() {
             <div className="flex items-center gap-2"><span className="w-3 h-3 rounded bg-[var(--color-bg-alt)] border border-[var(--color-border)] inline-block" /> Not attempted</div>
           </div>
 
-          {/* Webcam — placed after legend, inside sidebar */}
+          {/* Live proctoring camera (requested placement: below "Not attempted") */}
           {!isPractice && exam.proctored && (
             <div className="mb-4">
-              <div className="relative rounded-xl overflow-hidden border-2 border-[var(--color-primary)]" style={{ aspectRatio: '4/3' }}>
+              <div className="relative rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black" style={{ aspectRatio: '4/3' }}>
                 <Webcam ref={webcamRef} className="w-full h-full object-cover" mirrored muted />
                 <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/60 rounded px-1.5 py-0.5">
                   <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
@@ -1136,6 +1627,24 @@ export default function ExamPage() {
           )}
         </div>
       </div>
+
+      {/* Always-mounted proctoring camera (mobile + fallback, keeps video available for detection) */}
+      {!isPractice && exam.proctored && (
+        <div className="fixed bottom-4 right-4 z-40 w-36 sm:w-40 lg:hidden">
+          <div className="relative rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black shadow-lg">
+            <div className="aspect-[4/3]">
+              <Webcam ref={webcamRef} className="w-full h-full object-cover" mirrored muted />
+            </div>
+            <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/60 rounded px-1.5 py-0.5">
+              <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
+              <span className="text-white text-[9px] font-medium">REC</span>
+            </div>
+            <div className="absolute bottom-1.5 left-1.5 right-1.5 text-[9px] text-white/90 bg-black/40 rounded px-1.5 py-0.5 text-center">
+              Proctoring
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Submit Confirmation Modal ── */}
       {showSubmitModal && (

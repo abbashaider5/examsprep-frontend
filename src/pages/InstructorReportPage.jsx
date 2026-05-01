@@ -2,12 +2,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ArcElement, BarElement, CategoryScale, Chart as ChartJS, Legend, LinearScale, Tooltip } from 'chart.js';
 import {
     AlertCircle, ArrowLeft, BarChart2, Camera, CheckCircle,
-    ChevronRight, Clock, Mail, Shield, Trophy, Users, XCircle,
+    ChevronRight, Clock, Mail, Shield, Trophy, Users, XCircle, FileText, Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Bar, Doughnut } from 'react-chartjs-2';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { instructorApi } from '../services/api.js';
+import Modal from '../components/Modal.jsx';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -46,6 +47,7 @@ export default function InstructorReportPage() {
   const navigate         = useNavigate();
   const [expandedRow,    setExpandedRow]    = useState(null);
   const [tab,            setTab]            = useState('overview'); // 'overview' | 'candidates' | 'screenshots'
+  const [studentModal,   setStudentModal]   = useState(null); // { userId, name }
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['examReport', examId],
@@ -57,6 +59,12 @@ export default function InstructorReportPage() {
     queryKey: ['examScreenshots', examId],
     queryFn:  () => instructorApi.getExamScreenshots(examId).then(r => r.data),
     enabled:  !!examId && tab === 'screenshots',
+  });
+
+  const { data: studentData, isLoading: studentLoading, error: studentError } = useQuery({
+    queryKey: ['studentExamReport', examId, studentModal?.userId],
+    queryFn: () => instructorApi.getStudentExamReport(examId, studentModal.userId).then(r => r.data),
+    enabled: !!examId && !!studentModal?.userId,
   });
 
   if (isLoading) return (
@@ -380,6 +388,20 @@ export default function InstructorReportPage() {
 
               {expandedRow === row._id && (
                 <div className="border-t border-[var(--color-border)] bg-[var(--color-bg-alt)] p-4">
+                  {row.latestResult?.resultId && row.userId && (
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between mb-3">
+                      <div className="text-xs text-[var(--color-text-muted)]">
+                        Detailed report includes question-level feedback and student screenshots (if enabled).
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setStudentModal({ userId: row.userId, name: row.name || row.email })}
+                        className="btn-secondary text-xs py-2 px-3 inline-flex items-center justify-center gap-1.5"
+                      >
+                        <FileText size={12} /> View detailed report
+                      </button>
+                    </div>
+                  )}
                   {row.allAttempts.length === 0 ? (
                     <p className="text-xs text-[var(--color-text-muted)]">No attempts yet.</p>
                   ) : (
@@ -467,6 +489,166 @@ export default function InstructorReportPage() {
             </div>
           )}
         </>
+      )}
+
+      {/* ── Student detailed modal ── */}
+      {studentModal?.userId && (
+        <Modal onClose={() => setStudentModal(null)}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-5xl flex flex-col" style={{ maxHeight: '90vh' }}>
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[var(--color-border)] shrink-0">
+              <div className="min-w-0">
+                <p className="text-xs text-[var(--color-text-muted)]">Student report</p>
+                <h2 className="text-lg font-bold text-[var(--color-text)] truncate">{studentModal.name}</h2>
+              </div>
+              <button onClick={() => setStudentModal(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]">
+                <XCircle size={18} />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {studentLoading ? (
+                <div className="space-y-3">{[1,2,3,4,5].map(i => <div key={i} className="skeleton h-14 rounded-xl" />)}</div>
+              ) : studentError ? (
+                <div className="text-center py-10">
+                  <AlertCircle size={36} className="mx-auto mb-3 text-red-500" />
+                  <p className="text-sm text-[var(--color-text-muted)]">{studentError.response?.data?.message || 'Failed to load student report.'}</p>
+                </div>
+              ) : (
+                <>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                    {[
+                      { label: 'Latest score', value: studentData?.latestResult ? `${studentData.latestResult.percentage}%` : '—', color: 'text-[var(--color-primary)]', bg: 'bg-[var(--color-primary)]/10' },
+                      { label: 'Correct', value: studentData?.latestResult ? studentData.latestResult.correctCount : '—', color: 'text-green-600 dark:text-green-400', bg: 'bg-green-50 dark:bg-green-900/20' },
+                      { label: 'Incorrect', value: studentData?.latestResult ? studentData.latestResult.incorrectCount : '—', color: 'text-red-600 dark:text-red-400', bg: 'bg-red-50 dark:bg-red-900/20' },
+                      { label: 'AI avg', value: studentData?.insights?.avgAIScore !== null && studentData?.insights?.avgAIScore !== undefined ? `${studentData.insights.avgAIScore}/100` : '—', color: 'text-purple-600 dark:text-purple-400', bg: 'bg-purple-50 dark:bg-purple-900/20' },
+                    ].map(s => (
+                      <div key={s.label} className="card p-3">
+                        <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${s.bg}`}>
+                          <Sparkles size={14} className={s.color} />
+                        </div>
+                        <div className={`text-xl font-bold mt-2 ${s.color}`}>{s.value}</div>
+                        <div className="text-[10px] text-[var(--color-text-muted)]">{s.label}</div>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="card p-4">
+                    <h3 className="font-semibold text-sm text-[var(--color-text)] mb-2 flex items-center gap-2">
+                      <Sparkles size={14} className="text-[var(--color-primary)]" /> Recommendation
+                    </h3>
+                    <p className="text-sm text-[var(--color-text-muted)]">{studentData?.recommendation?.summary || '—'}</p>
+                    {studentData?.recommendation?.tips?.length > 0 && (
+                      <ul className="mt-3 space-y-1.5 text-xs text-[var(--color-text-muted)]">
+                        {studentData.recommendation.tips.slice(0, 5).map((t, i) => (
+                          <li key={i} className="flex items-start gap-2">
+                            <span className="w-5 h-5 rounded-full bg-[var(--color-bg-alt)] flex items-center justify-center text-[10px] font-bold text-[var(--color-text-muted)] shrink-0">{i + 1}</span>
+                            <span>{t}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+
+                  {studentData?.latestResult?.answers?.length > 0 && studentData?.exam?.questions?.length > 0 && (
+                    <div className="card p-4">
+                      <h3 className="font-semibold text-sm text-[var(--color-text)] mb-3 flex items-center gap-2">
+                        <FileText size={14} className="text-[var(--color-primary)]" /> Question-level performance
+                      </h3>
+                      <div className="space-y-2">
+                        {studentData.latestResult.answers.slice(0, 30).map((a) => {
+                          const q = studentData.exam.questions?.[a.questionIndex];
+                          if (!q) return null;
+                          return (
+                            <div key={a.questionIndex} className="border border-[var(--color-border)] rounded-xl p-3 bg-[var(--color-bg-alt)]">
+                              <div className="flex items-start gap-3">
+                                <div className={`w-7 h-7 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 ${a.isCorrect ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                  {a.isCorrect ? '✓' : '✕'}
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="text-sm font-medium text-[var(--color-text)]">{q.question}</p>
+                                  <div className="flex flex-wrap items-center gap-2 mt-1 text-[10px] text-[var(--color-text-muted)]">
+                                    <span className="px-2 py-0.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">{q.type?.toUpperCase() || 'Q'}</span>
+                                    {q.topic && <span className="px-2 py-0.5 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)]">{q.topic}</span>}
+                                    {typeof a.aiScore === 'number' && <span className="px-2 py-0.5 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300">AI {a.aiScore}/100</span>}
+                                  </div>
+                                  {a.aiFeedback && (
+                                    <p className="text-xs text-[var(--color-text-muted)] mt-2 whitespace-pre-wrap">{a.aiFeedback}</p>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {studentData.latestResult.answers.length > 30 && (
+                          <p className="text-xs text-[var(--color-text-muted)] pt-2">Showing first 30 questions. (We can paginate if you want.)</p>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {studentData?.latestResult?.proctoringEvents?.length > 0 && (
+                    <div className="card p-4">
+                      <h3 className="font-semibold text-sm text-[var(--color-text)] mb-3 flex items-center gap-2">
+                        <Shield size={14} className="text-[var(--color-primary)]" /> Proctoring Logs
+                      </h3>
+                      <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                        {studentData.latestResult.proctoringEvents.slice(-120).reverse().map((ev, idx) => (
+                          <div key={`${ev.timestamp || idx}-${idx}`} className="border border-[var(--color-border)] rounded-xl p-2.5 bg-[var(--color-bg-alt)]">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className={`text-[10px] px-2 py-0.5 rounded-full uppercase tracking-wide font-semibold ${
+                                ev.severity === 'critical'
+                                  ? 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300'
+                                  : ev.severity === 'warning'
+                                  ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+                                  : 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                              }`}>
+                                {ev.severity || 'info'}
+                              </span>
+                              <span className="text-[10px] text-[var(--color-text-muted)]">
+                                {ev.timestamp ? new Date(ev.timestamp).toLocaleString('en-IN') : '—'}
+                              </span>
+                            </div>
+                            <p className="text-xs text-[var(--color-text)] mt-1.5">{ev.message}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {studentData?.screenshots?.length > 0 && (
+                    <div className="card p-4">
+                      <h3 className="font-semibold text-sm text-[var(--color-text)] mb-3 flex items-center gap-2">
+                        <Camera size={14} className="text-[var(--color-primary)]" /> Screenshots
+                      </h3>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+                        {studentData.screenshots.slice(0, 24).map(ss => (
+                          <div key={ss._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-alt)]">
+                            <div className="aspect-[4/3] bg-black">
+                              <img src={ss.imageUrl || ss.imageData} alt="screenshot" className="w-full h-full object-cover" />
+                            </div>
+                            <div className="p-2">
+                              <p className="text-[10px] text-[var(--color-text-muted)]">
+                                {new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              </p>
+                              {ss.result && (
+                                <p className="text-[10px] font-semibold text-[var(--color-text)] mt-0.5">
+                                  {ss.result.percentage}% · {ss.result.passed ? 'Passed' : 'Failed'}{typeof ss.result.violations === 'number' ? ` · ${ss.result.violations}v` : ''}
+                                </p>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      {studentData.screenshots.length > 24 && (
+                        <p className="text-xs text-[var(--color-text-muted)] pt-3">Showing latest 24 screenshots.</p>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

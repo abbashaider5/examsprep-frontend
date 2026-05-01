@@ -59,6 +59,7 @@ api.interceptors.response.use(
 export const authApi = {
   signup: (data) => api.post('/auth/signup', data),
   login: (data) => api.post('/auth/login', data),
+  google: (data) => api.post('/auth/google', data),
   logout: () => api.post('/auth/logout'),
   getMe: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),
@@ -77,8 +78,15 @@ export const examApi = {
   updateQuestions: (id, questions) => api.put(`/exams/${id}/questions`, { questions }),
   delete: (id) => api.delete(`/exams/${id}`),
   regenerate: (id, data) => api.post(`/exams/${id}/regenerate`, data),
+  regenerateQuestion: (id, index) => api.post(`/exams/${id}/regenerate-question/${index}`),
+  parsePDF: (file) => {
+    const form = new FormData();
+    form.append('file', file);
+    return api.post('/exams/parse-pdf', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   saveScreenshot: (id, imageData) => api.post(`/exams/${id}/screenshot`, { imageData }),
   executeCode: (data) => api.post('/exams/execute-code', data),
+  analyzeProctoring: (data) => api.post('/exams/analyze-proctoring', data),
 };
 
 export const resultApi = {
@@ -143,6 +151,7 @@ export const instructorApi = {
   getExamInvites: (examId) => api.get(`/instructor/exams/${examId}/invites`),
   getExamReport: (examId) => api.get(`/instructor/exams/${examId}/report`),
   getExamScreenshots: (examId) => api.get(`/instructor/exams/${examId}/screenshots`),
+  getStudentExamReport: (examId, userId) => api.get(`/instructor/exams/${examId}/students/${userId}/report`),
   getAnalytics: () => api.get('/instructor/analytics'),
   getDetailedAnalytics: () => api.get('/instructor/analytics/detailed'),
   validateInvite: (token) => api.get(`/instructor/invite/${token}/validate`),
@@ -187,10 +196,41 @@ export const groupApi = {
 };
 
 export const notificationApi = {
-  getAll:     ()   => api.get('/notifications'),
-  markRead:   (id) => api.patch(`/notifications/${id}/read`),
-  markAllRead: ()  => api.patch('/notifications/read-all'),
-  delete:     (id) => api.delete(`/notifications/${id}`),
+  getAll:      ()   => api.get('/notifications'),
+  getById:     (id) => api.get(`/notifications/${id}`),
+  markRead:    (id) => api.patch(`/notifications/${id}/read`),
+  markAllRead: ()   => api.patch('/notifications/read-all'),
+  delete:      (id) => api.delete(`/notifications/${id}`),
+};
+
+export const resourceApi = {
+  // Upload (admin or instructor)
+  upload: (file, title, groupId = null) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    if (groupId) form.append('groupId', groupId);
+    return api.post('/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  // Admin: list + upload via admin panel
+  adminList: () => api.get('/admin/resources'),
+  adminUpload: (file, title) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    return api.post('/admin/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  adminDelete: (id) => api.delete(`/admin/resources/${id}`),
+  // Instructor: get admin resources for dropdown
+  getAdminResources: () => api.get('/resources/admin'),
+  // Instructor: get own resources (across groups)
+  getMyResources: () => api.get('/resources/mine'),
+  // Group resources
+  getGroupResources: (groupId) => api.get(`/resources/group/${groupId}`),
+  // Get extracted text for AI generation
+  getText: (id) => api.get(`/resources/${id}/text`),
+  // Delete
+  delete: (id) => api.delete(`/resources/${id}`),
 };
 
 export const contactApi = {
@@ -206,6 +246,20 @@ export const feedbackApi = {
   getLimits: () => api.get('/feedback/limits'),
   getAdmin: () => api.get('/feedback/admin'),
   reply: (id, reply) => api.patch(`/feedback/admin/${id}/reply`, { reply }),
+};
+
+export const ticketApi = {
+  create: ({ title, description, type, attachment }) => {
+    const form = new FormData();
+    form.append('title', title);
+    form.append('description', description);
+    form.append('type', type);
+    if (attachment) form.append('attachment', attachment);
+    return api.post('/tickets', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  getMine: (page = 1) => api.get(`/tickets/mine?page=${page}`),
+  adminGetAll: (params = {}) => api.get('/tickets/admin', { params }),
+  adminUpdate: (id, data) => api.patch(`/tickets/admin/${id}`, data),
 };
 
 export const announcementApi = {

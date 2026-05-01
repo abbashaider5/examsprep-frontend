@@ -22,6 +22,7 @@ import {
   CreditCard,
   DollarSign,
   Edit3,
+  FileText,
   Inbox,
   Info,
   Layers,
@@ -38,6 +39,7 @@ import {
   Trash2,
   ToggleLeft,
   ToggleRight,
+  Upload,
   Users,
   X,
   Zap,
@@ -47,7 +49,7 @@ import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { adminApi, announcementApi, feedbackApi, groupApi, logsApi, settingsApi, contactApi } from '../services/api.js';
+import { adminApi, announcementApi, feedbackApi, groupApi, logsApi, settingsApi, contactApi, resourceApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -62,6 +64,7 @@ const TABS = [
   { id: 'settings',       label: 'Settings',          icon: Settings },
   { id: 'payments',       label: 'Payments',          icon: CreditCard },
   { id: 'feedback',       label: 'Feedback',          icon: MessageSquare },
+  { id: 'resources',      label: 'Resources',         icon: FileText },
 ];
 
 const SEVERITY_COLORS = { info: 'bg-blue-100 text-blue-700', warning: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
@@ -1625,7 +1628,7 @@ function AnnouncementsTab() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-50 via-purple-50/60 to-indigo-50/40 dark:from-violet-900/20 dark:via-purple-900/10 dark:to-indigo-900/5 border border-violet-100 dark:border-violet-900/30 px-6 py-5">
+      {/* <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-violet-50 via-purple-50/60 to-indigo-50/40 dark:from-violet-900/20 dark:via-purple-900/10 dark:to-indigo-900/5 border border-violet-100 dark:border-violet-900/30 px-6 py-5">
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-violet-200/30 dark:bg-violet-700/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -1644,7 +1647,7 @@ function AnnouncementsTab() {
             <Plus size={15} /> New Announcement
           </button>
         </div>
-      </div>
+      </div> */}
 
       {/* Stats strip */}
       <div className="grid grid-cols-3 gap-3">
@@ -1797,9 +1800,146 @@ function GroupsTab() {
   );
 }
 
+// ── Resources Tab ────────────────────────────────────────────────────────────
+function ResourcesTab() {
+  const qc = useQueryClient();
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState('');
+  const [uploading, setUploading] = useState(false);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminResources'],
+    queryFn: () => resourceApi.adminList().then(r => r.data),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => resourceApi.adminDelete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminResources'] }); toast.success('Resource deleted'); },
+    onError: () => toast.error('Failed to delete resource'),
+  });
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file || !title.trim()) return toast.error('Title and file are required');
+    setUploading(true);
+    try {
+      await resourceApi.adminUpload(file, title.trim());
+      qc.invalidateQueries({ queryKey: ['adminResources'] });
+      toast.success('Resource uploaded');
+      setFile(null);
+      setTitle('');
+      e.target.reset();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const resources = data?.resources || [];
+
+  return (
+    <div className="space-y-6 pt-6">
+      {/* Upload form */}
+      <div className="card p-6">
+        <h3 className="font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
+          <Upload size={16} /> Upload Resource / Book
+        </h3>
+        <form onSubmit={handleUpload} className="space-y-4">
+          <div>
+            <label className="label">Title</label>
+            <input
+              className="input"
+              placeholder="e.g. Data Structures Handbook"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="label">File (PDF / DOC / DOCX, max 20 MB)</label>
+            <input
+              type="file"
+              accept=".pdf,.doc,.docx"
+              className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
+              onChange={e => setFile(e.target.files?.[0] || null)}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={uploading || !file || !title.trim()}
+            className="btn-primary flex items-center gap-2"
+          >
+            {uploading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </form>
+      </div>
+
+      {/* Resource list */}
+      <div className="card p-6">
+        <h3 className="font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
+          <FileText size={16} /> Uploaded Resources ({resources.length})
+        </h3>
+        {isLoading ? (
+          <div className="text-center py-8 text-[var(--color-text-muted)]"><RefreshCw size={20} className="animate-spin mx-auto" /></div>
+        ) : resources.length === 0 ? (
+          <p className="text-center py-8 text-[var(--color-text-muted)] text-sm">No resources uploaded yet.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
+                  <th className="text-left py-2 pr-4 font-medium">Title</th>
+                  <th className="text-left py-2 pr-4 font-medium">File</th>
+                  <th className="text-left py-2 pr-4 font-medium">Size</th>
+                  <th className="text-left py-2 pr-4 font-medium">Pages</th>
+                  <th className="text-left py-2 pr-4 font-medium">Uploaded By</th>
+                  <th className="text-left py-2 pr-4 font-medium">Date</th>
+                  <th className="text-left py-2 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {resources.map(r => (
+                  <tr key={r._id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors">
+                    <td className="py-2 pr-4 font-medium text-[var(--color-text)]">{r.title}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)] max-w-[140px] truncate">{r.originalName}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.size ? `${(r.size / 1024).toFixed(1)} KB` : '—'}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.pages ?? '—'}</td>
+                    <td className="py-2 pr-4">
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[var(--color-text)] text-xs">{r.uploadedBy?.name || '—'}</span>
+                        {r.uploadedBy?.role === 'admin' && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/25 leading-none uppercase tracking-wide">
+                            Admin
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{new Date(r.createdAt).toLocaleDateString()}</td>
+                    <td className="py-2">
+                      <button
+                        onClick={() => { if (window.confirm(`Delete "${r.title}"?`)) deleteMut.mutate(r._id); }}
+                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        title="Delete"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [activeTab, setActiveTab] = useState('overview');
+  const [tabQuery, setTabQuery] = useState('');
 
   const { data: statsData } = useQuery({
     queryKey: ['adminStats'],
@@ -1807,40 +1947,90 @@ export default function AdminPage() {
     enabled: activeTab === 'overview',
   });
 
+  const visibleTabs = TABS.filter(t =>
+    !tabQuery
+    || t.label.toLowerCase().includes(tabQuery.toLowerCase())
+    || t.id.toLowerCase().includes(tabQuery.toLowerCase())
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in px-4 sm:px-6 lg:px-8 py-8">
-      <div>
-        <h1 className="text-2xl font-bold text-[var(--color-text)]">Admin Panel</h1>
-        <p className="text-[var(--color-text-muted)] text-sm mt-1">Platform management and analytics</p>
+    <div className="animate-fade-in px-4 sm:px-6 lg:px-8 py-8">
+      <div className="flex items-start justify-between gap-4 mb-6">
+        <div>
+          <h1 className="text-2xl font-bold text-[var(--color-text)]">Admin Panel</h1>
+          <p className="text-[var(--color-text-muted)] text-sm mt-1">Platform management and analytics</p>
+        </div>
+        {/* Mobile tab selector */}
+        <div className="sm:hidden w-44">
+          <select
+            className="input text-sm"
+            value={activeTab}
+            onChange={(e) => setActiveTab(e.target.value)}
+          >
+            {TABS.map(t => <option key={t.id} value={t.id}>{t.label}</option>)}
+          </select>
+        </div>
       </div>
 
-      {/* Tab Bar */}
-      <div className="flex gap-1 border-b border-[var(--color-border)] overflow-x-auto">
-        {TABS.map(tab => {
-          const Icon = tab.icon;
-          return (
-            <button
-              key={tab.id}
-              onClick={() => setActiveTab(tab.id)}
-              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${activeTab === tab.id ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}
-            >
-              <Icon size={15} />
-              {tab.label}
-            </button>
-          );
-        })}
-      </div>
+      <div className="space-y-6">
+        <section className="card p-4">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Shield size={16} className="text-[var(--color-primary)]" />
+              <p className="text-sm font-semibold text-[var(--color-text)]">Admin Menu</p>
+            </div>
+            <div className="relative w-full sm:w-64">
+              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
+              <input
+                className="input pl-8 text-sm"
+                placeholder="Search pages…"
+                value={tabQuery}
+                onChange={(e) => setTabQuery(e.target.value)}
+              />
+            </div>
+          </div>
 
-      {activeTab === 'overview'      && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
-      {activeTab === 'users'         && <UsersTab />}
-      {activeTab === 'plans'         && <PlansTab />}
-      {activeTab === 'announcements' && <AnnouncementsTab />}
-      {activeTab === 'groups'        && <GroupsTab />}
-      {activeTab === 'contacts'      && <ContactsTab />}
-      {activeTab === 'logs'          && <LogsTab />}
-      {activeTab === 'settings'      && <SettingsTab />}
-      {activeTab === 'payments'      && <PaymentsTab />}
-      {activeTab === 'feedback'      && <FeedbackTab />}
+          <div className="mt-4 flex flex-wrap gap-2">
+            {visibleTabs.map(t => {
+              const Icon = t.icon;
+              const active = activeTab === t.id;
+              return (
+                <button
+                  key={t.id}
+                  type="button"
+                  onClick={() => setActiveTab(t.id)}
+                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
+                    active
+                      ? 'bg-[var(--color-primary)] text-white shadow-sm'
+                      : 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]/80'
+                  }`}
+                >
+                  <Icon size={15} className="shrink-0" />
+                  <span>{t.label}</span>
+                </button>
+              );
+            })}
+            {visibleTabs.length === 0 && (
+              <p className="text-xs text-[var(--color-text-muted)] px-2 py-3">No matching pages</p>
+            )}
+          </div>
+        </section>
+
+        <section className="space-y-6 min-w-0">
+
+          {activeTab === 'overview'      && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
+          {activeTab === 'users'         && <UsersTab />}
+          {activeTab === 'plans'         && <PlansTab />}
+          {activeTab === 'announcements' && <AnnouncementsTab />}
+          {activeTab === 'groups'        && <GroupsTab />}
+          {activeTab === 'contacts'      && <ContactsTab />}
+          {activeTab === 'logs'          && <LogsTab />}
+          {activeTab === 'settings'      && <SettingsTab />}
+          {activeTab === 'payments'      && <PaymentsTab />}
+          {activeTab === 'feedback'      && <FeedbackTab />}
+          {activeTab === 'resources'     && <ResourcesTab />}
+        </section>
+      </div>
     </div>
   );
 }

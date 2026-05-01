@@ -46,7 +46,18 @@ export const useAuth = () => {
     onSuccess: () => { clearUser(); qc.clear(); navigate('/login'); toast.success('Logged out'); },
   });
 
-  return { user, isAuthenticated, login: loginMut, signup: signupMut, verifyOtp: verifyOtpMut, logout: logoutMut };
+  const googleMut = useMutation({
+    mutationFn: authApi.google,
+    onSuccess: (res) => {
+      if (res.data.requiresOTP) return;
+      setUser(res.data.user);
+      navigate('/dashboard');
+      toast.success(res.data.message || 'Signed in with Google');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Google sign-in failed'),
+  });
+
+  return { user, isAuthenticated, login: loginMut, signup: signupMut, google: googleMut, verifyOtp: verifyOtpMut, logout: logoutMut };
 };
 
 export const useMe = () => {

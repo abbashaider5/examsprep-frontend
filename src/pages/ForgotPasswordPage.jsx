@@ -138,6 +138,7 @@ export default function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [resending, setResending] = useState(false);
+  const [requestMessage, setRequestMessage] = useState('');
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -152,15 +153,15 @@ export default function ForgotPasswordPage() {
     const parse = emailSchema.safeParse(email);
     if (!parse.success) { setEmailError(parse.error.errors[0].message); return; }
     setEmailError('');
+    setRequestMessage('');
     setLoading(true);
     try {
-      await authApi.forgotPassword({ email });
+      const res = await authApi.forgotPassword({ email });
+      setRequestMessage(res?.data?.message || 'A reset code has been sent to your email address.');
       setCountdown(60);
       setStep(1);
-    } catch {
-      // Always advance — we don't reveal whether email exists
-      setCountdown(60);
-      setStep(1);
+    } catch (err) {
+      setEmailError(err.response?.data?.message || 'Unable to process this request right now.');
     } finally { setLoading(false); }
   };
 
@@ -180,13 +181,13 @@ export default function ForgotPasswordPage() {
     if (countdown > 0 || resending) return;
     setResending(true);
     try {
-      await authApi.forgotPassword({ email });
+      const res = await authApi.forgotPassword({ email });
+      setRequestMessage(res?.data?.message || 'A new reset code has been sent to your email address.');
       setCountdown(60);
       setOtpValue('');
       setOtpError('');
-    } catch {
-      // silent — same response regardless
-      setCountdown(60);
+    } catch (err) {
+      setOtpError(err.response?.data?.message || 'Unable to resend code right now.');
     } finally { setResending(false); }
   };
 
@@ -284,6 +285,11 @@ export default function ForgotPasswordPage() {
           <p className="text-[var(--color-text-muted)] text-sm text-center mb-7">
             We sent a 6-digit code to <span className="font-medium text-[var(--color-text)]">{email}</span>
           </p>
+          {requestMessage && (
+            <p className="text-xs text-center bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2.5 text-blue-700 dark:text-blue-300 mb-4">
+              {requestMessage}
+            </p>
+          )}
           <form onSubmit={handleOtpSubmit} className="space-y-5">
             <OTPInput onComplete={handleOtpComplete} />
             {otpError && <p className="text-red-500 text-sm text-center">{otpError}</p>}

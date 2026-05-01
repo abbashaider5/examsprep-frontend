@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   BookOpen, Check, ChevronLeft, Crown, Download, Edit3, FileText,
-  Info, LogOut, Mail, MessageSquare, Paperclip, Plus,
+  Info, LogOut, Mail, MessageSquare, Paperclip, Plus, RefreshCw,
   Search, Send, Settings, Shield, Trash2, Upload, UserCheck, UserPlus, Users, X, Zap,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -9,7 +9,7 @@ import * as XLSX from 'xlsx';
 import toast from 'react-hot-toast';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import Modal from '../components/Modal.jsx';
-import { groupApi, instructorApi, resultApi } from '../services/api.js';
+import { groupApi, instructorApi, resultApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 // ── helpers ───────────────────────────────────────────────────────────────────
@@ -1464,6 +1464,120 @@ function MembersTab({ group, isOwner }) {
 }
 
 // ── Tests Tab ─────────────────────────────────────────────────────────────────
+function ResourcesTab({ group }) {
+  const qc = useQueryClient();
+  const [file, setFile] = useState(null);
+  const [title, setTitle] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['groupResources', group._id],
+    queryFn: () => resourceApi.getGroupResources(group._id).then(r => r.data),
+    refetchOnMount: 'always',
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => resourceApi.delete(id),
+    onSuccess: () => { qc.invalidateQueries({ queryKey: ['groupResources', group._id] }); toast.success('Resource deleted'); },
+    onError: () => toast.error('Failed to delete resource'),
+  });
+
+  const handleUpload = async (e) => {
+    e.preventDefault();
+    if (!file || !title.trim()) return toast.error('Title and file are required');
+    setUploading(true);
+    try {
+      const { data: res } = await resourceApi.upload(file, title.trim(), group._id);
+      if (res?.resource) {
+        qc.setQueryData(['groupResources', group._id], old => ({
+          resources: [res.resource, ...(old?.resources || [])],
+        }));
+      } else {
+        qc.invalidateQueries({ queryKey: ['groupResources', group._id] });
+      }
+      toast.success('Resource uploaded');
+      setFile(null);
+      setTitle('');
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    } catch (err) {
+      toast.error(err?.response?.data?.message || 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const resources = data?.resources || [];
+
+  return (
+    <div className="flex-1 overflow-y-auto p-5 space-y-4">
+      {/* Upload */}
+      <div className="card p-5">
+        <h3 className="font-semibold text-[var(--color-text)] mb-3 flex items-center gap-2 text-sm">
+          <Upload size={14} /> Upload Resource / Book
+        </h3>
+        <form onSubmit={handleUpload} className="space-y-3">
+          <input
+            className="input text-sm"
+            placeholder="Resource title"
+            value={title}
+            onChange={e => setTitle(e.target.value)}
+          />
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.doc,.docx"
+            className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
+            onChange={e => setFile(e.target.files?.[0] || null)}
+          />
+          <button
+            type="submit"
+            disabled={uploading || !file || !title.trim()}
+            className="btn-primary w-full py-2 text-sm flex items-center justify-center gap-2"
+          >
+            {uploading ? <RefreshCw size={13} className="animate-spin" /> : <Upload size={13} />}
+            {uploading ? 'Uploading…' : 'Upload'}
+          </button>
+        </form>
+      </div>
+
+      {/* List */}
+      <div className="card p-5">
+        <h3 className="font-semibold text-[var(--color-text)] mb-3 flex items-center gap-2 text-sm">
+          <FileText size={14} /> Resources ({resources.length})
+        </h3>
+        {isLoading ? (
+          <div className="flex justify-center py-6"><RefreshCw size={18} className="animate-spin text-[var(--color-text-muted)]" /></div>
+        ) : resources.length === 0 ? (
+          <p className="text-center py-6 text-[var(--color-text-muted)] text-sm">No resources yet. Upload PDFs or docs for AI test generation.</p>
+        ) : (
+          <div className="space-y-2">
+            {resources.map(r => (
+              <div key={r._id} className="flex items-center justify-between gap-3 p-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-hover)]">
+                <div className="flex items-center gap-3 min-w-0">
+                  <FileText size={16} className="text-[var(--color-primary)] shrink-0" />
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium text-[var(--color-text)] truncate">{r.title}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      {r.originalName} · {r.size ? `${(r.size / 1024).toFixed(1)} KB` : ''}{r.pages ? ` · ${r.pages}p` : ''}
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => { if (window.confirm(`Delete "${r.title}"?`)) deleteMut.mutate(r._id); }}
+                  className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors shrink-0"
+                >
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function TestsTab({ group, isOwner }) {
   const qc             = useQueryClient();
   const [showShare, setShowShare] = useState(false);
@@ -1510,12 +1624,12 @@ function TestsTab({ group, isOwner }) {
 
   return (
     <div className="flex-1 overflow-y-auto p-5 space-y-3">
-      {isOwner && (
+      {/* {isOwner && (
         <button onClick={() => setShowShare(true)}
           className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2">
           <Zap size={14} /> Share a Test with Batch
         </button>
-      )}
+      )} */}
       {validExams.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-14 px-6 text-center">
           <div className="w-16 h-16 rounded-2xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center mx-auto mb-4">
@@ -1796,9 +1910,10 @@ function GroupDetail({ groupId, onBack }) {
   if (!group) return null;
 
   const TABS = [
-    { key: 'chat',    label: 'Chat',    icon: MessageSquare },
-    { key: 'members', label: 'Members', icon: Users },
-    { key: 'tests',   label: 'Tests',   icon: BookOpen },
+    { key: 'chat',      label: 'Chat',      icon: MessageSquare },
+    { key: 'members',   label: 'Members',   icon: Users },
+    { key: 'tests',     label: 'Tests',     icon: BookOpen },
+    ...(isOwner ? [{ key: 'resources', label: 'Resources', icon: FileText }] : []),
   ];
 
   return (
@@ -1852,9 +1967,10 @@ function GroupDetail({ groupId, onBack }) {
       </div>
 
       {/* Tab content */}
-      {tab === 'chat'    && <ChatPanel  group={group} isOwner={isOwner} />}
-      {tab === 'members' && <MembersTab group={group} isOwner={isOwner} />}
-      {tab === 'tests'   && <TestsTab   group={group} isOwner={isOwner} />}
+      {tab === 'chat'      && <ChatPanel    group={group} isOwner={isOwner} />}
+      {tab === 'members'   && <MembersTab   group={group} isOwner={isOwner} />}
+      {tab === 'tests'     && <TestsTab     group={group} isOwner={isOwner} />}
+      {tab === 'resources' && <ResourcesTab group={group} />}
 
       {/* Settings panel */}
       {showSettings && (

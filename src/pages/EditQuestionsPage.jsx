@@ -2,94 +2,96 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle, ArrowLeft, Award, BookOpen, Camera, CheckCircle, ChevronDown, ChevronUp,
   Clock, Code2, Eye, EyeOff, FileText, FlipHorizontal, Hash, Percent, RefreshCw,
-  Save, Shield, Timer, Trash2,
+  Save, Shield, Sparkles, Timer, Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { examApi } from '../services/api.js';
 
-function MCQQuestionEditor({ question, index, onChange }) {
-  const [collapsed, setCollapsed] = useState(false);
-
+function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate, onDelete, regenerating }) {
+  const typeColors = {
+    coding: 'bg-purple-500',
+    descriptive: 'bg-teal-500',
+    mcq: 'bg-[var(--color-primary)]',
+  };
   return (
-    <div className="card border border-[var(--color-border)] overflow-hidden">
-      <div className="flex items-start gap-3 cursor-pointer select-none" onClick={() => setCollapsed(c => !c)}>
-        <span className="shrink-0 w-7 h-7 rounded-full bg-[var(--color-primary)] text-white text-xs font-bold flex items-center justify-center mt-0.5">
-          {index + 1}
-        </span>
-        <p className="flex-1 text-sm font-medium text-[var(--color-text)] line-clamp-2 min-w-0">
-          {question.question || <span className="text-[var(--color-text-muted)] italic">No question text</span>}
-        </p>
-        <button className="text-[var(--color-text-muted)] shrink-0 p-0.5">
+    <div className="flex items-start gap-3">
+      <span className={`shrink-0 w-7 h-7 rounded-full ${typeColors[type] || typeColors.mcq} text-white text-xs font-bold flex items-center justify-center mt-0.5`}>
+        {index + 1}
+      </span>
+      <div className="flex-1 min-w-0 cursor-pointer select-none" onClick={onToggle}>
+        <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2">{title || <span className="text-[var(--color-text-muted)] italic">No question text</span>}</p>
+        {type !== 'mcq' && (
+          <span className={`text-[10px] px-1.5 py-0.5 rounded font-semibold mt-1 inline-block ${type === 'coding' ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400' : 'bg-teal-100 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400'}`}>
+            {type === 'coding' ? <><Code2 size={9} className="inline mr-0.5" />CODING</> : '✍ DESCRIPTIVE'}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center gap-1 shrink-0">
+        <button type="button" onClick={onRegenerate} disabled={regenerating}
+          title="AI regenerate this question"
+          className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] disabled:opacity-50 transition-colors"
+        >
+          {regenerating
+            ? <div className="w-3.5 h-3.5 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
+            : <Sparkles size={13} />}
+        </button>
+        <button type="button" onClick={onDelete} title="Remove question"
+          className="p-1 text-[var(--color-text-muted)] hover:text-red-500 transition-colors">
+          <Trash2 size={13} />
+        </button>
+        <button type="button" onClick={onToggle} className="p-1 text-[var(--color-text-muted)]">
           {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
         </button>
       </div>
+    </div>
+  );
+}
 
+function MCQQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
+  const [collapsed, setCollapsed] = useState(false);
+  return (
+    <div className="card border border-[var(--color-border)] overflow-hidden">
+      <QuestionHeader
+        index={index} type="mcq" title={question.question}
+        collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
+        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+      />
       {!collapsed && (
         <div className="mt-4 space-y-4">
           <div>
             <label className="label text-xs">Question</label>
-            <textarea
-              className="input text-sm resize-y min-h-[72px]"
-              value={question.question}
-              onChange={e => onChange({ ...question, question: e.target.value })}
-              placeholder="Enter the question..."
-            />
+            <textarea className="input text-sm resize-y min-h-[72px]" value={question.question}
+              onChange={e => onChange({ ...question, question: e.target.value })} placeholder="Enter the question..." />
           </div>
-
           <div>
             <label className="label text-xs mb-2">Options — click circle to mark correct answer</label>
             <div className="space-y-2">
               {question.options.map((opt, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => onChange({ ...question, correctAnswer: i })}
-                    className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${
-                      question.correctAnswer === i
-                        ? 'border-green-500 bg-green-500 text-white'
-                        : 'border-[var(--color-border)] hover:border-green-400'
-                    }`}
-                  >
+                  <button type="button" onClick={() => onChange({ ...question, correctAnswer: i })}
+                    className={`shrink-0 w-5 h-5 rounded-full border-2 flex items-center justify-center transition-colors ${question.correctAnswer === i ? 'border-green-500 bg-green-500 text-white' : 'border-[var(--color-border)] hover:border-green-400'}`}>
                     {question.correctAnswer === i && <CheckCircle size={11} />}
                   </button>
-                  <span className="shrink-0 text-xs font-semibold text-[var(--color-text-muted)] w-5">
-                    {String.fromCharCode(65 + i)}.
-                  </span>
-                  <input
-                    className="input flex-1 text-sm py-1.5"
-                    value={opt}
-                    onChange={e => {
-                      const newOpts = [...question.options];
-                      newOpts[i] = e.target.value;
-                      onChange({ ...question, options: newOpts });
-                    }}
-                    placeholder={`Option ${String.fromCharCode(65 + i)}`}
-                  />
+                  <span className="shrink-0 text-xs font-semibold text-[var(--color-text-muted)] w-5">{String.fromCharCode(65 + i)}.</span>
+                  <input className="input flex-1 text-sm py-1.5" value={opt}
+                    onChange={e => { const o = [...question.options]; o[i] = e.target.value; onChange({ ...question, options: o }); }}
+                    placeholder={`Option ${String.fromCharCode(65 + i)}`} />
                 </div>
               ))}
             </div>
           </div>
-
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="label text-xs">Explanation (optional)</label>
-              <textarea
-                className="input text-sm resize-y min-h-[60px]"
-                value={question.explanation || ''}
-                onChange={e => onChange({ ...question, explanation: e.target.value })}
-                placeholder="Why is the correct answer right?"
-              />
+              <textarea className="input text-sm resize-y min-h-[60px]" value={question.explanation || ''}
+                onChange={e => onChange({ ...question, explanation: e.target.value })} placeholder="Why is the correct answer right?" />
             </div>
             <div>
               <label className="label text-xs">Topic (optional)</label>
-              <input
-                className="input text-sm"
-                value={question.topic || ''}
-                onChange={e => onChange({ ...question, topic: e.target.value })}
-                placeholder="e.g., loops, recursion"
-              />
+              <input className="input text-sm" value={question.topic || ''}
+                onChange={e => onChange({ ...question, topic: e.target.value })} placeholder="e.g., loops, recursion" />
             </div>
           </div>
         </div>
@@ -98,29 +100,16 @@ function MCQQuestionEditor({ question, index, onChange }) {
   );
 }
 
-function CodingQuestionEditor({ question, index, onChange }) {
+function CodingQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
   const [collapsed, setCollapsed] = useState(false);
   const LANGUAGES = ['javascript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'typescript', 'ruby', 'php'];
-
   return (
     <div className="card border border-purple-200 dark:border-purple-800 overflow-hidden">
-      <div className="flex items-start gap-3 cursor-pointer select-none" onClick={() => setCollapsed(c => !c)}>
-        <span className="shrink-0 w-7 h-7 rounded-full bg-purple-500 text-white text-xs font-bold flex items-center justify-center mt-0.5">
-          {index + 1}
-        </span>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-medium text-[var(--color-text)] line-clamp-2">
-            {question.question || <span className="text-[var(--color-text-muted)] italic">No question text</span>}
-          </p>
-          <span className="text-[10px] bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-semibold mt-1 inline-block">
-            <Code2 size={9} className="inline mr-0.5" />CODING · {question.language || 'javascript'}
-          </span>
-        </div>
-        <button className="text-[var(--color-text-muted)] shrink-0 p-0.5">
-          {collapsed ? <ChevronDown size={16} /> : <ChevronUp size={16} />}
-        </button>
-      </div>
-
+      <QuestionHeader
+        index={index} type="coding" title={question.question}
+        collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
+        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+      />
       {!collapsed && (
         <div className="mt-4 space-y-4">
           <div>
@@ -165,6 +154,73 @@ function CodingQuestionEditor({ question, index, onChange }) {
   );
 }
 
+function DescriptiveQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
+  const [collapsed, setCollapsed] = useState(false);
+  const [kpInput, setKpInput] = useState('');
+  return (
+    <div className="card border border-teal-200 dark:border-teal-800 overflow-hidden">
+      <QuestionHeader
+        index={index} type="descriptive" title={question.question}
+        collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
+        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+      />
+      {!collapsed && (
+        <div className="mt-4 space-y-4">
+          <div>
+            <label className="label text-xs">Question</label>
+            <textarea className="input text-sm resize-y min-h-[72px]" value={question.question}
+              onChange={e => onChange({ ...question, question: e.target.value })} placeholder="Enter the open-ended question..." />
+          </div>
+          <div>
+            <label className="label text-xs">Model Answer (reference)</label>
+            <textarea className="input text-sm resize-y min-h-[80px]" value={question.modelAnswer || ''}
+              onChange={e => onChange({ ...question, modelAnswer: e.target.value })}
+              placeholder="A comprehensive model answer (used by AI to evaluate student responses)..." />
+          </div>
+          <div>
+            <label className="label text-xs mb-1.5">Key Points (AI checks for these in student answers)</label>
+            <div className="flex flex-wrap gap-1.5 mb-2">
+              {(question.keyPoints || []).map((kp, ki) => (
+                <span key={ki} className="flex items-center gap-1 text-xs bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2.5 py-1 rounded-full">
+                  {kp}
+                  <button type="button" onClick={() => onChange({ ...question, keyPoints: question.keyPoints.filter((_, j) => j !== ki) })}
+                    className="ml-0.5 hover:text-red-500">×</button>
+                </span>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <input className="input flex-1 text-sm" value={kpInput} onChange={e => setKpInput(e.target.value)}
+                placeholder="Add key concept..." onKeyDown={e => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const kp = kpInput.trim();
+                    if (kp) { onChange({ ...question, keyPoints: [...(question.keyPoints || []), kp] }); setKpInput(''); }
+                  }
+                }} />
+              <button type="button" className="btn-secondary text-xs px-3"
+                onClick={() => { const kp = kpInput.trim(); if (kp) { onChange({ ...question, keyPoints: [...(question.keyPoints || []), kp] }); setKpInput(''); } }}>
+                Add
+              </button>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label text-xs">Explanation (optional)</label>
+              <textarea className="input text-sm resize-y min-h-[60px]" value={question.explanation || ''}
+                onChange={e => onChange({ ...question, explanation: e.target.value })} placeholder="Why this question matters..." />
+            </div>
+            <div>
+              <label className="label text-xs">Topic (optional)</label>
+              <input className="input text-sm" value={question.topic || ''}
+                onChange={e => onChange({ ...question, topic: e.target.value })} placeholder="e.g., memory management" />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SettingRow({ icon: Icon, label, value, iconCls, bgCls }) {
   return (
     <div className="flex items-center gap-2.5 py-2 border-b border-[var(--color-border)] last:border-0">
@@ -188,6 +244,7 @@ export default function EditQuestionsPage() {
   });
 
   const [questions, setQuestions] = useState(null);
+  const [regeneratingIdx, setRegeneratingIdx] = useState(null);
 
   useEffect(() => {
     if (data?.questions) setQuestions(data.questions.map(q => ({ ...q })));
@@ -203,6 +260,19 @@ export default function EditQuestionsPage() {
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to save questions'),
   });
+
+  const handleRegenerate = async (index) => {
+    setRegeneratingIdx(index);
+    try {
+      const res = await examApi.regenerateQuestion(id, index);
+      setQuestions(qs => qs.map((q, i) => i === index ? res.data.question : q));
+      toast.success('Question regenerated');
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to regenerate question');
+    } finally {
+      setRegeneratingIdx(null);
+    }
+  };
 
   const updateQuestion = (index, updated) => setQuestions(qs => qs.map((q, i) => i === index ? updated : q));
   const removeQuestion = (index) => {
@@ -226,7 +296,9 @@ export default function EditQuestionsPage() {
 
   const exam = data;
   const codingCount = questions?.filter(q => q.type === 'coding').length ?? 0;
-  const mcqCount = (questions?.length ?? 0) - codingCount;
+  const descriptiveCount = questions?.filter(q => q.type === 'descriptive').length ?? 0;
+  const mcqCount = (questions?.length ?? 0) - codingCount - descriptiveCount;
+  const hasMultipleTypes = codingCount > 0 || descriptiveCount > 0;
 
   const DIFF_COLORS = { easy: 'text-emerald-600', medium: 'text-amber-600', hard: 'text-red-600' };
 
@@ -244,7 +316,6 @@ export default function EditQuestionsPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-      {/* Header — same gradient as other instructor pages */}
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
         <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-8 left-0 w-40 h-40 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
@@ -275,22 +346,20 @@ export default function EditQuestionsPage() {
 
       {questions && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Left: Question editor */}
           <div className="lg:col-span-2 space-y-3">
-            {questions.map((q, i) => (
-              <div key={i} className="relative group">
-                {q.type === 'coding'
-                  ? <CodingQuestionEditor question={q} index={i} onChange={(u) => updateQuestion(i, u)} />
-                  : <MCQQuestionEditor question={q} index={i} onChange={(u) => updateQuestion(i, u)} />
-                }
-                <button type="button" onClick={() => removeQuestion(i)} title="Remove question"
-                  className="absolute top-3 right-10 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--color-text-muted)] hover:text-red-500 p-1">
-                  <Trash2 size={13} />
-                </button>
-              </div>
-            ))}
+            {questions.map((q, i) => {
+              const commonProps = {
+                question: q, index: i,
+                onChange: (u) => updateQuestion(i, u),
+                onRegenerate: () => handleRegenerate(i),
+                onDelete: () => removeQuestion(i),
+                regenerating: regeneratingIdx === i,
+              };
+              if (q.type === 'coding') return <CodingQuestionEditor key={i} {...commonProps} />;
+              if (q.type === 'descriptive') return <DescriptiveQuestionEditor key={i} {...commonProps} />;
+              return <MCQQuestionEditor key={i} {...commonProps} />;
+            })}
 
-            {/* Save + Cancel */}
             <div className="flex gap-3 pt-2">
               <button onClick={() => saveMut.mutate()} disabled={saveMut.isPending}
                 className="btn-primary flex-1 py-3 flex items-center justify-center gap-2 disabled:opacity-60">
@@ -302,9 +371,7 @@ export default function EditQuestionsPage() {
             </div>
           </div>
 
-          {/* Right: Summary sidebar */}
           <div className="space-y-4">
-            {/* Question summary card */}
             <div className="card">
               <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3 flex items-center gap-2">
                 <FileText size={14} className="text-[var(--color-primary)]" /> Question Summary
@@ -314,16 +381,26 @@ export default function EditQuestionsPage() {
                   <p className="text-2xl font-bold text-[var(--color-text)]">{questions.length}</p>
                   <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Total</p>
                 </div>
-                {codingCount > 0 ? (
+                {hasMultipleTypes ? (
                   <>
-                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
-                      <p className="text-2xl font-bold text-[var(--color-primary)]">{mcqCount}</p>
-                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">MCQ</p>
-                    </div>
-                    <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-center col-span-2">
-                      <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{codingCount}</p>
-                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Coding</p>
-                    </div>
+                    {mcqCount > 0 && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
+                        <p className="text-2xl font-bold text-[var(--color-primary)]">{mcqCount}</p>
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">MCQ</p>
+                      </div>
+                    )}
+                    {descriptiveCount > 0 && (
+                      <div className="bg-teal-50 dark:bg-teal-900/20 rounded-xl p-3 text-center">
+                        <p className="text-2xl font-bold text-teal-600 dark:text-teal-400">{descriptiveCount}</p>
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Descriptive</p>
+                      </div>
+                    )}
+                    {codingCount > 0 && (
+                      <div className="bg-purple-50 dark:bg-purple-900/20 rounded-xl p-3 text-center">
+                        <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">{codingCount}</p>
+                        <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">Coding</p>
+                      </div>
+                    )}
                   </>
                 ) : (
                   <div className="bg-blue-50 dark:bg-blue-900/20 rounded-xl p-3 text-center">
@@ -332,15 +409,17 @@ export default function EditQuestionsPage() {
                   </div>
                 )}
               </div>
-              {/* Time per question */}
-              <div className="flex items-center gap-2 p-2.5 bg-[var(--color-bg-alt)] rounded-xl">
+              <div className="flex items-center gap-2 p-2.5 bg-[var(--color-bg-alt)] rounded-xl mb-2">
                 <Clock size={13} className="text-[var(--color-text-muted)]" />
                 <span className="text-xs text-[var(--color-text-muted)]">Time per question</span>
                 <span className="ml-auto text-xs font-semibold text-[var(--color-text)]">
-                  {exam.difficulty === 'easy' ? '45s' : exam.difficulty === 'medium' ? '75s' : '120s'}
+                  {exam.timePerQuestion ? `${exam.timePerQuestion}s` : (exam.difficulty === 'easy' ? '45s' : exam.difficulty === 'medium' ? '60s' : '90s')}
                 </span>
               </div>
-              {/* Topics */}
+              <div className="flex items-center gap-2 p-2.5 bg-amber-50/60 dark:bg-amber-900/10 rounded-xl">
+                <Sparkles size={13} className="text-amber-600" />
+                <span className="text-xs text-[var(--color-text-muted)]">Click <Sparkles size={10} className="inline text-amber-600" /> on any question to AI-regenerate it</span>
+              </div>
               {exam.topics?.length > 0 && (
                 <div className="mt-3">
                   <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">Topics</p>
@@ -355,7 +434,6 @@ export default function EditQuestionsPage() {
               )}
             </div>
 
-            {/* Exam settings card */}
             <div className="card">
               <h3 className="text-sm font-semibold text-[var(--color-text)] mb-3 flex items-center gap-2">
                 <Shield size={14} className="text-[var(--color-primary)]" /> Exam Settings

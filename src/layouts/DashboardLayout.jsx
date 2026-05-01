@@ -1,17 +1,25 @@
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Award, BookmarkCheck, BookOpen, Brain,
-  ChevronDown,
-  GraduationCap, LayoutDashboard, LogOut, Menu,
-  MessageSquare, Plus, RefreshCw, Shield, Sun, Moon,
-  BarChart2, Trophy, User, Users, X, Zap, Settings
+    Award,
+    BarChart2,
+    BookmarkCheck, BookOpen, Brain,
+    ChevronDown,
+    GraduationCap, LayoutDashboard, LogOut, Menu,
+    LifeBuoy,
+    MessageSquare,
+    Moon,
+    Plus, RefreshCw,
+    Settings,
+    Shield, Sun,
+    Trophy, User, Users, X, Zap
 } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
+import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
 import FeedbackModal from '../components/FeedbackModal.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
-import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
-import { Link, Outlet, useLocation } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '../hooks/useAuth.js';
+import { notificationApi } from '../services/api.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 
 // Instructor nav — items may have `children` for submenus
@@ -28,7 +36,6 @@ const INSTRUCTOR_SIDEBAR_NAV = [
   {
     id: 'reports', icon: BarChart2, label: 'Reports',
     children: [
-      { to: '/test-reports', icon: BarChart2, label: 'Analytics' },
       { to: '/instructor/performance', icon: Brain, label: 'AI Insights' },
       { to: '/test-reports', icon: BookmarkCheck, label: 'Test Reports' },
     ],
@@ -55,6 +62,7 @@ const ALL_NAV_FLAT = [
   { to: '/test-reports', label: 'Reports' },
   { to: '/instructor/performance', label: 'AI Insights' },
   { to: '/test-reports', label: 'Test Reports' },
+  { to: '/tickets', label: 'Ticketing' },
 ];
 
 const ROLE_COLORS = {
@@ -64,7 +72,7 @@ const ROLE_COLORS = {
 };
 
 // ── Flat sidebar link ─────────────────────────────────────────────────────────
-function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false }) {
+function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false, badge = 0 }) {
   const { pathname } = useLocation();
   const active = pathname === to
     || (to === '/test-reports' && (pathname === '/test-reports' || pathname.startsWith('/instructor/report')))
@@ -79,8 +87,20 @@ function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false
       }`}
       title={collapsed ? label : ''}
     >
-      <Icon size={indent ? 14 : 18} className="shrink-0" />
-      {!collapsed && <span>{label}</span>}
+      <div className="relative shrink-0">
+        <Icon size={indent ? 14 : 18} />
+        {badge > 0 && (
+          <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none px-0.5">
+            {badge > 9 ? '9+' : badge}
+          </span>
+        )}
+      </div>
+      {!collapsed && <span className="flex-1">{label}</span>}
+      {!collapsed && badge > 0 && (
+        <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+          {badge > 9 ? '9+' : badge}
+        </span>
+      )}
     </Link>
   );
 }
@@ -151,6 +171,15 @@ export default function DashboardLayout() {
   const [showFeedback, setShowFeedback] = useState(false);
   const [openMenus, setOpenMenus] = useState(['tests']); // tests open by default
 
+  // Reuse the cached notifications query to compute batch badge
+  const { data: notifData } = useQuery({
+    queryKey: ['notifications'],
+    queryFn: () => notificationApi.getAll().then(r => r.data),
+    staleTime: 15 * 1000,
+    refetchInterval: 30 * 1000,
+  });
+  const batchBadge = notifData?.notifications?.filter(n => n.type === 'batch_joined' && !n.isRead).length || 0;
+
   // Auto-open submenu groups when navigating to a child route
   useEffect(() => {
     const activeGroups = INSTRUCTOR_SIDEBAR_NAV
@@ -181,6 +210,7 @@ export default function DashboardLayout() {
       : pathname === '/batches' ? 'Batches'
       : pathname === '/instructor-dashboard' ? 'Dashboard'
       : pathname === '/tests' ? isInstructorRole(user) ? 'All Tests' : 'My Tests'
+      : pathname === '/tickets' ? 'Ticketing'
       : 'Dashboard');
 
   function isInstructorRole(u) {
@@ -230,7 +260,7 @@ export default function DashboardLayout() {
                     onChildClick={() => setMobileOpen(false)}
                   />
                 ) : (
-                  <SidebarLink key={item.to} {...item} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+                  <SidebarLink key={item.to} {...item} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={item.to === '/batches' ? batchBadge : 0} />
                 )
               )}
 
@@ -250,7 +280,7 @@ export default function DashboardLayout() {
           ) : (
             /* Student navigation */
             STUDENT_NAV.map(n => (
-              <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+              <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={n.to === '/batches' ? batchBadge : 0} />
             ))
           )}
 
@@ -270,6 +300,17 @@ export default function DashboardLayout() {
 
         {/* Sidebar logout */}
         <div className="p-3 border-t border-[var(--color-border)]">
+          {isInstructor && (
+            <Link
+              to="/tickets"
+              onClick={() => setMobileOpen(false)}
+              className={`flex items-center gap-2 w-full px-3 py-2 mb-2 rounded-lg text-sm text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)] transition-colors ${collapsed ? 'justify-center' : ''}`}
+              title="Ticketing"
+            >
+              <LifeBuoy size={16} />
+              {!collapsed && 'Ticketing'}
+            </Link>
+          )}
           <button
             onClick={() => logout.mutate()}
             className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors ${collapsed ? 'justify-center' : ''}`}

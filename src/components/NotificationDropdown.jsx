@@ -105,9 +105,11 @@ export default function NotificationDropdown() {
   const handleItemClick = (item) => {
     if (item._source === 'notif') {
       notifReadMut.mutate(item._id);
-      if (item.link) { setOpen(false); navigate(item.link); }
+      setOpen(false);
+      navigate(`/notifications/${item._id}`);
     } else {
       annReadMut.mutate(item._id);
+      if (item.link) { setOpen(false); navigate(item.link); }
     }
   };
 
@@ -201,7 +203,10 @@ export default function NotificationDropdown() {
                         </p>
                         <div className="flex items-center justify-between mt-1">
                           <p className="text-[10px] text-[var(--color-text-muted)]">{fmtDate(item.createdAt)}</p>
-                          {item.link && (
+                          {!isAnn && (
+                            <span className="text-[10px] text-[var(--color-primary)] font-medium">View details →</span>
+                          )}
+                          {isAnn && item.link && (
                             <span className="text-[10px] text-[var(--color-primary)] font-medium">Tap to view →</span>
                           )}
                         </div>

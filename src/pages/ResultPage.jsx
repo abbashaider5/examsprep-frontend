@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { ArcElement, Chart as ChartJS, Legend, Tooltip } from 'chart.js';
 import {
   CheckCircle, Clock, Code2, Download, Eye, EyeOff,
-  Lightbulb, MinusCircle, Target, Trophy, XCircle, Zap,
+  Lightbulb, MinusCircle, Shield, Target, Trophy, XCircle, Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Doughnut } from 'react-chartjs-2';
@@ -49,7 +49,7 @@ export default function ResultPage() {
   const {
     percentage, passed, correctCount, incorrectCount, unattemptedCount,
     timeTaken, topicAccuracy, certificate, questions, answers, xpEarned,
-    showResultToUser, showAnswersToUser,
+    showResultToUser, showAnswersToUser, terminatedByProctoring,
   } = result;
 
   // Instructor has hidden the result
@@ -95,6 +95,19 @@ export default function ResultPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+
+      {/* ── Proctoring Termination Banner ──────────────────────────────────── */}
+      {terminatedByProctoring && (
+        <div className="mb-5 rounded-xl border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-900/20 px-5 py-4 flex items-start gap-3">
+          <Shield size={18} className="text-red-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-sm font-bold text-red-700 dark:text-red-400">Exam Terminated — Proctoring Violation</p>
+            <p className="text-xs text-red-600 dark:text-red-400 mt-0.5 leading-relaxed">
+              This exam was automatically submitted after repeated proctoring violations were detected. The result reflects your progress at the time of termination.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* ── Hero Card ─────────────────────────────────────────────────────────── */}
       <div className={`relative overflow-hidden rounded-2xl bg-gradient-to-br ${passGradient} border px-6 py-6 mb-6`}>
