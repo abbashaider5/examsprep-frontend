@@ -319,8 +319,9 @@ export default function ExamPage() {
 
     let trackRef = null;
     let onEndedRef = null;
-    const tickMs = 500;
-    const graceMs = 1500;
+    // Faster cadence so warnings feel immediate.
+    const tickMs = 300;
+    const graceMs = 900;
     const graceUntil = Date.now() + graceMs;
 
     let noFaceMs = 0;
@@ -347,7 +348,7 @@ export default function ExamPage() {
 
     // ── 1. Stream track monitoring: detect camera closed / revoked ──
     const attachTrackListener = () => {
-      const stream = webcamRef.current?.stream;
+      const stream = webcamRef.current?.stream || webcamRef.current?.video?.srcObject;
       const track = stream?.getVideoTracks()?.[0];
       if (!track) return false;
       onEndedRef = () => raiseViolation('Camera was closed!', { type: 'camera_closed', source: 'camera', cooldownMs: 800 });
@@ -405,11 +406,11 @@ export default function ExamPage() {
       if (!stream || !track || !streamActive || trackEnded || trackMuted || trackDisabled) {
         noVideoMs += tickMs;
         // Soft prompt quickly so user knows camera is not active
-        if (noVideoMs >= 1000) {
+        if (noVideoMs >= 600) {
           raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
         }
         // Count as violation if it stays off
-        if (noVideoMs >= 2500) {
+        if (noVideoMs >= 1500) {
           raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
           noVideoMs = 0;
         }
@@ -419,10 +420,10 @@ export default function ExamPage() {
       // Ensure we have actual frames (some browsers keep a stream but stop delivering frames)
       if (!video || video.readyState < 2 || video.videoWidth === 0) {
         noVideoMs += tickMs;
-        if (noVideoMs >= 1000) {
+        if (noVideoMs >= 600) {
           raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
         }
-        if (noVideoMs >= 2500) {
+        if (noVideoMs >= 1500) {
           raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
           noVideoMs = 0;
         }
@@ -434,11 +435,11 @@ export default function ExamPage() {
       const brightness = getFrameBrightness(video);
       if (brightness < 5) darkMs += tickMs;
       else darkMs = 0;
-      if (darkMs >= 1500) {
+      if (darkMs >= 900) {
         // warn first, then count if persists much longer
         raiseViolation('Camera appears very dark/covered. Improve lighting or uncover the camera.', { type: 'camera_blocked_warn', source: 'camera', count: false, cooldownMs: 3000 });
       }
-      if (darkMs >= 4500) {
+      if (darkMs >= 2400) {
         raiseViolation('Camera appears to be covered for a long duration.', { type: 'camera_blocked', source: 'camera', cooldownMs: 4500 });
         darkMs = 0;
         return;
@@ -457,21 +458,21 @@ export default function ExamPage() {
             multiFaceMs = 0;
 
             // Soft warning after short continuous miss
-            if (noFaceMs >= 1500) {
+            if (noFaceMs >= 600) {
               raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face-api', count: false, cooldownMs: 2500 });
             }
             // Count only if it persists longer (prevents false positives terminating exams)
-            if (noFaceMs >= 3500) {
+            if (noFaceMs >= 1500) {
               raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face-api', cooldownMs: 4500 });
               noFaceMs = 0;
             }
           } else if (faces.length > 1) {
             noFaceMs = 0;
             multiFaceMs += tickMs;
-            if (multiFaceMs >= 1000) {
+            if (multiFaceMs >= 600) {
               raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face-api', count: false, cooldownMs: 2500 });
             }
-            if (multiFaceMs >= 2000) {
+            if (multiFaceMs >= 1200) {
               raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face-api', cooldownMs: 4500 });
               multiFaceMs = 0;
             }
@@ -492,20 +493,20 @@ export default function ExamPage() {
           if (!faces || faces.length === 0) {
             noFaceMs += tickMs;
             multiFaceMs = 0;
-            if (noFaceMs >= 1500) {
+            if (noFaceMs >= 600) {
               raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
             }
-            if (noFaceMs >= 3500) {
+            if (noFaceMs >= 1500) {
               raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face_detector', cooldownMs: 4500 });
               noFaceMs = 0;
             }
           } else if (faces.length > 1) {
             noFaceMs = 0;
             multiFaceMs += tickMs;
-            if (multiFaceMs >= 1000) {
+            if (multiFaceMs >= 600) {
               raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
             }
-            if (multiFaceMs >= 2000) {
+            if (multiFaceMs >= 1200) {
               raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face_detector', cooldownMs: 4500 });
               multiFaceMs = 0;
             }
@@ -654,7 +655,7 @@ export default function ExamPage() {
             if (noiseStreak === 2) {
               raiseViolation('High background noise detected. Please move to a quieter place.', { type: 'audio_noise_warn', source: 'microphone', count: false, cooldownMs: 3000 });
             }
-            if (noiseStreak >= 5) {
+            if (noiseStreak >= 4) {
               raiseViolation('Excessive background noise detected on microphone.', { type: 'audio_noise', source: 'microphone', cooldownMs: 4500 });
               noiseStreak = 0;
             }
@@ -668,14 +669,14 @@ export default function ExamPage() {
             if (speechLikeStreak === 2) {
               raiseViolation('Possible nearby conversation detected. Please ensure a quiet environment.', { type: 'audio_voice_warn', source: 'microphone', count: false, cooldownMs: 3000 });
             }
-            if (speechLikeStreak >= 5) {
+            if (speechLikeStreak >= 4) {
               raiseViolation('Suspicious human voice activity detected near candidate.', { type: 'audio_voice', source: 'microphone', cooldownMs: 4500 });
               speechLikeStreak = 0;
             }
           } else {
             speechLikeStreak = 0;
           }
-        }, 700);
+        }, 400);
       } catch {
         pushProctoringEvent({
           type: 'audio_monitor_unavailable',
