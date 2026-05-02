@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import ReCAPTCHA from 'react-google-recaptcha';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import { authApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
@@ -131,6 +132,8 @@ export default function SignupPage() {
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   const strength = getStrength(form.password);
   const sc = STRENGTH_CONFIG[form.password.length === 0 ? 0 : strength] || STRENGTH_CONFIG[0];
@@ -144,8 +147,16 @@ export default function SignupPage() {
       setErrors(fe);
       return;
     }
+    if (!recaptchaSiteKey) {
+      toast.error('reCAPTCHA is not configured. Add VITE_RECAPTCHA_SITE_KEY.');
+      return;
+    }
+    if (!recaptchaToken) {
+      toast.error('Please complete the reCAPTCHA.');
+      return;
+    }
     setErrors({});
-    signup.mutate(form, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
+    signup.mutate({ ...form, recaptchaToken }, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
   };
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -241,6 +252,14 @@ export default function SignupPage() {
             : 'Create Account'}
         </button>
       </form>
+
+      <div className="mt-4 flex justify-center">
+        <ReCAPTCHA
+          sitekey={recaptchaSiteKey || 'missing-recaptcha-site-key'}
+          onChange={(token) => setRecaptchaToken(token)}
+          onExpired={() => setRecaptchaToken(null)}
+        />
+      </div>
 
       <div className="my-5 flex items-center gap-3">
         <div className="h-px flex-1 bg-[var(--color-border)]" />

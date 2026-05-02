@@ -101,7 +101,7 @@ export default function App() {
           <Route path="groups" element={<GroupsPage />} />
           <Route path="batches" element={<GroupsPage />} />
           <Route path="notifications/:id" element={<NotificationDetailPage />} />
-          <Route path="tickets" element={<Guard instructorOnly><TicketsPage /></Guard>} />
+          <Route path="tickets" element={<TicketsPage />} />
         </Route>
 
         {/* Group invite accept (needs auth but no layout) */}

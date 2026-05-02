@@ -5,7 +5,17 @@ import toast from 'react-hot-toast';
 import { ticketApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
-const TICKET_TYPES = [
+const USER_TICKET_TYPES = [
+  'Login / Account Issue',
+  'AI Proctoring Issue',
+  'Result Issue',
+  'Payment / Subscription Issue',
+  'Platform Bug',
+  'Feature Request',
+  'Other',
+];
+
+const INSTRUCTOR_TICKET_TYPES = [
   'Test Creation Issue',
   'Student Management Issue',
   'AI Proctoring Issue',
@@ -68,6 +78,8 @@ export default function TicketsPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
   const isAdmin = user?.role === 'admin';
+  const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
+  const ticketTypes = isAdmin ? INSTRUCTOR_TICKET_TYPES : (isInstructor ? INSTRUCTOR_TICKET_TYPES : USER_TICKET_TYPES);
 
   const [form, setForm] = useState({ title: '', description: '', type: '' });
   const [attachment, setAttachment] = useState(null);
@@ -75,6 +87,7 @@ export default function TicketsPage() {
   const [page, setPage] = useState(1);
   const [filters, setFilters] = useState({ status: '', type: '', search: '', fromDate: '', toDate: '' });
   const [respondingId, setRespondingId] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
   const [draftStatus, setDraftStatus] = useState('open');
   const [draftResponse, setDraftResponse] = useState('');
 
@@ -150,7 +163,7 @@ export default function TicketsPage() {
                   <label className="label">Ticket type *</label>
                   <select className="input" value={form.type} onChange={(e) => setForm(p => ({ ...p, type: e.target.value }))}>
                     <option value="">Select ticket type</option>
-                    {TICKET_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                    {ticketTypes.map(type => <option key={type} value={type}>{type}</option>)}
                   </select>
                 </div>
                 <div>
@@ -202,7 +215,7 @@ export default function TicketsPage() {
             </select>
             <select className="input text-sm" value={filters.type} onChange={(e) => setFilters(p => ({ ...p, type: e.target.value }))}>
               <option value="">All ticket types</option>
-              {TICKET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
+              {INSTRUCTOR_TICKET_TYPES.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
             <input type="date" className="input text-sm" value={filters.fromDate} onChange={(e) => setFilters(p => ({ ...p, fromDate: e.target.value }))} />
             <input type="date" className="input text-sm" value={filters.toDate} onChange={(e) => setFilters(p => ({ ...p, toDate: e.target.value }))} />
@@ -243,8 +256,19 @@ export default function TicketsPage() {
                         <div className="text-xs text-[var(--color-text-muted)]">{ticket.user?.email || '-'}</div>
                       </td>
                       <td className="px-3 py-2 min-w-[240px]">
-                        <div className="font-medium text-[var(--color-text)]">{ticket.title}</div>
-                        <div className="text-xs text-[var(--color-text-muted)] line-clamp-2">{ticket.description}</div>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-medium text-[var(--color-text)] truncate">{ticket.title}</div>
+                            <div className="text-xs text-[var(--color-text-muted)] line-clamp-2">{ticket.description}</div>
+                          </div>
+                          <button
+                            type="button"
+                            className="btn-secondary text-[11px] py-1 px-2 shrink-0"
+                            onClick={() => setExpandedId(expandedId === ticket._id ? null : ticket._id)}
+                          >
+                            {expandedId === ticket._id ? 'Hide' : 'Expand'}
+                          </button>
+                        </div>
                       </td>
                       <td className="px-3 py-2">{ticket.type}</td>
                       <td className="px-3 py-2">
@@ -278,6 +302,22 @@ export default function TicketsPage() {
                         </button>
                       </td>
                     </tr>
+                    {expandedId === ticket._id && (
+                      <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/30">
+                        <td className="px-3 py-3" colSpan={7}>
+                          <div className="grid grid-cols-1 gap-2">
+                            <div>
+                              <div className="text-xs font-semibold text-[var(--color-text)]">Title</div>
+                              <div className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{ticket.title}</div>
+                            </div>
+                            <div>
+                              <div className="text-xs font-semibold text-[var(--color-text)]">Description</div>
+                              <div className="text-sm text-[var(--color-text)] whitespace-pre-wrap">{ticket.description}</div>
+                            </div>
+                          </div>
+                        </td>
+                      </tr>
+                    )}
                     {respondingId === ticket._id && (
                       <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
                         <td className="px-3 py-3" colSpan={7}>

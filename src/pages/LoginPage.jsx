@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
+import ReCAPTCHA from 'react-google-recaptcha';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { authApi } from '../services/api.js';
@@ -127,6 +128,8 @@ export default function LoginPage() {
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
+  const [recaptchaToken, setRecaptchaToken] = useState(null);
+  const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -137,8 +140,16 @@ export default function LoginPage() {
       setErrors(fe);
       return;
     }
+    if (!recaptchaSiteKey) {
+      toast.error('reCAPTCHA is not configured. Add VITE_RECAPTCHA_SITE_KEY.');
+      return;
+    }
+    if (!recaptchaToken) {
+      toast.error('Please complete the reCAPTCHA.');
+      return;
+    }
     setErrors({});
-    login.mutate(form, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
+    login.mutate({ ...form, recaptchaToken }, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
   };
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -212,6 +223,14 @@ export default function LoginPage() {
             : 'Sign In'}
         </button>
       </form>
+
+      <div className="mt-4 flex justify-center">
+        <ReCAPTCHA
+          sitekey={recaptchaSiteKey || 'missing-recaptcha-site-key'}
+          onChange={(token) => setRecaptchaToken(token)}
+          onExpired={() => setRecaptchaToken(null)}
+        />
+      </div>
 
       <div className="my-5 flex items-center gap-3">
         <div className="h-px flex-1 bg-[var(--color-border)]" />

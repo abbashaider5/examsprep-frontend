@@ -300,17 +300,15 @@ export default function DashboardLayout() {
 
         {/* Sidebar logout */}
         <div className="p-3 border-t border-[var(--color-border)]">
-          {isInstructor && (
-            <Link
-              to="/tickets"
-              onClick={() => setMobileOpen(false)}
-              className={`flex items-center gap-2 w-full px-3 py-2 mb-2 rounded-lg text-sm text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)] transition-colors ${collapsed ? 'justify-center' : ''}`}
-              title="Ticketing"
-            >
-              <LifeBuoy size={16} />
-              {!collapsed && 'Ticketing'}
-            </Link>
-          )}
+          <Link
+            to="/tickets"
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center gap-2 w-full px-3 py-2 mb-2 rounded-lg text-sm text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)] transition-colors ${collapsed ? 'justify-center' : ''}`}
+            title="Ticketing"
+          >
+            <LifeBuoy size={16} />
+            {!collapsed && 'Ticketing'}
+          </Link>
           <button
             onClick={() => logout.mutate()}
             className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors ${collapsed ? 'justify-center' : ''}`}
