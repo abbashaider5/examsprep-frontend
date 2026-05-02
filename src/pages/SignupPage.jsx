@@ -147,6 +147,7 @@ export default function SignupPage() {
       setErrors(fe);
       return;
     }
+    setErrors({});
     if (!recaptchaSiteKey) {
       toast.error('reCAPTCHA is not configured. Add VITE_RECAPTCHA_SITE_KEY.');
       return;
@@ -155,7 +156,6 @@ export default function SignupPage() {
       toast.error('Please complete the reCAPTCHA.');
       return;
     }
-    setErrors({});
     signup.mutate({ ...form, recaptchaToken }, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
   };
 

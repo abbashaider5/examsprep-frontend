@@ -140,6 +140,7 @@ export default function LoginPage() {
       setErrors(fe);
       return;
     }
+    setErrors({});
     if (!recaptchaSiteKey) {
       toast.error('reCAPTCHA is not configured. Add VITE_RECAPTCHA_SITE_KEY.');
       return;
@@ -148,7 +149,6 @@ export default function LoginPage() {
       toast.error('Please complete the reCAPTCHA.');
       return;
     }
-    setErrors({});
     login.mutate({ ...form, recaptchaToken }, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
   };
 
