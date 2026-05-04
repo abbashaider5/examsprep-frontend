@@ -283,6 +283,7 @@ export default function SignupPage() {
         <div className="h-px flex-1 bg-[var(--color-border)]" />
       </div>
 
+      {/* google auth button */}
       <GoogleAuthButton
         disabled={google.isPending}
         onCredential={(payload) => {
