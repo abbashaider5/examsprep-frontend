@@ -72,8 +72,8 @@ export default function ContactPage() {
             </div>
             <div>
               <p className="text-xs text-[var(--color-text-muted)]">Email us</p>
-              <a href="mailto:contact@abbaslogic.com" className="text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors">
-                contact@abbaslogic.com
+              <a href="mailto:support@likhitai.com" className="text-sm font-semibold text-[var(--color-text)] hover:text-[var(--color-primary)] transition-colors">
+                support@likhitai.com
               </a>
             </div>
           </div>
