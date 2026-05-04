@@ -107,9 +107,9 @@ export default function AuthLayout() {
           <div className="absolute -bottom-32 -right-32 w-[400px] h-[400px] bg-indigo-100/40 dark:bg-indigo-900/10 rounded-full blur-3xl" />
         </div>
 
-        <div className="relative flex flex-col flex-1 max-w-md mx-auto w-full px-8 py-10">
+        <div className="relative flex flex-col flex-1 max-w-md mx-auto w-full px-6 py-7">
           {/* Top bar */}
-          <div className="flex items-center justify-between mb-12">
+          <div className="flex items-center justify-between mb-6">
             <Link to="/" className="flex items-center gap-2 font-extrabold text-lg text-[var(--color-primary)]">
               <img src={likhitaiLogo} alt="LikhitAI" className="h-8 w-auto" />
             </Link>
@@ -130,7 +130,7 @@ export default function AuthLayout() {
           </div>
 
           {/* Bottom trust line */}
-          <p className="text-center text-xs text-[var(--color-text-muted)] mt-10">
+          <p className="text-center text-xs text-[var(--color-text-muted)] mt-6">
             Free forever &middot; No credit card needed &middot; 10,000+ learners
           </p>
         </div>

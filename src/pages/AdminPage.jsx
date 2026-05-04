@@ -423,6 +423,7 @@ function SettingsTab() {
     try {
       await settingsApi.update(local);
       qc.invalidateQueries({ queryKey: ['adminSettings'] });
+      qc.invalidateQueries({ queryKey: ['publicSettings'] });
       toast.success('Settings saved');
     } catch (e) {
       toast.error(e.response?.data?.message || 'Save failed');
@@ -451,6 +452,7 @@ function SettingsTab() {
         <p className="text-xs text-[var(--color-text-muted)] mb-4">Authentication and account protection</p>
         <ToggleRow label="Two-Factor Auth (OTP)" description="Email OTP available to users" checked={!!local.twoFactorAuthEnabled} onChange={set('twoFactorAuthEnabled')} />
         <ToggleRow label="2FA Required for Login" description="All users must complete OTP to sign in" checked={!!local.twoFactorRequired} onChange={set('twoFactorRequired')} disabled={!local.twoFactorAuthEnabled} />
+        <ToggleRow label="reCAPTCHA on Login / Sign-up" description="Require Google reCAPTCHA for email/password sign-in and registration" checked={local.recaptchaLoginSignupEnabled ?? true} onChange={set('recaptchaLoginSignupEnabled')} />
         <NumberRow label="Max Login Attempts before lockout" value={local.maxLoginAttempts} onChange={set('maxLoginAttempts')} min={1} max={20} />
         <NumberRow label="Lockout Duration (minutes)" value={local.lockoutDurationMinutes} onChange={set('lockoutDurationMinutes')} min={1} max={1440} />
       </div>

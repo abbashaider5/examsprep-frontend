@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query';
 import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -5,7 +6,7 @@ import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import ReCAPTCHA from 'react-google-recaptcha';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
-import { authApi } from '../services/api.js';
+import { authApi, settingsApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
 
 const schema = z.object({
@@ -76,16 +77,16 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 
   return (
     <div className="animate-fade-in">
-      <div className="flex justify-center mb-5">
+      <div className="flex justify-center mb-3">
         <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
           <ShieldCheck size={24} className="text-[var(--color-primary)]" />
         </div>
       </div>
       <h1 className="text-2xl font-bold text-[var(--color-text)] text-center mb-1">Verify your email</h1>
-      <p className="text-[var(--color-text-muted)] text-sm text-center mb-7">
+      <p className="text-[var(--color-text-muted)] text-sm text-center mb-5">
         We sent a 6-digit code to <span className="font-medium text-[var(--color-text)]">{email}</span>
       </p>
-      <form onSubmit={handleSubmit} className="space-y-5">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <div className="flex gap-2 justify-center" onPaste={handlePaste}>
           {otp.map((d, i) => (
             <input
@@ -113,7 +114,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
             : 'Verify & Create Account'}
         </button>
       </form>
-      <div className="mt-5 text-center space-y-1">
+      <div className="mt-4 text-center space-y-1">
         {countdown > 0
           ? <p className="text-xs text-[var(--color-text-muted)]">Resend in <span className="tabular-nums font-semibold">{countdown}s</span></p>
           : <button onClick={handleResend} disabled={resending} className="flex items-center gap-1.5 text-xs text-[var(--color-primary)] font-semibold hover:underline mx-auto disabled:opacity-50">
@@ -134,6 +135,13 @@ export default function SignupPage() {
   const [otpEmail, setOtpEmail] = useState(null);
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
+  const { data: publicSettings } = useQuery({
+    queryKey: ['publicSettings'],
+    queryFn: () => settingsApi.getPublic().then((r) => r.data),
+    staleTime: 60_000,
+  });
+  const recaptchaEnforced = !!publicSettings?.recaptchaEnforced;
+  const mustSolveRecaptcha = recaptchaEnforced && !!recaptchaSiteKey;
 
   const strength = getStrength(form.password);
   const sc = STRENGTH_CONFIG[form.password.length === 0 ? 0 : strength] || STRENGTH_CONFIG[0];
@@ -148,15 +156,20 @@ export default function SignupPage() {
       return;
     }
     setErrors({});
-    if (!recaptchaSiteKey) {
-      toast.error('reCAPTCHA is not configured. Add VITE_RECAPTCHA_SITE_KEY.');
+    if (recaptchaEnforced && !recaptchaSiteKey) {
+      toast.error(
+        'Server enforces reCAPTCHA but the browser has no site key. Add VITE_RECAPTCHA_SITE_KEY (client .env), turn reCAPTCHA off in Admin, or remove RECAPTCHA_SECRET_KEY from the server until keys are set.',
+      );
       return;
     }
-    if (!recaptchaToken) {
+    if (mustSolveRecaptcha && !recaptchaToken) {
       toast.error('Please complete the reCAPTCHA.');
       return;
     }
-    signup.mutate({ ...form, recaptchaToken }, { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } });
+    signup.mutate(
+      { ...form, recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined },
+      { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } },
+    );
   };
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
@@ -165,7 +178,7 @@ export default function SignupPage() {
     return (
       <div className="w-full">
         <OTPInput email={otpEmail} purpose="signup" onVerify={verifyOtp.mutate} verifyMut={verifyOtp} />
-        <button onClick={() => setOtpEmail(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-5">
+        <button onClick={() => setOtpEmail(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-4">
           ← Back
         </button>
       </div>
@@ -175,11 +188,11 @@ export default function SignupPage() {
   return (
     <div className="animate-fade-in w-full">
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-1">Create your account</h1>
-      <p className="text-[var(--color-text-muted)] text-sm mb-7">Start AI-powered exam prep — free forever</p>
+      <p className="text-[var(--color-text-muted)] text-sm mb-4">Start AI-powered exam prep — free forever</p>
 
-      <form onSubmit={handleSubmit} className="space-y-4" noValidate>
+      <form onSubmit={handleSubmit} className="space-y-3" noValidate>
         <div>
-          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Full Name</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Full Name</label>
           <div className="relative">
             <User size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
@@ -194,7 +207,7 @@ export default function SignupPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Email</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Email</label>
           <div className="relative">
             <Mail size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
@@ -210,7 +223,7 @@ export default function SignupPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-[var(--color-text)] mb-1.5">Password</label>
+          <label className="block text-sm font-medium text-[var(--color-text)] mb-1">Password</label>
           <div className="relative">
             <Lock size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
             <input
@@ -241,27 +254,30 @@ export default function SignupPage() {
         </div>
 
         {signup.error && (
-          <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2.5">
+          <p className="text-red-500 text-sm text-center bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg px-3 py-2">
             {signup.error.response?.data?.message || 'Signup failed. Try again.'}
           </p>
         )}
 
-        <button type="submit" disabled={signup.isPending} className="btn-primary w-full py-3 rounded-xl font-semibold mt-1">
+        {mustSolveRecaptcha && (
+          <div className="flex justify-center -my-0.5">
+            <ReCAPTCHA
+              sitekey={recaptchaSiteKey}
+              size="compact"
+              onChange={(token) => setRecaptchaToken(token)}
+              onExpired={() => setRecaptchaToken(null)}
+            />
+          </div>
+        )}
+
+        <button type="submit" disabled={signup.isPending} className="btn-primary w-full py-2.5 rounded-xl font-semibold">
           {signup.isPending
             ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Creating…</span>
             : 'Create Account'}
         </button>
       </form>
 
-      <div className="mt-4 flex justify-center">
-        <ReCAPTCHA
-          sitekey={recaptchaSiteKey || 'missing-recaptcha-site-key'}
-          onChange={(token) => setRecaptchaToken(token)}
-          onExpired={() => setRecaptchaToken(null)}
-        />
-      </div>
-
-      <div className="my-5 flex items-center gap-3">
+      <div className="my-3 flex items-center gap-3">
         <div className="h-px flex-1 bg-[var(--color-border)]" />
         <span className="text-xs uppercase tracking-wide text-[var(--color-text-muted)]">or</span>
         <div className="h-px flex-1 bg-[var(--color-border)]" />
@@ -279,13 +295,13 @@ export default function SignupPage() {
         }}
       />
 
-      <p className="text-xs text-center text-[var(--color-text-muted)] mt-4">
+      <p className="text-xs text-center text-[var(--color-text-muted)] mt-3">
         By signing up, you agree to our{' '}
         <Link to="/terms" className="underline hover:text-[var(--color-primary)]">Terms</Link>
         {' '}and{' '}
         <Link to="/privacy" className="underline hover:text-[var(--color-primary)]">Privacy Policy</Link>.
       </p>
-      <p className="text-sm text-center text-[var(--color-text-muted)] mt-3">
+      <p className="text-sm text-center text-[var(--color-text-muted)] mt-2.5">
         Already have an account?{' '}
         <Link to="/login" className="text-[var(--color-primary)] font-semibold hover:underline">Sign in</Link>
       </p>
