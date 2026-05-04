@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, User } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
+import ReCAPTCHA from 'react-google-recaptcha';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import { z } from 'zod';
-import ReCAPTCHA from 'react-google-recaptcha';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
-import { authApi, settingsApi } from '../services/api.js';
 import { useAuth } from '../hooks/useAuth.js';
+import { authApi, settingsApi } from '../services/api.js';
 
 const schema = z.object({
   name: z.string().min(2, 'At least 2 characters').max(60),
@@ -284,7 +284,6 @@ export default function SignupPage() {
       </div>
 
       <GoogleAuthButton
-        label="Sign up with Google"
         disabled={google.isPending}
         onCredential={(payload) => {
           google.mutate({ ...payload, role: 'user' }, {
