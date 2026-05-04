@@ -383,7 +383,7 @@ export default function CreateExamPage() {
 
   const SOURCES = [
     { value: 'ai',          icon: Globe,       label: 'Web',                   desc: 'Generate from AI knowledge' },
-    { value: 'examprep',    icon: BookOpen,    label: 'ExamPrep AI Resources', desc: 'Admin-curated materials' },
+    { value: 'examprep',    icon: BookOpen,    label: 'LikhitAI Resources', desc: 'Admin-curated materials' },
     { value: 'myresources', icon: FolderOpen,  label: 'My Resources',          desc: 'Your uploaded files' },
   ];
 
@@ -847,7 +847,7 @@ export default function CreateExamPage() {
               <Sparkles size={15} className="mt-0.5 shrink-0 text-[var(--color-primary)]" />
               <div>
                 <p className="text-xs font-semibold text-[var(--color-text)] mb-1">Resource-based Generation</p>
-                <p className="text-xs text-[var(--color-text-muted)]">Select ExamPrep AI or My Resources as source to generate questions strictly from your uploaded material.</p>
+                <p className="text-xs text-[var(--color-text-muted)]">Select LikhitAI Resources or My Resources as source to generate questions strictly from your uploaded material.</p>
               </div>
             </div>
           </div>
@@ -889,7 +889,7 @@ export default function CreateExamPage() {
           selected={selectedResourceId}
           onSelect={setSelectedResourceId}
           onClose={() => setShowResourceModal(false)}
-          title={source === 'examprep' ? 'ExamPrep AI Resources' : 'My Resources'}
+          title={source === 'examprep' ? 'LikhitAI Resources' : 'My Resources'}
         />
       )}
     </div>

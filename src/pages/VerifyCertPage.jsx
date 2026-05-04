@@ -2,6 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Award, CheckCircle, XCircle } from 'lucide-react';
 import { useParams } from 'react-router-dom';
 import { certificateApi } from '../services/api.js';
+import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 export default function VerifyCertPage() {
   const { certId } = useParams();
@@ -32,8 +33,8 @@ export default function VerifyCertPage() {
       <div className="max-w-lg w-full">
         <div className="card border-2 border-[var(--color-primary)] text-center">
           <div className="bg-gradient-to-br from-blue-600 to-indigo-700 -mx-6 -mt-6 px-6 pt-8 pb-6 rounded-t-xl mb-6">
-            <Award size={48} className="mx-auto mb-2 text-yellow-400" />
-            <h1 className="text-2xl font-extrabold text-white">ExamPrep AI</h1>
+            <img src={likhitaiLogo} alt="LikhitAI" className="h-10 w-auto mx-auto mb-3" />
+            <h1 className="text-2xl font-extrabold text-white">LikhitAI</h1>
             <p className="text-blue-200 text-sm">Certificate of Achievement</p>
           </div>
 
@@ -54,7 +55,7 @@ export default function VerifyCertPage() {
 
           <div className="flex items-center justify-center gap-2 py-3 bg-green-50 dark:bg-green-900/20 rounded-xl">
             <CheckCircle size={18} className="text-green-500" />
-            <span className="text-green-700 dark:text-green-400 font-semibold text-sm">Verified by ExamPrep AI</span>
+            <span className="text-green-700 dark:text-green-400 font-semibold text-sm">Verified by LikhitAI</span>
           </div>
         </div>
       </div>

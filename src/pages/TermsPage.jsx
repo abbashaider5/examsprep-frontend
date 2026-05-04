@@ -19,7 +19,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold mb-2">1. Acceptance of Terms</h2>
             <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              By accessing or using ExamPrep AI ("the platform"), you agree to be bound by these Terms &amp; Conditions. If you do not agree, please do not use the platform.
+              By accessing or using LikhitAI ("the platform"), you agree to be bound by these Terms &amp; Conditions. If you do not agree, please do not use the platform.
             </p>
           </section>
 
@@ -44,14 +44,14 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold mb-2">4. Subscription Plans &amp; Payments</h2>
             <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              ExamPrep AI offers Free, Pro, and Enterprise plans. Paid plans are billed monthly via Razorpay. Prices are shown in Indian Rupees (INR) and are inclusive of applicable taxes. Subscriptions auto-renew unless cancelled. Refunds are handled at our discretion — contact us within 7 days of a charge if you believe there is an error.
+              LikhitAI offers Free, Pro, and Enterprise plans. Paid plans are billed monthly via Razorpay. Prices are shown in Indian Rupees (INR) and are inclusive of applicable taxes. Subscriptions auto-renew unless cancelled. Refunds are handled at our discretion — contact us within 7 days of a charge if you believe there is an error.
             </p>
           </section>
 
           <section>
             <h2 className="text-lg font-bold mb-2">5. Certificates</h2>
             <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              Certificates issued by ExamPrep AI are for personal achievement tracking only. They are not accredited qualifications unless explicitly stated. We do not guarantee that third parties (employers, universities) will accept them as formal credentials.
+              Certificates issued by LikhitAI are for personal achievement tracking only. They are not accredited qualifications unless explicitly stated. We do not guarantee that third parties (employers, universities) will accept them as formal credentials.
             </p>
           </section>
 
@@ -79,7 +79,7 @@ export default function TermsPage() {
           <section>
             <h2 className="text-lg font-bold mb-2">9. Limitation of Liability</h2>
             <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              ExamPrep AI is provided "as is" without any warranties. To the fullest extent permitted by law, we shall not be liable for any indirect, incidental, or consequential damages arising from your use of the platform.
+              LikhitAI is provided "as is" without any warranties. To the fullest extent permitted by law, we shall not be liable for any indirect, incidental, or consequential damages arising from your use of the platform.
             </p>
           </section>
 

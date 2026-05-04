@@ -495,7 +495,7 @@ function SettingsTab() {
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
           <div>
             <label className="label text-xs">Organization Name</label>
-            <input className="input text-sm" value={local.certOrganizationName || ''} onChange={e => setLocal(s => ({ ...s, certOrganizationName: e.target.value }))} placeholder="ExamPrep AI" />
+            <input className="input text-sm" value={local.certOrganizationName || ''} onChange={e => setLocal(s => ({ ...s, certOrganizationName: e.target.value }))} placeholder="LikhitAI" />
           </div>
           <div>
             <label className="label text-xs">Footer Text (optional)</label>

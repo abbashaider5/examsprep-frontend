@@ -745,7 +745,7 @@ export default function HomePage() {
             <span className="text-[var(--color-primary)]">You deserve better tools.</span>
           </h2>
           <p className="text-[var(--color-text-muted)] text-lg mb-8 leading-relaxed">
-            Join instructors and organizations already using ExamPrep AI to create smarter tests, track real performance, and improve student outcomes.
+            Join instructors and organizations already using LikhitAI to create smarter tests, track real performance, and improve student outcomes.
           </p>
           <div className="flex flex-col sm:flex-row gap-3 justify-center">
             <Link

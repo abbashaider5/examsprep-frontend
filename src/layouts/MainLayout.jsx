@@ -1,8 +1,9 @@
-import { BookOpen, LayoutDashboard, LogOut, Menu, Moon, Sun, User, X, Zap } from 'lucide-react';
+import { LayoutDashboard, LogOut, Menu, Moon, Sun, User, X, Zap } from 'lucide-react';
 import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 export default function MainLayout() {
   const { isAuthenticated, user } = useAuthStore();
@@ -25,10 +26,7 @@ export default function MainLayout() {
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 font-bold text-[var(--color-primary)]">
-              <div className="w-8 h-8 bg-[var(--color-primary)] rounded-lg flex items-center justify-center">
-                <BookOpen size={16} className="text-white" />
-              </div>
-              <span className="text-base font-extrabold tracking-tight">ExamPrep AI</span>
+              <img src={likhitaiLogo} alt="LikhitAI" className="h-8 w-auto" />
             </Link>
 
             {/* Desktop nav links */}
@@ -119,10 +117,7 @@ export default function MainLayout() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold mb-3">
-                <div className="w-7 h-7 bg-[var(--color-primary)] rounded-lg flex items-center justify-center">
-                  <BookOpen size={14} className="text-white" />
-                </div>
-                ExamPrep AI
+                <img src={likhitaiLogo} alt="LikhitAI" className="h-7 w-auto" />
               </div>
               <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-3">
                 AI-powered exam preparation platform. Generate, take, and ace your exams.
@@ -159,7 +154,7 @@ export default function MainLayout() {
             </div>
           </div>
           <div className="border-t border-[var(--color-border)] pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
-            <p className="text-xs text-[var(--color-text-muted)]">© {new Date().getFullYear()} ExamPrep AI. All rights reserved.</p>
+            <p className="text-xs text-[var(--color-text-muted)]">© {new Date().getFullYear()} LikhitAI. All rights reserved.</p>
             <div className="flex items-center gap-4">
               <Link to="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Privacy Policy</Link>
               <Link to="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Terms & Conditions</Link>

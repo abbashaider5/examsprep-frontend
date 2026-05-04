@@ -1,7 +1,8 @@
-import { Award, BookOpen, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
+import { Award, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 const SLIDES = [
   {
@@ -110,10 +111,7 @@ export default function AuthLayout() {
           {/* Top bar */}
           <div className="flex items-center justify-between mb-12">
             <Link to="/" className="flex items-center gap-2 font-extrabold text-lg text-[var(--color-primary)]">
-              <div className="w-8 h-8 bg-[var(--color-primary)] rounded-lg flex items-center justify-center shadow-sm">
-                <BookOpen size={16} className="text-white" />
-              </div>
-              ExamPrep AI
+              <img src={likhitaiLogo} alt="LikhitAI" className="h-8 w-auto" />
             </Link>
             <button
               onClick={toggle}

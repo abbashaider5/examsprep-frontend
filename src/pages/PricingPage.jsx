@@ -125,7 +125,7 @@ export default function PricingPage() {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
-        name: 'ExamPrep AI',
+        name: 'LikhitAI',
         description: `${plan.name} Plan – 1 Month`,
         order_id: data.orderId,
         handler: async (response) => {

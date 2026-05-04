@@ -1,17 +1,17 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-    Award,
-    BarChart2,
-    BookmarkCheck, BookOpen, Brain,
-    ChevronDown,
-    GraduationCap, LayoutDashboard, LogOut, Menu,
-    LifeBuoy,
-    MessageSquare,
-    Moon,
-    Plus, RefreshCw,
-    Settings,
-    Shield, Sun,
-    Trophy, User, Users, X, Zap
+  Award,
+  BarChart2,
+  BookmarkCheck, BookOpen, Brain,
+  ChevronDown,
+  GraduationCap, LayoutDashboard, LogOut, Menu,
+  LifeBuoy,
+  MessageSquare,
+  Moon,
+  Plus, RefreshCw,
+  Settings,
+  Shield, Sun,
+  Trophy, User, Users, X, Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
@@ -21,6 +21,7 @@ import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { notificationApi } from '../services/api.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 // Instructor nav — items may have `children` for submenus
 const INSTRUCTOR_SIDEBAR_NAV = [
@@ -235,10 +236,7 @@ export default function DashboardLayout() {
       `}>
         {/* Logo */}
         <div className={`flex items-center gap-2.5 p-4 border-b border-[var(--color-border)] min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center shrink-0 shadow-sm">
-            <BookOpen size={16} className="text-white" />
-          </div>
-          {!collapsed && <span className="font-extrabold bg-gradient-to-r from-teal-600 to-blue-600 bg-clip-text text-transparent text-base">ExamPrep AI</span>}
+          <img src={likhitaiLogo} alt="LikhitAI" className={collapsed ? 'h-8 w-8 object-contain' : 'h-8 w-auto'} />
         </div>
 
         {/* Nav */}

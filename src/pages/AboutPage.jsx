@@ -13,14 +13,14 @@ export default function AboutPage() {
         <div className="relative max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
           <div className="text-center mb-16">
             <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
-              <BookOpen size={13} /> About ExamPrep AI
+              <BookOpen size={13} /> About LikhitAI
             </div>
             <h1 className="text-4xl sm:text-5xl font-extrabold text-[var(--color-text)] mb-5 tracking-tight leading-tight">
               Built for instructors,<br />
               <span className="text-[var(--color-primary)]">designed for outcomes</span>
             </h1>
             <p className="text-[var(--color-text-muted)] text-lg max-w-2xl mx-auto leading-relaxed">
-              ExamPrep AI is a modern assessment and analytics platform built for instructors, trainers, and organizations. We simplify test creation using AI, help you scale evaluation, and give you deep insights into student performance.
+              LikhitAI is a modern assessment and analytics platform built for instructors, trainers, and organizations. We simplify test creation using AI, help you scale evaluation, and give you deep insights into student performance.
             </p>
           </div>
 
@@ -29,7 +29,7 @@ export default function AboutPage() {
             {[
               { icon: Zap, title: 'Our Mission', desc: 'Empower instructors and organizations with AI-powered tools to create better assessments and improve student outcomes at scale.', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600' },
               { icon: Target, title: 'Our Vision', desc: 'A world where every instructor has real data about every student — and the tools to act on it before it\'s too late.', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' },
-              { icon: Brain, title: 'Why We Built It', desc: 'Assessment tools are expensive, fragmented, and hard to use. We built ExamPrep AI to be the single platform instructors actually need.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
+              { icon: Brain, title: 'Why We Built It', desc: 'Assessment tools are expensive, fragmented, and hard to use. We built LikhitAI to be the single platform instructors actually need.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
               { icon: Award, title: 'What We Offer', desc: 'AI exam generation, proctoring, batch management, performance analytics, AI recommendations, and verified certificates — in one place.', color: 'bg-green-100 dark:bg-green-900/30 text-green-600' },
             ].map((item) => (
               <div key={item.title} className="card hover:shadow-md transition-shadow">
@@ -45,7 +45,7 @@ export default function AboutPage() {
           {/* ── What the platform enables ── */}
           <div className="max-w-3xl mx-auto mb-16">
             <div className="text-center mb-10">
-              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-3">What ExamPrep AI enables for you</h2>
+              <h2 className="text-2xl font-bold text-[var(--color-text)] mb-3">What LikhitAI enables for you</h2>
               <p className="text-[var(--color-text-muted)] text-sm">We focus on the outcomes that matter to instructors, trainers, and HR teams.</p>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -115,16 +115,16 @@ export default function AboutPage() {
 
               {/* Story */}
               <div className="px-8 py-8">
-                <h3 className="text-lg font-bold text-[var(--color-text)] mb-4">The Story Behind ExamPrep AI</h3>
+                <h3 className="text-lg font-bold text-[var(--color-text)] mb-4">The Story Behind LikhitAI</h3>
                 <div className="space-y-3 text-sm text-[var(--color-text-muted)] leading-relaxed">
                   <p>
                     Abbas Haider is a software developer with <strong className="text-[var(--color-text)]">4 years of experience</strong> in full-stack web development. He is currently expanding his expertise into <strong className="text-[var(--color-text)]">Cyber Security</strong> at CRAW Security Institute.
                   </p>
                   <p>
-                    He built ExamPrep AI after seeing how fragmented and expensive assessment tools are for instructors and training organizations. His goal was to build a single platform where instructors can create AI-powered tests, manage their students, and actually understand how each one is performing — without paying enterprise pricing for basic functionality.
+                    He built LikhitAI after seeing how fragmented and expensive assessment tools are for instructors and training organizations. His goal was to build a single platform where instructors can create AI-powered tests, manage their students, and actually understand how each one is performing — without paying enterprise pricing for basic functionality.
                   </p>
                   <p>
-                    ExamPrep AI is the result — a professional assessment platform where instructors manage tests, track student performance, ensure exam integrity with AI proctoring, and issue verified certificates. Students join and take tests for free.
+                    LikhitAI is the result — a professional assessment platform where instructors manage tests, track student performance, ensure exam integrity with AI proctoring, and issue verified certificates. Students join and take tests for free.
                   </p>
                 </div>
 

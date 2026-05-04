@@ -128,7 +128,7 @@ function FeedbackForm({ trigger, onClose, limitsData }) {
               <div className="text-4xl mb-3">🎉</div>
               <p className="font-bold text-[var(--color-text)]">Thank you!</p>
               <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
-                Your feedback helps make ExamPrep AI better for everyone.
+                Your feedback helps make LikhitAI better for everyone.
               </p>
             </div>
           ) : (
@@ -197,7 +197,7 @@ function FeedbackBanner({ onAccept, onDismiss }) {
           <MessageSquare size={16} className="text-[var(--color-primary)]" />
         </div>
         <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold text-[var(--color-text)] leading-tight">Enjoying ExamPrep AI?</p>
+          <p className="text-sm font-semibold text-[var(--color-text)] leading-tight">Enjoying LikhitAI?</p>
           <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Rate us — it only takes 5 seconds.</p>
         </div>
         <div className="flex items-center gap-1.5 shrink-0">
