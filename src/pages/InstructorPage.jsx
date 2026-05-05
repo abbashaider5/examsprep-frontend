@@ -2,7 +2,10 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award, BarChart2, BookmarkCheck,
   Download, Edit3,
-  Eye, FileText, LayoutDashboard, Layers, LifeBuoy, Mail, RefreshCw,
+  Eye, FileText,
+  Layers,
+  LayoutDashboard,
+  LifeBuoy, Mail, RefreshCw,
   Settings, Shield,
   Timer, Trash2, Upload, Users, X, Zap
 } from 'lucide-react';
@@ -294,7 +297,7 @@ export default function InstructorPage() {
                   </div>
                   <div className="text-center min-w-[3rem]">
                     <div className="text-xs font-bold text-amber-600 dark:text-amber-400">{exam.stats?.notAttempted ?? 0}</div>
-                    <div className="text-[10px] text-[var(--color-text-muted)]">Not attempted</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Remaining</div>
                   </div>
                   <div className="text-center min-w-[3rem]">
                     <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count ?? 0}</div>

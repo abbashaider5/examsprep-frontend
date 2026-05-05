@@ -231,14 +231,16 @@ export default function LoginPage() {
         )}
 
         {mustSolveRecaptcha && (
-          <div className="flex justify-center -my-0.5 overflow-hidden py-1">
-            <div className="origin-top scale-[0.82] sm:scale-90">
+          <div className="flex justify-center py-0.5">
+            <div className="h-[112px] w-[128px] overflow-hidden rounded-lg">
+              <div className="origin-top-left scale-[0.78] sm:scale-[0.82]">
               <ReCAPTCHA
                 sitekey={recaptchaSiteKey}
                 size="compact"
                 onChange={(token) => setRecaptchaToken(token)}
                 onExpired={() => setRecaptchaToken(null)}
               />
+              </div>
             </div>
           </div>
         )}

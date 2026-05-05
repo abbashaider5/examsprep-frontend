@@ -1,3 +1,4 @@
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArcElement,
   BarElement,
@@ -11,7 +12,6 @@ import {
   Tooltip,
 } from 'chart.js';
 import {
-  Activity,
   BarChart2,
   Bell,
   BookOpen,
@@ -19,43 +19,37 @@ import {
   ChevronLeft,
   ChevronRight,
   Clock,
-  CreditCard,
-  DollarSign,
   Edit3,
   FileText,
   Inbox,
-  Info,
   Layers,
-  Mail,
   Megaphone,
   MessageSquare,
   Plus,
   RefreshCw,
   Reply,
   Search,
-  Settings,
   Shield,
   ShieldCheck,
   Star,
-  Trash2,
+  Target,
   ToggleLeft,
   ToggleRight,
+  Trash2,
   Upload,
   Users,
   X,
-  Zap,
-  Target,
+  Zap
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
-import { useNavigate, useSearchParams } from 'react-router-dom';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import { useSearchParams } from 'react-router-dom';
 import HelpTopicsTab from '../components/admin/HelpTopicsTab.jsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import Modal from '../components/Modal.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
-import { adminApi, announcementApi, feedbackApi, groupApi, logsApi, settingsApi, contactApi, resourceApi } from '../services/api.js';
+import { adminApi, announcementApi, contactApi, feedbackApi, groupApi, logsApi, resourceApi, settingsApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -93,19 +87,36 @@ const TAB_HEADER_GRADIENT = {
 
 function AdminTabPageHeader({ tabId, onBack }) {
   const meta = ADMIN_TAB_PAGE[tabId];
-  const grad = TAB_HEADER_GRADIENT[tabId] || 'from-[var(--color-primary)]/[0.08] to-[var(--color-bg)]';
+  const grad =
+    TAB_HEADER_GRADIENT[tabId] ||
+    "from-[var(--color-primary)]/[0.08] to-[var(--color-bg)]";
+
   if (!meta) return null;
+
   return (
-    <div className={`mb-6 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br ${grad} p-5 sm:p-6 shadow-sm`}>
-      <button
-        type="button"
-        onClick={onBack}
-        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
-      >
-        <ChevronLeft size={18} /> Back to overview
-      </button>
-      <h2 className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight">{meta.title}</h2>
-      <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-2xl leading-relaxed">{meta.description}</p>
+    <div
+      className={`mb-6 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br ${grad} p-5 sm:p-6 shadow-sm`}
+    >
+      {/* Top Row: Title + Back Button */}
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h2 className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight">
+            {meta.title}
+          </h2>
+          <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-2xl leading-relaxed">
+            {meta.description}
+          </p>
+        </div>
+
+        {/* Back Button Right Side */}
+        <button
+          type="button"
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors whitespace-nowrap"
+        >
+          <ChevronLeft size={16} /> Back
+        </button>
+      </div>
     </div>
   );
 }
