@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { Flame, Star, Trophy, Users, Zap } from 'lucide-react';
+import { ArrowLeft, Flame, Star, Trophy, Users, Zap } from 'lucide-react';
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { groupApi, leaderboardApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -85,19 +86,14 @@ export default function LeaderboardPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-      {/* Header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
-        <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 left-0 w-36 h-36 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-            <Trophy size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-white leading-tight">Leaderboard</h1>
-            <p className="text-sm text-teal-100 mt-0.5">Top learners ranked by XP earned this month</p>
-          </div>
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">Leaderboard</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">Top learners ranked by XP earned this month</p>
         </div>
+        <Link to="/dashboard" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
+          <ArrowLeft size={14} /> Back
+        </Link>
       </div>
 
       {/* Batch filter */}

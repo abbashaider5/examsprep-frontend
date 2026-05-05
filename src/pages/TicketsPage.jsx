@@ -47,7 +47,7 @@ function InstructorTicketCard({ ticket }) {
         <div>
           <h3 className="font-semibold text-[var(--color-text)]">{ticket.title}</h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-1">
-            {ticket.type} · {new Date(ticket.createdAt).toLocaleString()}
+            {ticket.ticketId || '—'} · {ticket.type} · {new Date(ticket.createdAt).toLocaleString()}
           </p>
         </div>
         <span className={`text-xs px-2 py-1 rounded-full capitalize ${statusPill[ticket.status] || statusPill.open}`}>
@@ -102,8 +102,9 @@ export default function TicketsPage() {
 
   const createMut = useMutation({
     mutationFn: () => ticketApi.create({ ...form, attachment }),
-    onSuccess: () => {
-      toast.success('Ticket created');
+    onSuccess: (res) => {
+      const createdId = res?.data?.ticket?.ticketId;
+      toast.success(createdId ? `Ticket created: ${createdId}` : 'Ticket created');
       setForm({ title: '', description: '', type: '' });
       setAttachment(null);
       qc.invalidateQueries({ queryKey: ['tickets'] });
@@ -238,6 +239,7 @@ export default function TicketsPage() {
               <thead>
                 <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]">
                   <th className="text-left px-3 py-2">Date</th>
+                  <th className="text-left px-3 py-2">Ticket ID</th>
                   <th className="text-left px-3 py-2">User</th>
                   <th className="text-left px-3 py-2">Title</th>
                   <th className="text-left px-3 py-2">Type</th>
@@ -251,6 +253,7 @@ export default function TicketsPage() {
                   <Fragment key={ticket._id}>
                     <tr key={ticket._id} className="border-b border-[var(--color-border)] align-top">
                       <td className="px-3 py-2 whitespace-nowrap">{new Date(ticket.createdAt).toLocaleDateString()}</td>
+                      <td className="px-3 py-2 whitespace-nowrap font-mono text-xs">{ticket.ticketId || '-'}</td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-[var(--color-text)]">{ticket.user?.name || '-'}</div>
                         <div className="text-xs text-[var(--color-text-muted)]">{ticket.user?.email || '-'}</div>
@@ -304,7 +307,7 @@ export default function TicketsPage() {
                     </tr>
                     {expandedId === ticket._id && (
                       <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/30">
-                        <td className="px-3 py-3" colSpan={7}>
+                        <td className="px-3 py-3" colSpan={8}>
                           <div className="grid grid-cols-1 gap-2">
                             <div>
                               <div className="text-xs font-semibold text-[var(--color-text)]">Title</div>
@@ -320,7 +323,7 @@ export default function TicketsPage() {
                     )}
                     {respondingId === ticket._id && (
                       <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
-                        <td className="px-3 py-3" colSpan={7}>
+                        <td className="px-3 py-3" colSpan={8}>
                           <div className="grid grid-cols-1 lg:grid-cols-[200px,1fr,auto] gap-3 items-start">
                             <select className="input text-sm" value={draftStatus} onChange={(e) => setDraftStatus(e.target.value)}>
                               {STATUS_OPTIONS.map(s => <option key={s.value} value={s.value}>{s.label}</option>)}

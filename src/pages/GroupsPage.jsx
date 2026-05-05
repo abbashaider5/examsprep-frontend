@@ -2025,27 +2025,42 @@ export default function GroupsPage() {
       {/* Sidebar */}
       <aside className={`w-72 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-surface)] flex flex-col ${selectedGroupId ? 'hidden md:flex' : 'flex'}`}>
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-[var(--color-border)]">
-          <div className="flex items-center gap-2">
-            <Users size={15} className="text-[var(--color-primary)]" />
-            <span className="font-bold text-[var(--color-text)] text-sm">Batches</span>
+        <div className="px-4 py-4 border-b border-[var(--color-border)]">
+          <div className="flex items-start justify-between gap-2">
+            <div>
+              <div className="inline-flex items-center gap-1.5">
+                <Link to="/dashboard" className="btn-secondary px-2 py-1 text-xs inline-flex items-center gap-1">
+                  <ChevronLeft size={12} /> Back
+                </Link>
+              </div>
+              <h2 className="font-semibold text-[var(--color-text)] text-lg tracking-tight mt-2">Batches</h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Manage your study groups</p>
+            </div>
             {pendingInvites.length > 0 && (
-              <span className="text-[9px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">{pendingInvites.length}</span>
+              <span className="inline-flex self-start text-[9px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">
+                {pendingInvites.length}
+              </span>
+            )}
+            {isInstructorRole(user) && (
+              canCreate ? (
+                <button
+                  onClick={() => setShowDrawer(true)}
+                  className="p-1.5 btn-primary rounded-lg text-white self-start"
+                  title="Create batch"
+                >
+                  <Plus size={14} />
+                </button>
+              ) : (
+                <Link
+                  to="/pricing"
+                  className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 self-start"
+                  title="Pro plan required"
+                >
+                  <Zap size={14} />
+                </Link>
+              )
             )}
           </div>
-          {isInstructorRole(user) && (
-            canCreate ? (
-              <button onClick={() => setShowDrawer(true)}
-                className="p-1.5 btn-primary rounded-lg text-white" title="Create batch">
-                <Plus size={14} />
-              </button>
-            ) : (
-              <Link to="/pricing"
-                className="p-1.5 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400" title="Pro plan required">
-                <Zap size={14} />
-              </Link>
-            )
-          )}
         </div>
 
         {/* Search */}

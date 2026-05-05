@@ -13,16 +13,17 @@ import {
 } from 'chart.js';
 import {
   ArrowLeft, Award, BarChart2, BookOpen, Brain, ChevronDown, ChevronRight,
-  Filter, Lightbulb,
+  ExternalLink, Filter, Lightbulb,
   TrendingDown,
   TrendingUp,
   Users, X, Zap,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { instructorApi } from '../services/api.js';
-import { useThemeStore } from '../store/index.js';
+import { useAuthStore, useThemeStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -99,14 +100,15 @@ const TABS = [
     { id: 'tests', label: 'Tests' },
     { id: 'students', label: 'Students' },
     { id: 'groups', label: 'Batches' },
-    { id: 'aiInsights', label: 'AI Insights' },
+    { id: 'aiInsights', label: 'Insights' },
 ];
 
 // ── AI Insights helpers ───────────────────────────────────────────────────────
 
 function getStudentSubjectPerf(student, examStats) {
     const bySubject = {};
-    student.exams.forEach(e => {
+    const exams = Array.isArray(student.exams) ? student.exams : [];
+    exams.forEach(e => {
         const stat = examStats.find(s => s._id?.toString() === e.examId?.toString());
         const subject = stat?.subject || 'General';
         if (!bySubject[subject]) bySubject[subject] = { scores: [], passed: 0 };
@@ -149,19 +151,32 @@ function getAIRecommendation(subjectPerf, overallAvg) {
 }
 
 export default function InstructorAnalyticsPage() {
+    const { user } = useAuthStore();
     const c = useChartColors();
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('overview');
+    const [searchParams, setSearchParams] = useSearchParams();
+    const tabParam = searchParams.get('tab');
+    const activeTab = TABS.some(t => t.id === tabParam) ? tabParam : 'overview';
+    const setActiveTab = (id) => {
+        setSearchParams((prev) => {
+            const next = new URLSearchParams(prev);
+            next.set('tab', id);
+            return next;
+        }, { replace: true });
+    };
+    const testReportsReturnTo = () => encodeURIComponent(`/test-reports?tab=${activeTab}`);
     const [studentSearch, setStudentSearch] = useState('');
     const [filterExam, setFilterExam] = useState('all');
     const [filterSubject, setFilterSubject] = useState('all');
     const [filterDiff, setFilterDiff] = useState('all');
-    const [sortStudents, setSortStudents] = useState('avgScore'); // avgScore | attempts | passRate | name
+    const [sortStudents, setSortStudents] = useState('attempts'); // attempts | best | name | last
     const [sortDir, setSortDir] = useState('desc');
     const [expandedGroup, setExpandedGroup] = useState(null);
     const [aiSearch, setAiSearch] = useState('');
     const [aiFilter, setAiFilter] = useState('all'); // all | weak | average | strong
     const [aiGroupFilter, setAiGroupFilter] = useState('all'); // all | groupId
+    const [quickReportExamId, setQuickReportExamId] = useState('');
+    const [quickNavBatchId, setQuickNavBatchId] = useState('');
 
     const { data, isLoading, error } = useQuery({
         queryKey: ['instructorAnalyticsDetailed'],
@@ -173,7 +188,6 @@ export default function InstructorAnalyticsPage() {
         summary = {},
         examStats = [],
         timeSeries = [],
-        subjectBreakdown = [],
         studentPerformance = [],
         groupPerformance = [],
     } = data || {};
@@ -192,11 +206,13 @@ export default function InstructorAnalyticsPage() {
     // Filtered students — must be above early returns to satisfy Rules of Hooks
     const filteredStudents = useMemo(() => {
         let list = studentPerformance.filter(s => {
+            const exams = Array.isArray(s.exams) ? s.exams : [];
             const matchSearch = !studentSearch || s.user.name?.toLowerCase().includes(studentSearch.toLowerCase()) || s.user.email?.toLowerCase().includes(studentSearch.toLowerCase());
-            const matchExam   = filterExam === 'all' || s.exams.some(e => e.examId?.toString() === filterExam);
+            const matchExam = filterExam === 'all' || exams.some(e => e.examId?.toString() === filterExam);
             return matchSearch && matchExam;
         }).map(s => {
-            const relevant = filterExam === 'all' ? s.exams : s.exams.filter(e => e.examId?.toString() === filterExam);
+            const exams = Array.isArray(s.exams) ? s.exams : [];
+            const relevant = filterExam === 'all' ? exams : exams.filter(e => e.examId?.toString() === filterExam);
             const attempts = relevant.length;
             if (!attempts) return null;
             const avg = Math.round(relevant.reduce((a, e) => a + e.score, 0) / attempts);
@@ -204,9 +220,20 @@ export default function InstructorAnalyticsPage() {
             return { ...s, _attempts: attempts, _avg: avg, _passRate: Math.round((passed / attempts) * 100), _best: Math.max(...relevant.map(e => e.score)), _last: new Date(Math.max(...relevant.map(e => new Date(e.date)))) };
         }).filter(Boolean);
 
+        const sortKey = sortStudents === 'attempts' ? '_attempts' : sortStudents === 'best' ? '_best' : sortStudents === 'last' ? '_last' : null;
         list.sort((a, b) => {
-            let va = a[`_${sortStudents}`], vb = b[`_${sortStudents}`];
-            if (sortStudents === 'name') { va = a.user.name || ''; vb = b.user.name || ''; }
+            if (sortStudents === 'name') {
+                const va = a.user.name || '';
+                const vb = b.user.name || '';
+                return sortDir === 'asc' ? va.localeCompare(vb) : vb.localeCompare(va);
+            }
+            if (sortStudents === 'last') {
+                const va = a._last?.getTime?.() || 0;
+                const vb = b._last?.getTime?.() || 0;
+                return sortDir === 'asc' ? va - vb : vb - va;
+            }
+            let va = sortKey ? a[sortKey] : 0;
+            let vb = sortKey ? b[sortKey] : 0;
             return sortDir === 'asc' ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1);
         });
         return list;
@@ -215,9 +242,10 @@ export default function InstructorAnalyticsPage() {
     // AI Insights computed data
     const aiStudents = useMemo(() => {
         return studentPerformance.map(s => {
-            const attempts = s.exams.length;
+            const exams = Array.isArray(s.exams) ? s.exams : [];
+            const attempts = exams.length;
             if (!attempts) return null;
-            const overallAvg = Math.round(s.exams.reduce((a, e) => a + e.score, 0) / attempts);
+            const overallAvg = Math.round(exams.reduce((a, e) => a + e.score, 0) / attempts);
             const subjectPerf = getStudentSubjectPerf(s, examStats);
             const recommendation = getAIRecommendation(subjectPerf, overallAvg);
             const overallLevel = overallAvg >= 75 ? 'strong' : overallAvg >= 50 ? 'average' : 'weak';
@@ -268,17 +296,6 @@ export default function InstructorAnalyticsPage() {
     };
 
     // Chart data
-    const topExams = [...filteredExamStats].sort((a, b) => b.attempts - a.attempts).slice(0, 8);
-    const barData = {
-        labels: topExams.map(e => e.title.length > 18 ? e.title.slice(0, 18) + '…' : e.title),
-        datasets: [{
-            label: 'Avg Score (%)',
-            data: topExams.map(e => e.avgScore),
-            backgroundColor: topExams.map(e => e.avgScore >= 70 ? `${c.green}cc` : e.avgScore >= 50 ? `${c.amber}cc` : `${c.red}cc`),
-            borderRadius: 6, borderSkipped: false,
-        }],
-    };
-
     const last30 = Array.from({ length: 30 }, (_, i) => {
         const d = new Date(Date.now() - (29 - i) * 86400000);
         return d.toISOString().slice(0, 10);
@@ -298,14 +315,6 @@ export default function InstructorAnalyticsPage() {
     const doughnutData = {
         labels: ['Passed', 'Failed'],
         datasets: [{ data: [totalPass, totalFail], backgroundColor: [`${c.green}cc`, `${c.red}cc`], borderColor: [c.green, c.red], borderWidth: 2 }],
-    };
-
-    const subjData = {
-        labels: subjectBreakdown.map(s => s._id || 'Unknown'),
-        datasets: [
-            { label: 'Avg Score', data: subjectBreakdown.map(s => Math.round(s.avgScore)), backgroundColor: `${c.purple}cc`, borderRadius: 4, yAxisID: 'y' },
-            { label: 'Attempts', data: subjectBreakdown.map(s => s.count), backgroundColor: `${c.teal}cc`, borderRadius: 4, yAxisID: 'y1' },
-        ],
     };
 
     const hasFilter = filterSubject !== 'all' || filterDiff !== 'all' || filterExam !== 'all';
@@ -330,7 +339,7 @@ export default function InstructorAnalyticsPage() {
                     <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-xs mx-auto">
                         Create tests and invite students to start seeing analytics here.
                     </p>
-                    <Link to="/instructor-dashboard" className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors">
+                    <Link to={getDashboardPath(user?.role)} className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors">
                         <ArrowLeft size={14} /> Back to Dashboard
                     </Link>
                 </div>
@@ -346,16 +355,16 @@ export default function InstructorAnalyticsPage() {
                             <ArrowLeft size={18} />
                         </button>
                         <div>
-                            <h1 className="text-xl font-extrabold text-white leading-tight">Analytics Dashboard</h1>
-                            <p className="text-sm text-teal-100 mt-0.5">Performance insights across all your tests & batches</p>
+                            <h1 className="text-xl font-extrabold text-white leading-tight">Test reports</h1>
+                            <p className="text-sm text-teal-100 mt-0.5">Attempts and outcomes across your tests and batches</p>
                         </div>
                     </div>
                     {/* Quick stats */}
                     <div className="flex flex-wrap gap-2">
                         {[
                             { label: 'Tests', value: summary.totalExams || 0 },
+                            { label: 'Attempts', value: summary.totalAttempts || 0 },
                             { label: 'Students', value: summary.totalStudents || 0 },
-                            { label: 'Pass Rate', value: `${summary.passRate || 0}%` },
                         ].map(({ label, value }) => (
                             <div key={label} className="flex items-center gap-1.5 bg-white/15 backdrop-blur rounded-xl px-3 py-2">
                                 <span className="text-white/70 text-xs">{label}:</span>
@@ -367,12 +376,54 @@ export default function InstructorAnalyticsPage() {
             </div>
 
             {/* Summary stat cards */}
-            <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-5 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <StatCard icon={BookOpen}   label="Total Tests"    value={summary.totalExams || 0}     gradient="from-teal-400 to-cyan-500" />
                 <StatCard icon={Zap}        label="Total Attempts" value={summary.totalAttempts || 0}  gradient="from-blue-400 to-indigo-500" />
-                <StatCard icon={TrendingUp} label="Avg Score"      value={`${summary.avgScore || 0}%`} gradient="from-teal-500 to-blue-600" />
-                <StatCard icon={Award}      label="Pass Rate"      value={`${summary.passRate || 0}%`} gradient="from-sky-400 to-blue-500" />
                 <StatCard icon={Users}      label="Students"       value={summary.totalStudents || 0}  gradient="from-cyan-400 to-teal-500" />
+            </div>
+
+            {/* Quick navigation */}
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex flex-col lg:flex-row lg:items-end gap-4">
+                <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">Detailed report by test</label>
+                    <div className="flex flex-wrap gap-2 items-center">
+                        <select
+                            className="input text-sm flex-1 min-w-[200px]"
+                            value={quickReportExamId}
+                            onChange={e => setQuickReportExamId(e.target.value)}
+                        >
+                            <option value="">Select a test…</option>
+                            {examStats.map(e => (
+                                <option key={e._id} value={e._id?.toString()}>{e.title}</option>
+                            ))}
+                        </select>
+                        <Link
+                            to={quickReportExamId ? `/instructor/report/${quickReportExamId}?returnTo=${testReportsReturnTo()}` : '#'}
+                            className={`btn-primary text-sm px-4 py-2 inline-flex items-center gap-1.5 shrink-0 ${!quickReportExamId ? 'pointer-events-none opacity-45' : ''}`}
+                            onClick={e => { if (!quickReportExamId) e.preventDefault(); }}
+                        >
+                            Open report <ExternalLink size={14} />
+                        </Link>
+                    </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                    <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">View by batch</label>
+                    <select
+                        className="input text-sm w-full"
+                        value={quickNavBatchId}
+                        onChange={e => {
+                            const v = e.target.value;
+                            setQuickNavBatchId(v);
+                            setActiveTab('groups');
+                            setExpandedGroup(v || null);
+                        }}
+                    >
+                        <option value="">Choose a batch…</option>
+                        {groupPerformance.map(g => (
+                            <option key={g._id} value={g._id}>{g.name}</option>
+                        ))}
+                    </select>
+                </div>
             </div>
 
             {/* Tabs */}
@@ -406,22 +457,6 @@ export default function InstructorAnalyticsPage() {
                                 <Line data={lineData} options={{ ...baseOpts(c), plugins: { ...baseOpts(c).plugins, legend: { display: false } } }} />
                             </ChartCard>
                         </div>
-                    </div>
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <ChartCard title="Avg Score per Test" subtitle="Top 8 by attempt count" height={200}>
-                            <Bar data={barData} options={{ ...baseOpts(c), scales: { ...baseOpts(c).scales, y: { ...baseOpts(c).scales.y, max: 100, ticks: { ...baseOpts(c).scales.y.ticks, callback: v => `${v}%` } } } }} />
-                        </ChartCard>
-                        <ChartCard title="Performance by Subject" subtitle="Avg score & attempts per subject" height={200}>
-                            <Bar data={subjData} options={{
-                                ...baseOpts(c),
-                                plugins: { ...baseOpts(c).plugins, legend: { display: true, labels: { color: c.muted, font: { size: 11 }, boxWidth: 10, padding: 10 } } },
-                                scales: {
-                                    x: baseOpts(c).scales.x,
-                                    y:  { ...baseOpts(c).scales.y, id: 'y',  position: 'left', title: { display: true, text: 'Avg Score (%)', color: c.muted, font: { size: 10 } } },
-                                    y1: { ...baseOpts(c).scales.y, id: 'y1', position: 'right', grid: { drawOnChartArea: false }, title: { display: true, text: 'Attempts', color: c.muted, font: { size: 10 } } },
-                                },
-                            }} />
-                        </ChartCard>
                     </div>
                 </div>
             )}
@@ -466,7 +501,7 @@ export default function InstructorAnalyticsPage() {
                                 <table className="w-full text-sm">
                                     <thead>
                                         <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/50">
-                                            {['Test', 'Subject', 'Difficulty', 'Attempts', 'Avg Score', 'Pass Rate', 'Actions'].map(h => (
+                                            {['Test name', 'Subject', 'Difficulty', 'Attempts', 'Actions'].map(h => (
                                                 <th key={h} className="text-left py-3 px-4 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">{h}</th>
                                             ))}
                                         </tr>
@@ -483,22 +518,21 @@ export default function InstructorAnalyticsPage() {
                                                 </td>
                                                 <td className="py-3 px-4 font-semibold text-[var(--color-text)]">{exam.attempts}</td>
                                                 <td className="py-3 px-4">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-16 h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
-                                                            <div className={`h-full rounded-full ${scoreBg(exam.avgScore)}`} style={{ width: `${exam.avgScore}%` }} />
-                                                        </div>
-                                                        <span className={`text-xs font-bold ${scoreColor(exam.avgScore)}`}>{exam.avgScore}%</span>
+                                                    <div className="flex flex-wrap items-center gap-2">
+                                                        <Link
+                                                            to={`/instructor/report/${exam._id}?returnTo=${testReportsReturnTo()}`}
+                                                            className="btn-secondary text-[11px] py-1.5 px-2.5 inline-flex items-center gap-1"
+                                                        >
+                                                            Detailed report <ExternalLink size={11} />
+                                                        </Link>
+                                                        <button
+                                                            type="button"
+                                                            onClick={() => { setActiveTab('students'); setFilterExam(exam._id?.toString()); }}
+                                                            className="text-[10px] text-[var(--color-primary)] hover:underline inline-flex items-center gap-1"
+                                                        >
+                                                            Students <ChevronRight size={10} />
+                                                        </button>
                                                     </div>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <span className={`text-xs font-bold ${scoreColor(exam.passRate)}`}>{exam.passRate}%</span>
-                                                </td>
-                                                <td className="py-3 px-4">
-                                                    <button
-                                                        onClick={() => { setActiveTab('students'); setFilterExam(exam._id?.toString()); }}
-                                                        className="text-[10px] text-[var(--color-primary)] hover:underline flex items-center gap-1">
-                                                        Students <ChevronRight size={10} />
-                                                    </button>
                                                 </td>
                                             </tr>
                                         ))}
@@ -557,15 +591,22 @@ export default function InstructorAnalyticsPage() {
                                     <thead>
                                         <tr className="border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/50">
                                             <SortTh field="name" label="Student" />
+                                            <th className="text-left py-2.5 px-3 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">Tests</th>
                                             <SortTh field="attempts" label="Attempts" />
-                                            <SortTh field="avgScore" label="Avg Score" />
-                                            <SortTh field="passRate" label="Pass Rate" />
-                                            <th className="text-left py-2.5 px-3 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">Best Score</th>
-                                            <th className="text-left py-2.5 px-3 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">Last Attempt</th>
+                                            <SortTh field="best" label="Best score" />
+                                            <SortTh field="last" label="Last attempt" />
+                                            <th className="text-left py-2.5 px-3 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">Review</th>
                                         </tr>
                                     </thead>
                                     <tbody className="divide-y divide-[var(--color-border)]">
-                                        {filteredStudents.map(s => (
+                                        {filteredStudents.map(s => {
+                                            const exams = Array.isArray(s.exams) ? s.exams : [];
+                                            const sortedExams = [...exams].sort((a, b) => new Date(b.date) - new Date(a.date));
+                                            const reportExamId = filterExam !== 'all' ? filterExam : sortedExams[0]?.examId?.toString();
+                                            const reviewHref = reportExamId
+                                                ? `/instructor/report/${reportExamId}/student/${s.user._id}?returnTo=${testReportsReturnTo()}`
+                                                : null;
+                                            return (
                                             <tr key={s.user._id} className="hover:bg-[var(--color-bg-alt)]/40 transition-colors">
                                                 <td className="py-3 px-3">
                                                     <div className="flex items-center gap-2.5">
@@ -578,22 +619,28 @@ export default function InstructorAnalyticsPage() {
                                                         </div>
                                                     </div>
                                                 </td>
-                                                <td className="py-3 px-3 font-semibold text-[var(--color-text)]">{s._attempts}</td>
-                                                <td className="py-3 px-3">
-                                                    <div className="flex items-center gap-2">
-                                                        <div className="w-14 h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
-                                                            <div className={`h-full rounded-full ${scoreBg(s._avg)}`} style={{ width: `${s._avg}%` }} />
-                                                        </div>
-                                                        <span className={`text-xs font-bold ${scoreColor(s._avg)}`}>{s._avg}%</span>
-                                                    </div>
+                                                <td className="py-3 px-3 text-xs text-[var(--color-text)] max-w-[220px]">
+                                                    <span className="line-clamp-2" title={[...new Set(exams.map(e => e.examTitle).filter(Boolean))].join(', ')}>
+                                                        {[...new Set(exams.map(e => e.examTitle).filter(Boolean))].join(', ') || '—'}
+                                                    </span>
                                                 </td>
-                                                <td className="py-3 px-3"><span className={`text-xs font-bold ${scoreColor(s._passRate)}`}>{s._passRate}%</span></td>
+                                                <td className="py-3 px-3 font-semibold text-[var(--color-text)]">{s._attempts}</td>
                                                 <td className="py-3 px-3 font-semibold text-emerald-600 dark:text-emerald-400">{s._best}%</td>
                                                 <td className="py-3 px-3 text-xs text-[var(--color-text-muted)]">
                                                     {s._last ? s._last.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
                                                 </td>
+                                                <td className="py-3 px-3">
+                                                    {reviewHref ? (
+                                                        <Link to={reviewHref} className="text-[11px] font-medium text-[var(--color-primary)] hover:underline inline-flex items-center gap-1">
+                                                            Answers <ExternalLink size={11} />
+                                                        </Link>
+                                                    ) : (
+                                                        <span className="text-[11px] text-[var(--color-text-muted)]">—</span>
+                                                    )}
+                                                </td>
                                             </tr>
-                                        ))}
+                                            );
+                                        })}
                                     </tbody>
                                 </table>
                             </div>
@@ -638,11 +685,11 @@ export default function InstructorAnalyticsPage() {
                                             <div className="hidden sm:flex items-center gap-6 text-center">
                                                 {[
                                                     { label: 'Attempts', value: g.totalAttempts },
-                                                    { label: 'Avg Score', value: `${g.avgScore}%`, cls: scoreColor(g.avgScore) },
-                                                    { label: 'Pass Rate', value: `${g.passRate}%`, cls: scoreColor(g.passRate) },
-                                                ].map(({ label, value, cls }) => (
+                                                    { label: 'Members', value: g.memberCount },
+                                                    { label: 'Active', value: g.activeStudents },
+                                                ].map(({ label, value }) => (
                                                     <div key={label}>
-                                                        <p className={`text-sm font-bold ${cls || 'text-[var(--color-text)]'}`}>{value}</p>
+                                                        <p className="text-sm font-bold text-[var(--color-text)]">{value}</p>
                                                         <p className="text-[10px] text-[var(--color-text-muted)]">{label}</p>
                                                     </div>
                                                 ))}
@@ -661,18 +708,22 @@ export default function InstructorAnalyticsPage() {
                                                     <table className="w-full text-sm">
                                                         <thead>
                                                             <tr className="bg-[var(--color-bg-alt)]/50 border-b border-[var(--color-border)]">
-                                                                {['Student', 'Attempts', 'Avg Score', 'Pass Rate', 'Best Score', 'Last Attempt'].map(h => (
+                                                                {['Student', 'Tests', 'Attempts', 'Best score', 'Last attempt', 'Review'].map(h => (
                                                                     <th key={h} className="text-left py-2.5 px-4 text-xs font-semibold text-[var(--color-text-muted)] whitespace-nowrap">{h}</th>
                                                                 ))}
                                                             </tr>
                                                         </thead>
                                                         <tbody className="divide-y divide-[var(--color-border)]">
                                                             {g.students.map(s => {
+                                                                const exams = Array.isArray(s.exams) ? s.exams : [];
                                                                 const attempts = s.attempts;
-                                                                const avg = s.avgScore;
-                                                                const pr = s.passRate;
-                                                                const best = attempts ? Math.max(...s.exams.map(e => e.score)) : 0;
-                                                                const last = s.exams.length ? new Date(Math.max(...s.exams.map(e => new Date(e.date)))) : null;
+                                                                const best = attempts && exams.length ? Math.max(...exams.map(e => e.score)) : 0;
+                                                                const last = exams.length ? new Date(Math.max(...exams.map(e => new Date(e.date)))) : null;
+                                                                const sortedExams = [...exams].sort((a, b) => new Date(b.date) - new Date(a.date));
+                                                                const reportExamId = sortedExams[0]?.examId?.toString();
+                                                                const reviewHref = reportExamId
+                                                                    ? `/instructor/report/${reportExamId}/student/${s.user._id}?returnTo=${testReportsReturnTo()}`
+                                                                    : null;
                                                                 return (
                                                                     <tr key={s.user._id} className="hover:bg-[var(--color-bg-alt)]/40 transition-colors">
                                                                         <td className="py-3 px-4">
@@ -686,19 +737,24 @@ export default function InstructorAnalyticsPage() {
                                                                                 </div>
                                                                             </div>
                                                                         </td>
-                                                                        <td className="py-3 px-4 font-semibold text-[var(--color-text)] text-xs">{attempts}</td>
-                                                                        <td className="py-3 px-4">
-                                                                            <div className="flex items-center gap-2">
-                                                                                <div className="w-12 h-1.5 bg-[var(--color-border)] rounded-full overflow-hidden">
-                                                                                    <div className={`h-full rounded-full ${scoreBg(avg)}`} style={{ width: `${avg}%` }} />
-                                                                                </div>
-                                                                                <span className={`text-xs font-bold ${scoreColor(avg)}`}>{avg}%</span>
-                                                                            </div>
+                                                                        <td className="py-3 px-4 text-[11px] text-[var(--color-text)] max-w-[200px]">
+                                                                            <span className="line-clamp-2" title={[...new Set(exams.map(e => e.examTitle).filter(Boolean))].join(', ')}>
+                                                                                {[...new Set(exams.map(e => e.examTitle).filter(Boolean))].join(', ') || '—'}
+                                                                            </span>
                                                                         </td>
-                                                                        <td className="py-3 px-4"><span className={`text-xs font-bold ${scoreColor(pr)}`}>{pr}%</span></td>
+                                                                        <td className="py-3 px-4 font-semibold text-[var(--color-text)] text-xs">{attempts}</td>
                                                                         <td className="py-3 px-4 font-semibold text-emerald-600 dark:text-emerald-400 text-xs">{best}%</td>
                                                                         <td className="py-3 px-4 text-xs text-[var(--color-text-muted)]">
                                                                             {last ? last.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                                                        </td>
+                                                                        <td className="py-3 px-4">
+                                                                            {reviewHref ? (
+                                                                                <Link to={reviewHref} className="text-[11px] font-medium text-[var(--color-primary)] hover:underline inline-flex items-center gap-1">
+                                                                                    Answers <ExternalLink size={11} />
+                                                                                </Link>
+                                                                            ) : (
+                                                                                <span className="text-[11px] text-[var(--color-text-muted)]">—</span>
+                                                                            )}
                                                                         </td>
                                                                     </tr>
                                                                 );
@@ -715,7 +771,7 @@ export default function InstructorAnalyticsPage() {
                     )}
                 </div>
             )}
-            {/* ── AI INSIGHTS TAB ── */}
+            {/* ── INSIGHTS TAB ── */}
             {activeTab === 'aiInsights' && (
                 <div className="space-y-4">
                     {/* Summary bar */}
@@ -783,7 +839,7 @@ export default function InstructorAnalyticsPage() {
                             </p>
                             <p className="text-sm text-[var(--color-text-muted)]">
                                 {studentPerformance.length === 0
-                                    ? 'Once students attempt your tests, AI will generate performance insights here.'
+                                    ? 'Once students attempt your tests, performance insights will appear here.'
                                     : 'Try adjusting your search or filter.'}
                             </p>
                         </div>
@@ -851,7 +907,7 @@ export default function InstructorAnalyticsPage() {
                                                     <Lightbulb size={13} className="text-indigo-600 dark:text-indigo-400" />
                                                 </div>
                                                 <div>
-                                                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">AI Recommendation</p>
+                                                    <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">Recommendation</p>
                                                     <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed">{s._recommendation}</p>
                                                 </div>
                                             </div>

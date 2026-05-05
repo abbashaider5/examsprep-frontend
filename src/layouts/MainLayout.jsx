@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 export default function MainLayout() {
@@ -11,6 +12,7 @@ export default function MainLayout() {
   const { logout } = useAuth();
   const [mobileOpen, setMobileOpen] = useState(false);
   const { pathname } = useLocation();
+  const dashPath = getDashboardPath(user?.role);
 
   const navLinks = [
     { to: '/', label: 'Home' },
@@ -55,7 +57,7 @@ export default function MainLayout() {
                       {user.plan.toUpperCase()}
                     </Link>
                   )}
-                  <Link to="/dashboard" className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">
+                  <Link to={dashPath} className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">
                     <LayoutDashboard size={15} /> Dashboard
                   </Link>
                   <button onClick={() => logout.mutate()} className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Logout">
@@ -94,7 +96,7 @@ export default function MainLayout() {
             <div className="border-t border-[var(--color-border)] pt-3 mt-3">
               {isAuthenticated ? (
                 <div className="flex flex-col gap-2">
-                  <Link to="/dashboard" className="btn-primary text-sm py-2 text-center" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
+                  <Link to={dashPath} className="btn-primary text-sm py-2 text-center" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
                   <button onClick={() => { logout.mutate(); setMobileOpen(false); }} className="text-sm text-red-500 text-center py-1">Logout</button>
                 </div>
               ) : (
@@ -135,7 +137,7 @@ export default function MainLayout() {
             <div>
               <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Platform</p>
               <div className="space-y-2">
-                {[{ to: '/dashboard', label: 'Dashboard' }, { to: '/create-exam', label: 'Generate Exam' }, { to: '/study', label: 'Study Mode' }].map(l => (
+                {[{ to: dashPath, label: 'Dashboard' }, { to: '/create-exam', label: 'Generate Exam' }, { to: '/study', label: 'Study Mode' }].map(l => (
                   <Link key={l.to} to={l.to} className="block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{l.label}</Link>
                 ))}
               </div>

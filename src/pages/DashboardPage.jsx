@@ -4,26 +4,25 @@ import {
   LinearScale, LineElement, PointElement, Tooltip
 } from 'chart.js';
 import {
-  BarChart2, Bell, BookmarkCheck, BookOpen, CheckCircle, ChevronRight, Flame,
-  GraduationCap, Lightbulb, Shield, Sparkles, Star, Trophy, X, Zap,
+  ArrowRight, Award, BarChart2, Bell, BookOpen, CalendarDays, CheckCircle, ChevronRight,
+  Shield, Sparkles, X,
+  Users,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import BecomeInstructorModal from '../components/BecomeInstructorModal.jsx';
 import { examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import UserPageHeader from '../components/UserPageHeader.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
-const LEVEL_ICONS = { Beginner: GraduationCap, Intermediate: BarChart2, Advanced: Star, Expert: Trophy };
-
-const STAT_CARDS = [
-  { key: 'tests',  icon: BookOpen,  label: 'Total Tests',  gradient: 'from-teal-400 to-cyan-500' },
-  { key: 'score',  icon: Star,      label: 'Avg Score',    gradient: 'from-blue-400 to-indigo-500' },
-  { key: 'streak', icon: Flame,     label: 'Day Streak',   gradient: 'from-sky-400 to-blue-500' },
-  { key: 'xp',     icon: Zap,       label: 'XP Points',    gradient: 'from-teal-500 to-blue-600' },
+const STUDENT_QUICK_LINKS = [
+  { to: '/tests', title: 'My Tests', desc: 'Start or continue', icon: BookOpen },
+  { to: '/performance', title: 'Performance', desc: 'View analytics', icon: BarChart2 },
+  { to: '/certificates', title: 'Certificates', desc: 'Track achievements', icon: Award },
+  { to: '/batches', title: 'Batches', desc: 'Manage groups', icon: Users },
 ];
 
 function DiffBadge({ difficulty }) {
@@ -38,7 +37,6 @@ function DiffBadge({ difficulty }) {
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
-  const [showInstructorModal, setShowInstructorModal] = useState(false);
 
   const isInstructor = ['instructor', 'admin'].includes(user?.role);
   const isStudent    = user?.role === 'user';
@@ -84,14 +82,16 @@ export default function DashboardPage() {
   const results       = resultsData?.results || [];
   const trend         = analyticsData?.trend || [];
   const pendingInvites = invitesData?.invites || [];
-  const avgScore      = results.length ? Math.round(results.reduce((a, r) => a + r.percentage, 0) / results.length) : 0;
+  const planExpiryDays = user?.planExpiresAt
+    ? Math.ceil((new Date(user.planExpiresAt).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
+    : null;
+  const showExpiryBanner = ['instructor', 'admin'].includes(user?.role)
+    && user?.plan
+    && user.plan !== 'free'
+    && typeof planExpiryDays === 'number'
+    && planExpiryDays >= 0
+    && planExpiryDays <= 7;
 
-  const statValues = {
-    tests:  myExams.length + results.length,
-    score:  `${avgScore}%`,
-    streak: user?.streak || 0,
-    xp:     user?.xp || 0,
-  };
 
   const chartData = {
     labels: trend.map(t => new Date(t.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })),
@@ -117,42 +117,44 @@ export default function DashboardPage() {
     },
   };
 
-  const LevelIcon = LEVEL_ICONS[user?.level] || GraduationCap;
   const hour = new Date().getHours();
   const greeting = hour < 12 ? 'Good morning' : hour < 18 ? 'Good afternoon' : 'Good evening';
+  const recentResults = results.slice(0, 5);
+  const recentPerformance = recentResults.length
+    ? Math.round(recentResults.reduce((sum, r) => sum + r.percentage, 0) / recentResults.length)
+    : 0;
+  const passedCount = results.filter(r => r.passed).length;
+  const passRate = results.length ? Math.round((passedCount / results.length) * 100) : 0;
+  const thisMonth = new Date().getMonth();
+  const thisMonthAttempts = results.filter(r => new Date(r.createdAt).getMonth() === thisMonth).length;
 
   return (
     <div className="p-4 sm:p-5 space-y-4 animate-fade-in">
 
-      {/* Welcome hero */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-5 py-4 shadow-lg">
-        <div className="absolute -top-10 -right-10 w-52 h-52 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 left-0 w-40 h-40 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-          <div>
-            <h2 className="text-lg font-bold text-white">
-              {greeting}, {user?.name?.split(' ')[0]} 👋
-            </h2>
-            <p className="text-teal-50 text-sm mt-0.5">Here's your learning overview for today</p>
-          </div>
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Generate AI Test — only for instructors/admins */}
-            {isInstructor && (
-              <Link to="/create-exam" className="flex items-center gap-2 bg-white text-teal-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors shadow-sm whitespace-nowrap">
-                <Sparkles size={15} /> Generate AI Test
-              </Link>
-            )}
-            {isStudent && (
-              <button
-                onClick={() => setShowInstructorModal(true)}
-                className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors whitespace-nowrap"
-              >
-                <BookmarkCheck size={14} /> Become Instructor
-              </button>
-            )}
-          </div>
+      <UserPageHeader
+        title={`${greeting}, ${user?.name?.split(' ')[0] || ''}`}
+        subtitle={isStudent ? 'Your learning workspace is ready.' : 'Welcome back. Continue from the sections below.'}
+        icon={BookOpen}
+        right={
+          isInstructor ? (
+            <Link to="/create-exam" className="btn-primary text-sm px-4 py-2 rounded-xl inline-flex items-center gap-2">
+              <Sparkles size={15} /> Create test
+            </Link>
+          ) : null
+        }
+        className={isStudent ? 'bg-teal-50/70 border-teal-100' : ''}
+      />
+
+      {showExpiryBanner && (
+        <div className="rounded-2xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+          <p className="text-sm text-amber-800 dark:text-amber-300 font-medium">
+            Your plan is expiring soon. Please renew to avoid interruption.
+          </p>
+          <Link to="/profile" className="text-sm font-semibold text-amber-900 dark:text-amber-200 underline underline-offset-2">
+            Renew Now
+          </Link>
         </div>
-      </div>
+      )}
 
       {/* Pending invites */}
       {pendingInvites.length > 0 && (
@@ -189,8 +191,10 @@ export default function DashboardPage() {
                   className="btn-secondary text-xs py-1.5 px-3 flex items-center gap-1 rounded-xl">
                   <X size={12} /> Decline
                 </button>
-                <Link to={`/exam/${invite.exam?._id}?invite=${invite.token}`}
-                  className="text-xs py-1.5 px-3 rounded-xl bg-gradient-to-r from-teal-500 to-blue-600 text-white font-medium hover:opacity-90 flex items-center gap-1 transition-opacity">
+                <Link
+                  to={`/exam/${invite.exam?._id}?invite=${invite.token}`}
+                  className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1 rounded-xl"
+                >
                   <CheckCircle size={12} /> Accept &amp; Start
                 </Link>
               </div>
@@ -199,21 +203,66 @@ export default function DashboardPage() {
         </div>
       )}
 
-      {/* Stat cards */}
-      <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">
-        {STAT_CARDS.map(({ key, icon: Icon, label, gradient }) => (
-          <div key={key} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex items-center gap-4">
-            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0 shadow-sm`}>
-              <Icon size={20} className="text-white" />
-            </div>
-            <div className="min-w-0">
-              <div className="text-2xl font-bold text-[var(--color-text)] tabular-nums">{statValues[key]}</div>
-              <div className="text-xs text-[var(--color-text-muted)] truncate">{label}</div>
+      {isStudent && (
+        <>
+          <div>
+            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Quick Navigation</h3>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+              {STUDENT_QUICK_LINKS.map((item, idx) => {
+                const badgeBg =
+                  idx === 0 ? 'bg-blue-50'
+                  : idx === 1 ? 'bg-teal-50'
+                  : idx === 2 ? 'bg-emerald-50'
+                  : 'bg-sky-50';
+                const badgeBorder =
+                  idx === 0 ? 'border-blue-100'
+                  : idx === 1 ? 'border-teal-100'
+                  : idx === 2 ? 'border-emerald-100'
+                  : 'border-sky-100';
+                return (
+                <Link
+                  key={item.to}
+                  to={item.to}
+                  className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 hover:shadow-md transition-all"
+                >
+                  <div className="flex items-center justify-between gap-3">
+                    <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${badgeBg} ${badgeBorder}`}>
+                      <item.icon size={14} className="text-[var(--color-primary)]" />
+                    </div>
+                    <ArrowRight size={12} className="text-[var(--color-text-muted)] shrink-0" />
+                  </div>
+                  <p className="text-sm font-semibold mt-2 text-[var(--color-text)]">{item.title}</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">{item.desc}</p>
+                </Link>
+              );})}
             </div>
           </div>
-        ))}
-      </div>
 
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {[
+              { label: 'Tests Taken', value: results.length, accent: 'bg-blue-100', icon: BookOpen },
+              { label: 'Recent Performance', value: `${recentPerformance}%`, accent: 'bg-emerald-100', icon: BarChart2 },
+              { label: 'Pass Rate', value: `${passRate}%`, accent: 'bg-teal-100', icon: CheckCircle },
+              { label: 'This Month', value: thisMonthAttempts, accent: 'bg-indigo-100', icon: CalendarDays },
+            ].map((card) => (
+              <div
+                key={card.label}
+                className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-3 flex items-center gap-3 shadow-sm"
+              >
+                <span className={`w-7 h-7 rounded-full ${card.accent} flex items-center justify-center`}>
+                  <card.icon size={13} className="text-[var(--color-primary)]" />
+                </span>
+                <div>
+                  <p className="text-[11px] text-[var(--color-text-muted)]">{card.label}</p>
+                  <p className="text-lg font-semibold text-[var(--color-text)] mt-0.5">{card.value}</p>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {!isStudent && (
       <div className="grid grid-cols-1 xl:grid-cols-3 gap-6">
         {/* Score trend */}
         <div className="xl:col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
@@ -275,9 +324,10 @@ export default function DashboardPage() {
           </div>
         </div>
       </div>
+      )}
 
       {/* Available Exams */}
-      <div>
+      {!isStudent && <div>
         <div className="flex items-center justify-between mb-4">
           <h3 className="font-semibold text-[var(--color-text)] flex items-center gap-2">
             <BookOpen size={16} className="text-[var(--color-primary)]" /> Available Tests
@@ -338,7 +388,7 @@ export default function DashboardPage() {
             })}
           </div>
         )}
-      </div>
+      </div>}
 
       {/* Recent Results */}
       {results.length > 0 && (
@@ -367,8 +417,6 @@ export default function DashboardPage() {
           </div>
         </div>
       )}
-
-      {showInstructorModal && <BecomeInstructorModal onClose={() => setShowInstructorModal(false)} />}
     </div>
   );
 }

@@ -1,14 +1,18 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
-  Lightbulb, Mail,
+  ArrowLeft,
+  BarChart2, BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
+  Lightbulb, Loader2, Mail,
   RotateCcw, Search, Shield, Star,
-  Target, Timer, TrendingUp, Upload, UserCheck, Users, X
+  Target, Timer,
+  Trash2,
+  TrendingUp, Upload, UserCheck, Users, X
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
@@ -141,6 +145,7 @@ function InviteModal({ exam, onClose }) {
             <div className="space-y-1.5">
               {[
                 { label: 'AI Proctoring', value: exam.proctored, icon: Shield },
+                { label: 'Multiple Sets', value: exam.multipleSets, icon: Layers },
                 { label: 'Reattempt', value: exam.allowReattempt, icon: RotateCcw },
                 { label: 'Certificate', value: exam.certificateEnabled !== false, icon: Star },
               ].map(item => (
@@ -385,7 +390,9 @@ const CARD_GRADIENTS = [
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function StudyModePage() {
   const { user } = useAuthStore();
-  const { data } = useQuery({ queryKey: ['myExams'], queryFn: () => examApi.getAll().then(r => r.data) });
+  const qc = useQueryClient();
+  const isInstructorOnly = user?.role === 'instructor';
+  const { data, isLoading: examsLoading } = useQuery({ queryKey: ['myExams'], queryFn: () => examApi.getAll().then(r => r.data) });
   const { data: resultsData } = useQuery({ queryKey: ['myResults'], queryFn: () => resultApi.getAll().then(r => r.data) });
   const { data: acceptedInvitesData } = useQuery({
     queryKey: ['myAcceptedInvites'],
@@ -404,13 +411,24 @@ export default function StudyModePage() {
   const [mode, setMode] = useState('flashcard');
   const [inviteExam, setInviteExam] = useState(null);
   const [editExam, setEditExam] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const [search, setSearch] = useState('');
   const [filterDiff, setFilterDiff] = useState('all');
 
   const ownExams = data?.exams || [];
   const results = resultsData?.results || [];
-  const acceptedInvites = acceptedInvitesData?.invites || [];
+  const acceptedInvites = isInstructorOnly ? [] : (acceptedInvitesData?.invites || []);
   const isInstructor = user?.isInstructor || ['instructor', 'admin'].includes(user?.role);
+
+  const deleteExamMut = useMutation({
+    mutationFn: (id) => examApi.delete(id),
+    onSuccess: () => {
+      toast.success('Test deleted');
+      qc.invalidateQueries({ queryKey: ['myExams'] });
+      setDeleteTarget(null);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not delete test'),
+  });
 
   // Build a map of group ID → name for fallback when invite.group isn't populated
   const groupMap = Object.fromEntries(
@@ -419,12 +437,13 @@ export default function StudyModePage() {
 
   const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
 
-  const ownExamIds = new Set(ownExams.map(e => e._id));
+  const ownExamIds = new Set(ownExams.map(e => String(e._id)));
   const invitedEntries = acceptedInvites
-    .filter(inv => !ownExamIds.has(inv.exam?._id))
+    .filter(inv => inv.exam?._id && !ownExamIds.has(String(inv.exam._id)))
     .map(inv => ({
       ...inv.exam,
       _inviteId: inv._id,
+      _inviteToken: inv.token,
       _invitedBy: inv.invitedBy?.name,
       _groupName: inv.group?.name || (inv.group ? groupMap[inv.group._id || inv.group] : null) || null,
       _isInvited: true,
@@ -460,7 +479,7 @@ export default function StudyModePage() {
   }, {});
 
   const loadExam = async (exam) => {
-    const res = await examApi.getById(exam._id);
+    const res = await examApi.getById(exam._id, { params: { practice: 'true' } });
     setExamData(res.data.exam);
     setSelectedExam(exam);
     const inv = exam._isInvited ? acceptedInvites.find(i => i.exam?._id === exam._id) : null;
@@ -476,23 +495,48 @@ export default function StudyModePage() {
   };
 
   if (!selectedExam) {
+    if (examsLoading) {
+      return (
+        <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+          <div className="flex flex-col items-center justify-center gap-3 py-10 mb-6">
+            <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" aria-hidden />
+            <p className="text-sm font-medium text-[var(--color-text)]">Loading tests…</p>
+            <p className="text-xs text-[var(--color-text-muted)]">Fetching your exams and invites</p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {[1, 2, 3, 4, 5, 6].map(i => (
+              <div key={i} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden animate-pulse">
+                <div className="h-1.5 w-full bg-[var(--color-border)]" />
+                <div className="p-4 space-y-3">
+                  <div className="flex justify-between items-start">
+                    <div className="h-10 w-10 rounded-xl bg-[var(--color-border)]" />
+                    <div className="h-5 w-14 rounded-full bg-[var(--color-border)]" />
+                  </div>
+                  <div className="h-4 w-[85%] max-w-[220px] rounded bg-[var(--color-border)]" />
+                  <div className="h-3 w-1/2 rounded bg-[var(--color-border)] max-w-[140px]" />
+                  <div className="h-9 w-full rounded-xl bg-[var(--color-border)] mt-4" />
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-        {/* Hero header — compact */}
-        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-5 mb-4 shadow-lg">
-          <div className="absolute inset-0 bg-gradient-to-tr from-white/5 to-white/10 pointer-events-none" />
-          <div className="absolute -top-10 -right-10 w-52 h-52 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-          <div className="relative flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-              <BookOpen size={20} className="text-white" />
-            </div>
-            <div>
-              <h1 className="text-xl font-extrabold text-white leading-tight">My Tests</h1>
-              <p className="text-sm text-teal-100 mt-0.5">
-                {allExams.length} total · {Object.keys(examStats).length} attempted · {invitedEntries.length} invited
-              </p>
-            </div>
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">My Tests</h1>
+            <p className="text-sm text-[var(--color-text-muted)] mt-1">
+              {isInstructorOnly
+                ? `${allExams.length} total · ${Object.keys(examStats).length} attempted`
+                : `${allExams.length} total · ${Object.keys(examStats).length} attempted · ${invitedEntries.length} invited`}
+            </p>
           </div>
+          <Link to="/dashboard" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
+            <ArrowLeft size={14} /> Back
+          </Link>
         </div>
 
         {/* Filters bar + search */}
@@ -527,7 +571,11 @@ export default function StudyModePage() {
               <BookOpen size={28} className="text-[var(--color-primary)]" />
             </div>
             <p className="font-semibold text-[var(--color-text)] mb-1">No tests yet</p>
-            <p className="text-sm text-[var(--color-text-muted)]">Tests you create or are invited to will appear here.</p>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              {isInstructorOnly
+                ? 'Tests you create will appear here.'
+                : 'Tests you create or are invited to will appear here.'}
+            </p>
           </div>
         ) : filteredExams.length === 0 ? (
           <div className="card text-center py-16">
@@ -544,11 +592,27 @@ export default function StudyModePage() {
               const showFlashcards = isInvited ? e.showFlashcards !== false : true;
               const showReview = isInvited ? e.showReview !== false : true;
               const allowReattempt = isInvited ? e.allowReattempt !== false : true;
+              /** First attempt must not be blocked when allowReattempt is false (that flag is for retakes only). */
+              const canStartOrReattempt = !isExpired && (!isInvited || !attempted || allowReattempt);
+              const examTakeHref = isInvited && e._inviteToken
+                ? `/exam/${e._id}?invite=${encodeURIComponent(e._inviteToken)}`
+                : `/exam/${e._id}`;
               const hasStudyMode = showFlashcards || showReview;
               const qCount = e.questions?.length || 0;
               const diffColors = DIFF_COLORS[e.difficulty] || DIFF_COLORS.medium;
               const gradClass = CARD_GRADIENTS[idx % CARD_GRADIENTS.length];
               const accuracy = stats?.total > 0 ? Math.round((stats.correct / stats.total) * 100) : null;
+              const isOwnerCard = !isInvited && ownExamIds.has(e._id);
+              const cohort = ['instructor', 'admin'].includes(user?.role) && isOwnerCard
+                ? (e.attemptSummary ?? {
+                    participants: 0,
+                    uniqueAttempted: 0,
+                    passed: 0,
+                    failed: 0,
+                    notAttempted: 0,
+                    totalSubmissions: 0,
+                  })
+                : null;
 
               return (
                 <div key={e._id + (e._inviteId || '')}
@@ -577,6 +641,11 @@ export default function StudyModePage() {
                         {e.proctored && (
                           <span className="flex items-center gap-1 text-[10px] bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-semibold">
                             <Shield size={9} /> Proctored
+                          </span>
+                        )}
+                        {e.multipleSets && (
+                          <span className="flex items-center gap-1 text-[10px] bg-indigo-100 dark:bg-indigo-900/25 text-indigo-700 dark:text-indigo-300 px-2 py-0.5 rounded-full font-semibold">
+                            <Layers size={9} /> Multiple Sets
                           </span>
                         )}
                         <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full capitalize ${diffColors.badge}`}>
@@ -654,8 +723,37 @@ export default function StudyModePage() {
                       </div>
                     )}
 
-                    {/* Attempt stats */}
-                    {attempted ? (
+                    {/* Attempt stats — instructor: cohort from API; others: personal attempts */}
+                    {cohort ? (
+                      <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3">
+                        <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
+                          Cohort · {cohort.participants} tracked
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className="text-sm font-bold text-[var(--color-primary)]">{cohort.uniqueAttempted}</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Attempted</div>
+                          </div>
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{cohort.passed}</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Passed</div>
+                          </div>
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className="text-sm font-bold text-red-600 dark:text-red-400">{cohort.failed}</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Failed</div>
+                          </div>
+                          <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
+                            <div className="text-sm font-bold text-[var(--color-text-muted)]">{cohort.notAttempted}</div>
+                            <div className="text-[10px] text-[var(--color-text-muted)]">Remaining</div>
+                          </div>
+                        </div>
+                        {/* <p className="text-[9px] text-[var(--color-text-muted)] mt-1.5 leading-snug">
+                          Unique students with a submission; pass/fail from latest attempt. {cohort.totalSubmissions > 0 && (
+                            <span>{cohort.totalSubmissions} total submission{cohort.totalSubmissions !== 1 ? 's' : ''}.</span>
+                          )}
+                        </p> */}
+                      </div>
+                    ) : attempted ? (
                       <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3">
                         <div className="grid grid-cols-3 gap-2 text-center mb-2">
                           <div className="bg-[var(--color-bg-alt)] rounded-lg p-2">
@@ -693,38 +791,76 @@ export default function StudyModePage() {
                     )}
 
                     {/* Action buttons */}
-                    <div className="flex items-center gap-2">
-                      {isExpired ? (
-                        <span className="flex-1 text-center text-xs py-2 rounded-xl font-semibold bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 cursor-not-allowed">
-                          Expired
-                        </span>
-                      ) : (!isInvited || allowReattempt) ? (
-                        <Link to={`/exam/${e._id}`}
-                          className={`flex-1 text-center text-xs py-2 rounded-xl font-semibold transition-all bg-gradient-to-r ${gradClass} text-white hover:opacity-90 shadow-sm`}>
-                          {attempted ? 'Reattempt' : 'Start Exam'}
-                        </Link>
-                      ) : null}
-                      {hasStudyMode ? (
-                        <button onClick={() => loadExam(e)}
-                          className="flex-1 text-center text-xs btn-secondary py-2 rounded-xl font-semibold flex items-center justify-center gap-1">
-                          <FlipHorizontal size={12} /> Study
-                        </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      {isInstructorOnly && !isInvited ? (
+                        <>
+                          <button
+                            type="button"
+                            onClick={() => setEditExam(e)}
+                            className="flex-1 min-w-[100px] text-center text-xs py-2 rounded-xl font-semibold btn-secondary inline-flex items-center justify-center gap-1.5"
+                          >
+                            <Edit3 size={13} /> Edit
+                          </button>
+                          <Link
+                            to={`/instructor/report/${e._id}?returnTo=${encodeURIComponent('/tests')}`}
+                            className="flex-1 min-w-[100px] text-center text-xs py-2 rounded-xl font-semibold border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:border-[var(--color-primary)] hover:text-[var(--color-primary)] transition-colors inline-flex items-center justify-center gap-1.5"
+                          >
+                            <BarChart2 size={13} /> Report
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => setInviteExam(e)}
+                            className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors disabled:opacity-50"
+                            title="Invite users"
+                            disabled={isExpired}
+                          >
+                            <Users size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setDeleteTarget(e)}
+                            disabled={deleteExamMut.isPending}
+                            className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 hover:border-red-300 transition-colors disabled:opacity-50"
+                            title="Delete test"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </>
                       ) : (
-                        <span className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-2">No study mode</span>
-                      )}
-                      {isInstructor && !isInvited && (
-                        <button onClick={() => setEditExam(e)}
-                          className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
-                          title="Edit test">
-                          <Edit3 size={13} />
-                        </button>
-                      )}
-                      {isInstructor && !isInvited && (
-                        <button onClick={() => setInviteExam(e)}
-                          className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
-                          title="Invite users">
-                          <Users size={13} />
-                        </button>
+                        <>
+                          {isExpired ? (
+                            <span className="flex-1 text-center text-xs py-2 rounded-xl font-semibold bg-red-50 dark:bg-red-900/20 text-red-400 dark:text-red-500 cursor-not-allowed">
+                              Expired
+                            </span>
+                          ) : canStartOrReattempt ? (
+                            <Link to={examTakeHref}
+                              className={`flex-1 text-center text-xs py-2 rounded-xl font-semibold transition-all bg-gradient-to-r ${gradClass} text-white hover:opacity-90 shadow-sm`}>
+                              {attempted ? 'Reattempt' : 'Start Exam'}
+                            </Link>
+                          ) : null}
+                          {hasStudyMode ? (
+                            <button type="button" onClick={() => loadExam(e)}
+                              className="flex-1 text-center text-xs btn-secondary py-2 rounded-xl font-semibold flex items-center justify-center gap-1">
+                              <FlipHorizontal size={12} /> Study
+                            </button>
+                          ) : (
+                            <span className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-2">No study mode</span>
+                          )}
+                          {isInstructor && !isInvited && (
+                            <button type="button" onClick={() => setEditExam(e)}
+                              className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
+                              title="Edit test">
+                              <Edit3 size={13} />
+                            </button>
+                          )}
+                          {isInstructor && !isInvited && (
+                            <button type="button" onClick={() => setInviteExam(e)}
+                              className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors"
+                              title="Invite users">
+                              <Users size={13} />
+                            </button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -736,6 +872,16 @@ export default function StudyModePage() {
 
         {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} />}
         {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} invalidateKey="myExams" />}
+
+        <ConfirmDialog
+          open={!!deleteTarget}
+          onClose={() => !deleteExamMut.isPending && setDeleteTarget(null)}
+          onConfirm={() => deleteTarget && deleteExamMut.mutate(deleteTarget._id)}
+          title="Delete this test?"
+          description={deleteTarget ? `“${deleteTarget.title}” will be removed. Invites and reports for this test will be affected. This cannot be undone.` : ''}
+          confirmLabel="Delete test"
+          isPending={deleteExamMut.isPending}
+        />
       </div>
     );
   }

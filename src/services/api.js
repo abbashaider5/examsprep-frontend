@@ -73,9 +73,10 @@ export const examApi = {
   create: (data) => api.post('/exams', data),
   getAll: () => api.get('/exams'),
   getPublic: () => api.get('/exams/public'),
-  getById: (id) => api.get(`/exams/${id}`),
+  getById: (id, config = {}) => api.get(`/exams/${id}`, config),
   update: (id, data) => api.put(`/exams/${id}`, data),
-  updateQuestions: (id, questions) => api.put(`/exams/${id}/questions`, { questions }),
+  updateQuestions: (id, payload) =>
+    api.put(`/exams/${id}/questions`, Array.isArray(payload) ? { questions: payload } : payload),
   delete: (id) => api.delete(`/exams/${id}`),
   regenerate: (id, data) => api.post(`/exams/${id}/regenerate`, data),
   regenerateQuestion: (id, index) => api.post(`/exams/${id}/regenerate-question/${index}`),
@@ -104,6 +105,11 @@ export const certificateApi = {
 export const profileApi = {
   get: () => api.get('/profile'),
   update: (data) => api.patch('/profile', data),
+  uploadAvatar: (file) => {
+    const form = new FormData();
+    form.append('avatar', file);
+    return api.post('/profile/avatar', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
   analytics: () => api.get('/profile/analytics'),
   recommendation: () => api.get('/profile/recommendation'),
   changePassword: (data) => api.post('/profile/change-password', data),
@@ -114,8 +120,13 @@ export const leaderboardApi = {
 };
 
 export const adminApi = {
+  helpTopics: () => api.get('/admin/help/topics'),
+  createHelpTopic: (data) => api.post('/admin/help/topics', data),
+  updateHelpTopic: (topicId, data) => api.put(`/admin/help/topics/${topicId}`, data),
+  deleteHelpTopic: (topicId) => api.delete(`/admin/help/topics/${topicId}`),
   stats: () => api.get('/admin/stats'),
   users: (page, search = '', plan = '') => api.get(`/admin/users?page=${page}&search=${search}&plan=${plan}`),
+  createUser: (data) => api.post('/admin/users', data),
   updateRole: (id, role) => api.patch(`/admin/users/${id}/role`, { role }),
   toggleBlock: (id) => api.patch(`/admin/users/${id}/block`),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
@@ -159,6 +170,7 @@ export const instructorApi = {
   rejectInvite: (token) => api.post(`/instructor/invite/${token}/reject`),
   getMyInvites: () => api.get('/instructor/my-invites'),
   getMyAcceptedInvites: () => api.get('/instructor/my-accepted-invites'),
+  reevaluateResult: (resultId, data) => api.patch(`/instructor/results/${resultId}/reevaluate`, data),
 };
 
 export const groupApi = {
@@ -260,6 +272,12 @@ export const ticketApi = {
   getMine: (page = 1) => api.get(`/tickets/mine?page=${page}`),
   adminGetAll: (params = {}) => api.get('/tickets/admin', { params }),
   adminUpdate: (id, data) => api.patch(`/tickets/admin/${id}`, data),
+};
+
+/** Help center — uses optional auth cookie; topics filtered by role on server */
+export const helpApi = {
+  getTopics: () => api.get('/help/topics'),
+  getTopic: (topicId) => api.get(`/help/topics/${topicId}`),
 };
 
 export const announcementApi = {

@@ -1,39 +1,20 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  ArcElement, BarElement, CategoryScale,
-  Chart as ChartJS, Legend, LinearScale, Tooltip,
-} from 'chart.js';
-import {
-  Award, BarChart2, BookmarkCheck, Clock, Download, Edit3,
-  Eye, FileText, Mail, Plus, RefreshCw,
-  Shield,
-  Timer, Trophy, Upload, Users, X, Zap
+  Award, BarChart2, BookmarkCheck,
+  Download, Edit3,
+  Eye, FileText, LayoutDashboard, Layers, LifeBuoy, Mail, RefreshCw,
+  Settings, Shield,
+  Timer, Trash2, Upload, Users, X, Zap
 } from 'lucide-react';
 import { useRef, useState } from 'react';
-import { Bar, Doughnut } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
-import { groupApi, instructorApi } from '../services/api.js';
-import { useAuthStore, useThemeStore } from '../store/index.js';
-
-ChartJS.register(CategoryScale, LinearScale, BarElement, ArcElement, Tooltip, Legend);
-
-function useChartColors() {
-  const { dark } = useThemeStore();
-  return {
-    text: dark ? '#cbd5e1' : '#334155',
-    muted: dark ? '#64748b' : '#94a3b8',
-    grid: dark ? '#1e293b' : '#f1f5f9',
-    surface: dark ? '#1e293b' : '#ffffff',
-    primary: '#0d9488',
-    green: '#10b981',
-    amber: '#f59e0b',
-    red: '#ef4444',
-  };
-}
+import { examApi, groupApi, instructorApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
 
 function diffBadgeClass(d) {
   return d === 'easy' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
@@ -46,7 +27,6 @@ export default function InstructorPage() {
   const { user } = useAuthStore();
   const qc = useQueryClient();
   const navigate = useNavigate();
-  const c = useChartColors();
 
   const [selectedExam, setSelectedExam] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
@@ -57,6 +37,7 @@ export default function InstructorPage() {
   const [inviteFileName, setInviteFileName] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [editExam, setEditExam] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const inviteFileRef = useRef(null);
 
   const closeInviteModal = () => {
@@ -143,6 +124,16 @@ export default function InstructorPage() {
     onError: () => toast.error('Failed to send invites'),
   });
 
+  const deleteExamMut = useMutation({
+    mutationFn: (examId) => examApi.delete(examId),
+    onSuccess: () => {
+      toast.success('Test deleted');
+      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
+      qc.invalidateQueries({ queryKey: ['myExams'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not delete test'),
+  });
+
   const { data: groupsData } = useQuery({
     queryKey: ['groups'],
     queryFn: () => groupApi.getAll().then(r => r.data),
@@ -157,56 +148,7 @@ export default function InstructorPage() {
     );
   }
 
-  const {
-    totalExams = 0, totalInvites = 0, acceptedInvites = 0,
-    totalAttempts = 0, avgScore = 0, exams = []
-  } = analyticsData || {};
-
-  const pendingInvites = totalInvites - acceptedInvites;
-  const totalPassCount = exams.reduce((a, e) => a + (e.stats?.passCount || 0), 0);
-  const passRate = totalAttempts > 0 ? Math.round((totalPassCount / totalAttempts) * 100) : 0;
-
-  // ── Chart data ──────────────────────────────────────────────────────────────
-  const topExams = [...exams]
-    .filter(e => (e.stats?.count || e.timesAttempted || 0) > 0)
-    .sort((a, b) => (b.stats?.count || 0) - (a.stats?.count || 0))
-    .slice(0, 6);
-
-  const scoreBarData = {
-    labels: topExams.map(e => e.title.length > 16 ? e.title.slice(0, 16) + '…' : e.title),
-    datasets: [{
-      label: 'Avg Score %',
-      data: topExams.map(e => e.stats?.avgScore ? Math.round(e.stats.avgScore) : 0),
-      backgroundColor: topExams.map(e => {
-        const s = e.stats?.avgScore || 0;
-        return s >= 70 ? `${c.green}cc` : s >= 50 ? `${c.amber}cc` : `${c.red}cc`;
-      }),
-      borderRadius: 6, borderSkipped: false,
-    }],
-  };
-
-  const totalFail = totalAttempts - totalPassCount;
-  const doughnutData = {
-    labels: ['Passed', 'Failed'],
-    datasets: [{
-      data: [totalPassCount || 0, totalFail || 0],
-      backgroundColor: [`${c.green}cc`, `${c.red}cc`],
-      borderColor: [c.green, c.red],
-      borderWidth: 2,
-    }],
-  };
-
-  const chartBaseOpts = {
-    responsive: true, maintainAspectRatio: false,
-    plugins: {
-      legend: { display: false },
-      tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8, padding: 10 },
-    },
-    scales: {
-      x: { grid: { color: c.grid }, ticks: { color: c.muted, font: { size: 10 } } },
-      y: { grid: { color: c.grid }, ticks: { color: c.muted, font: { size: 10 } }, beginAtZero: true, max: 100 },
-    },
-  };
+  const { exams = [] } = analyticsData || {};
 
   const openInviteFor = (exam) => {
     setSelectedExam(exam);
@@ -217,7 +159,7 @@ export default function InstructorPage() {
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
 
       {/* ── Header ── */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 px-6 py-6 mb-8 shadow-lg">
         <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-8 left-0 w-40 h-40 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
         <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-3">
@@ -226,75 +168,57 @@ export default function InstructorPage() {
               <BookmarkCheck size={20} className="text-white" />
             </div>
             <div>
-              <h1 className="text-xl font-extrabold text-white leading-tight">Instructor Dashboard</h1>
-              <p className="text-sm text-teal-100 mt-0.5">Manage tests, track students, view performance analytics.</p>
+              <h1 className="text-xl font-extrabold text-white leading-tight">Instructor hub</h1>
+              <p className="text-sm text-teal-100 mt-0.5">
+                Welcome{user?.name ? `, ${user.name.split(' ')[0]}` : ''}. Create tests, invite students, and review outcomes from here.
+              </p>
             </div>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            <Link to="/instructor/analytics" className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
-              <BarChart2 size={14} /> Reports
-            </Link>
-            <Link to="/batches" className="flex items-center gap-1.5 bg-white/20 hover:bg-white/30 text-white text-sm font-medium px-4 py-2 rounded-xl transition-colors">
-              <Users size={14} /> Batches
-            </Link>
-            <Link to="/create-exam" className="flex items-center gap-1.5 bg-white text-teal-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors shadow-sm">
-              <Zap size={14} /> Create Test
-            </Link>
-          </div>
+          <Link to="/create-exam" className="flex items-center gap-1.5 bg-white text-teal-700 font-semibold text-sm px-4 py-2 rounded-xl hover:bg-white/90 transition-colors shadow-sm self-start sm:self-center">
+            <Zap size={14} /> New test
+          </Link>
         </div>
       </div>
 
-      
-
-      {/* ── Stats edit ── */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
+      {/* ── Navigation hub ── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 mb-8">
         {[
-          { label: 'Tests',     value: totalExams,       icon: BookmarkCheck, gradient: 'from-teal-400 to-cyan-500' },
-          { label: 'Students',  value: acceptedInvites,  icon: Users,         gradient: 'from-blue-400 to-indigo-500' },
-          { label: 'Attempts',  value: totalAttempts,    icon: BarChart2,     gradient: 'from-cyan-400 to-teal-500' },
-          { label: 'Avg Score', value: avgScore ? `${Math.round(avgScore)}%` : '—', icon: Trophy, gradient: 'from-amber-400 to-orange-500' },
-          { label: 'Pass Rate', value: `${passRate}%`,   icon: Shield,        gradient: 'from-green-400 to-emerald-500' },
-          { label: 'Pending',   value: pendingInvites,   icon: Clock,         gradient: 'from-sky-400 to-blue-500' },
-        ].map(s => (
-          <div key={s.label} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl p-2.5 flex items-center gap-2.5">
-            <div className={`w-8 h-8 rounded-lg bg-gradient-to-br ${s.gradient} flex items-center justify-center shadow-sm shrink-0`}>
-              <s.icon size={14} className="text-white" />
+          { label: 'Create test', desc: 'Generate a new exam', icon: Zap, to: '/create-exam', accent: 'from-teal-400 to-cyan-500' },
+          { label: 'All tests', desc: 'Browse and manage tests', icon: BookmarkCheck, to: '/tests', accent: 'from-blue-400 to-indigo-500' },
+          { label: 'Test reports', desc: 'Analytics and attempts', icon: BarChart2, to: '/test-reports', accent: 'from-violet-400 to-purple-500' },
+          { label: 'Batches', desc: 'Groups and invites', icon: Users, to: '/batches', accent: 'from-sky-400 to-blue-500' },
+          { label: 'Insights', desc: 'Student performance notes', icon: LayoutDashboard, to: '/instructor/performance', accent: 'from-emerald-400 to-teal-500' },
+          { label: 'Certificates', desc: 'Issued certificates', icon: Award, to: '/certificates', accent: 'from-amber-400 to-orange-500' },
+          { label: 'Settings', desc: 'Security and preferences', icon: Settings, to: '/settings', accent: 'from-slate-400 to-slate-600' },
+          { label: 'Help & tickets', desc: 'Support requests', icon: LifeBuoy, to: '/tickets', accent: 'from-rose-400 to-pink-500' },
+        ].map(item => (
+          <Link
+            key={item.to + item.label}
+            to={item.to}
+            className="group bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex gap-3 transition-all hover:border-[var(--color-primary)]/35 hover:shadow-md hover:-translate-y-0.5"
+          >
+            <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.accent} flex items-center justify-center shadow-sm shrink-0 group-hover:opacity-95`}>
+              <item.icon size={18} className="text-white" />
             </div>
             <div className="min-w-0">
-              <div className="text-base font-bold text-[var(--color-text)] leading-none truncate">{s.value}</div>
-              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{s.label}</div>
+              <p className="font-semibold text-[var(--color-text)] text-sm">{item.label}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5 leading-snug">{item.desc}</p>
             </div>
-          </div>
-        ))}
-      </div>
-
-            {/* ── Quick Actions ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 my-6">
-        {[
-          { label: 'Create Test',  icon: Zap,      to: '/create-exam',           color: 'bg-teal-50 dark:bg-teal-900/20 border-teal-200 dark:border-teal-800 text-teal-700 dark:text-teal-400 hover:bg-teal-100 dark:hover:bg-teal-900/30' },
-          { label: 'Create Batch', icon: Plus,     to: '/batches',               color: 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/30' },
-          { label: 'View Reports', icon: BarChart2, to: '/instructor/analytics', color: 'bg-indigo-50 dark:bg-indigo-900/20 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-400 hover:bg-indigo-100 dark:hover:bg-indigo-900/30' },
-          { label: 'Certificates', icon: Trophy,   to: '/certificates',          color: 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/30' },
-        ].map(action => (
-          <Link
-            key={action.label}
-            to={action.to}
-            className={`flex items-center gap-2.5 px-4 py-3 rounded-xl border font-medium text-sm transition-colors ${action.color}`}
-          >
-            <action.icon size={16} className="shrink-0" />
-            {action.label}
           </Link>
         ))}
       </div>
 
             {/* ── Tests List ── */}
       <div className="card">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold text-[var(--color-text)] flex items-center gap-2 text-sm">
-            <BarChart2 size={15} className="text-[var(--color-primary)]" /> Your Tests
-            {exams.length > 0 && <span className="text-xs text-[var(--color-text-muted)] font-normal">({exams.length} total)</span>}
-          </h2>
-          <Link to="/create-exam" className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5">
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-4">
+          <div className="min-w-0 flex-1">
+            <h2 className="font-semibold text-[var(--color-text)] flex items-center gap-2 text-sm">
+              <BarChart2 size={15} className="text-[var(--color-primary)]" /> Your Tests
+              {exams.length > 0 && <span className="text-xs text-[var(--color-text-muted)] font-normal">({exams.length} total)</span>}
+            </h2>
+
+          </div>
+          <Link to="/create-exam" className="btn-primary text-xs py-1.5 px-3 flex items-center gap-1.5 shrink-0 self-start">
             <Zap size={12} /> New Test
           </Link>
         </div>
@@ -303,7 +227,7 @@ export default function InstructorPage() {
           <div className="text-center py-16">
             <BookmarkCheck size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
             <p className="font-medium text-[var(--color-text)] mb-1">No tests yet</p>
-            <p className="text-sm text-[var(--color-text-muted)] mb-4">Create your first AI-powered test and invite your students.</p>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Create your first test and invite students when you’re ready.</p>
             <Link to="/create-exam" className="btn-primary px-5 py-2 inline-flex items-center gap-2 text-sm">
               <Zap size={14} /> Create Your First Test
             </Link>
@@ -329,7 +253,11 @@ export default function InstructorPage() {
                         <Shield size={8} /> Proctored
                       </span>
                     )}
-                    
+                    {exam.multipleSets && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-400 px-1.5 py-0.5 rounded-full font-semibold">
+                        <Layers size={8} /> Multiple Sets
+                      </span>
+                    )}
                     {exam.allowReattempt && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 px-1.5 py-0.5 rounded-full font-semibold">
                         <RefreshCw size={8} /> Reattempt
@@ -355,28 +283,22 @@ export default function InstructorPage() {
                   </div>
                 </div>
 
-                <div className="hidden sm:flex items-center gap-4 shrink-0">
-                  <div className="text-center">
-                    <div className="text-xs font-bold text-[var(--color-text)]">{exam.inviteCount || 0}</div>
-                    <div className="text-[10px] text-[var(--color-text-muted)]">Invited</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count || exam.timesAttempted || 0}</div>
-                    <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
-                  </div>
-                  <div className="text-center hidden md:block">
-                    <div className="text-xs font-bold text-teal-600">{exam.stats?.avgScore ? `${Math.round(exam.stats.avgScore)}%` : '—'}</div>
-                    <div className="text-[10px] text-[var(--color-text-muted)]">Avg Score</div>
-                  </div>
-                  <div className="text-center hidden lg:block">
-                    <div className="text-xs font-bold text-green-600">{exam.stats?.passCount ?? '—'}</div>
+                <div className="hidden lg:flex items-center gap-4 xl:gap-5 shrink-0 flex-wrap justify-end">
+                  <div className="text-center min-w-[3rem]">
+                    <div className="text-xs font-bold text-emerald-600 dark:text-emerald-400">{exam.stats?.passCount ?? 0}</div>
                     <div className="text-[10px] text-[var(--color-text-muted)]">Passed</div>
                   </div>
-                  <div className="text-center hidden xl:block">
-                    <div className="text-xs font-bold text-amber-600">
-                      {exam.stats?.count ? `${Math.round((exam.stats.passCount / exam.stats.count) * 100)}%` : '—'}
-                    </div>
-                    <div className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</div>
+                  <div className="text-center min-w-[3rem]">
+                    <div className="text-xs font-bold text-red-600 dark:text-red-400">{exam.stats?.failCount ?? 0}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Failed</div>
+                  </div>
+                  <div className="text-center min-w-[3rem]">
+                    <div className="text-xs font-bold text-amber-600 dark:text-amber-400">{exam.stats?.notAttempted ?? 0}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Not attempted</div>
+                  </div>
+                  <div className="text-center min-w-[3rem]">
+                    <div className="text-xs font-bold text-[var(--color-primary)]">{exam.stats?.count ?? 0}</div>
+                    <div className="text-[10px] text-[var(--color-text-muted)]">Students</div>
                   </div>
                 </div>
 
@@ -401,72 +323,21 @@ export default function InstructorPage() {
                   >
                     <Mail size={11} /> Invite
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeleteTarget(exam)}
+                    disabled={deleteExamMut.isPending}
+                    className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                    title="Delete test"
+                  >
+                    <Trash2 size={14} />
+                  </button>
                 </div>
               </div>
             ))}
           </div>
         )}
       </div>
-
-      {/* ── Charts ── */}
-      {exams.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 my-6">
-          {/* Pass vs Fail doughnut */}
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
-            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Pass vs Fail</h3>
-            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Overall across all tests</p>
-            <div style={{ height: 180 }}>
-              <Doughnut data={doughnutData} options={{
-                responsive: true, maintainAspectRatio: false, cutout: '65%',
-                plugins: {
-                  legend: { display: true, position: 'bottom', labels: { color: c.muted, font: { size: 11 }, boxWidth: 12, padding: 12 } },
-                  tooltip: { backgroundColor: c.surface, titleColor: c.text, bodyColor: c.muted, borderColor: c.grid, borderWidth: 1, cornerRadius: 8 },
-                },
-              }} />
-            </div>
-            <div className="flex justify-center gap-4 mt-3">
-              <div className="text-center">
-                <p className="text-lg font-bold text-emerald-600">{totalPassCount}</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Passed</p>
-              </div>
-              <div className="w-px bg-[var(--color-border)]" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-red-500">{totalFail}</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Failed</p>
-              </div>
-              <div className="w-px bg-[var(--color-border)]" />
-              <div className="text-center">
-                <p className="text-lg font-bold text-[var(--color-primary)]">{passRate}%</p>
-                <p className="text-[10px] text-[var(--color-text-muted)]">Pass Rate</p>
-              </div>
-            </div>
-          </div>
-
-          {/* Avg Score per test bar */}
-          <div className="lg:col-span-2 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
-            <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1">Avg Score by Test</h3>
-            <p className="text-[10px] text-[var(--color-text-muted)] mb-4">Top {topExams.length} tests by attempt count</p>
-            {topExams.length === 0 ? (
-              <div className="flex items-center justify-center h-[180px] text-sm text-[var(--color-text-muted)]">
-                No attempt data yet
-              </div>
-            ) : (
-              <div style={{ height: 180 }}>
-                <Bar data={scoreBarData} options={{
-                  ...chartBaseOpts,
-                  scales: {
-                    ...chartBaseOpts.scales,
-                    y: { ...chartBaseOpts.scales.y, ticks: { ...chartBaseOpts.scales.y.ticks, callback: v => `${v}%` } },
-                  },
-                  plugins: { ...chartBaseOpts.plugins, legend: { display: false } },
-                }} />
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-
 
       {/* ── Invite Modal — two-column layout ── */}
       {showInviteModal && selectedExam && (
@@ -499,7 +370,7 @@ export default function InstructorPage() {
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Settings</p>
                 <div className="space-y-1.5">
                   {[
-                    { label: 'AI Proctoring', value: selectedExam.proctored, icon: Shield },
+                    { label: 'Proctoring', value: selectedExam.proctored, icon: Shield },
                     { label: 'Reattempt', value: selectedExam.allowReattempt, icon: RefreshCw },
                     { label: 'Show Answers', value: selectedExam.showAnswersAfter, icon: Eye },
                     { label: 'Certificate', value: selectedExam.certificate !== false, icon: Award },
@@ -544,17 +415,14 @@ export default function InstructorPage() {
 
               {/* Stats */}
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Stats</p>
-                <div className="grid grid-cols-2 gap-2">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-2">Activity</p>
+                <div className="grid grid-cols-1 gap-2">
                   {[
-                    { label: 'Invited',   value: selectedExam.inviteCount || 0, color: 'text-[var(--color-text)]' },
-                    { label: 'Attempts',  value: selectedExam.stats?.count || selectedExam.timesAttempted || 0, color: 'text-[var(--color-primary)]' },
-                    { label: 'Avg Score', value: selectedExam.stats?.avgScore ? `${Math.round(selectedExam.stats.avgScore)}%` : '—', color: 'text-teal-600' },
-                    { label: 'Passed',    value: selectedExam.stats?.passCount ?? '—', color: 'text-green-600' },
+                    { label: 'Students', value: selectedExam.stats?.count ?? selectedExam.timesAttempted ?? 0, color: 'text-[var(--color-primary)]', hint: 'unique learners' },
                   ].map(s => (
                     <div key={s.label} className="bg-[var(--color-bg)] rounded-lg p-2 text-center">
                       <p className={`text-sm font-bold ${s.color}`}>{s.value}</p>
-                      <p className="text-[9px] text-[var(--color-text-muted)] mt-0.5">{s.label}</p>
+                      <p className="text-[9px] text-[var(--color-text-muted)] mt-0.5">{s.label}{s.hint ? ` · ${s.hint}` : ''}</p>
                     </div>
                   ))}
                 </div>
@@ -745,6 +613,22 @@ export default function InstructorPage() {
 
       {/* Edit Exam Modal */}
       {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} />}
+
+      <ConfirmDialog
+        open={!!deleteTarget}
+        onClose={() => !deleteExamMut.isPending && setDeleteTarget(null)}
+        onConfirm={() => {
+          if (!deleteTarget) return;
+          const id = deleteTarget._id;
+          deleteExamMut.mutate(id, {
+            onSuccess: () => setDeleteTarget(null),
+          });
+        }}
+        title="Delete this test?"
+        description={deleteTarget ? `“${deleteTarget.title}” will be removed. Invites and reports for this test will be affected. This cannot be undone.` : ''}
+        confirmLabel="Delete test"
+        isPending={deleteExamMut.isPending}
+      />
     </div>
   );
 }

@@ -5,6 +5,8 @@ import {
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { instructorApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 function scoreColor(v) {
   return v >= 70 ? 'text-emerald-600 dark:text-emerald-400' : v >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-600 dark:text-red-400';
@@ -55,6 +57,7 @@ function getAIRecommendation(subjectPerf, overallAvg) {
 }
 
 export default function InstructorPerformancePage() {
+  const { user } = useAuthStore();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all'); // all | weak | average | strong
@@ -134,8 +137,8 @@ export default function InstructorPerformancePage() {
               <ArrowLeft size={18} />
             </button>
             <div>
-              <h1 className="text-xl font-extrabold text-white leading-tight">AI Student Insights</h1>
-              <p className="text-sm text-indigo-100 mt-0.5">Per-student performance analysis and AI recommendations</p>
+              <h1 className="text-xl font-extrabold text-white leading-tight">Student insights</h1>
+              <p className="text-sm text-indigo-100 mt-0.5">Per-student performance and focused recommendations</p>
             </div>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -235,12 +238,12 @@ export default function InstructorPerformancePage() {
           </p>
           <p className="text-sm text-[var(--color-text-muted)] max-w-xs mx-auto">
             {studentPerformance.length === 0
-              ? 'Once students attempt your tests, AI-powered performance insights will appear here.'
+              ? 'Once students attempt your tests, insights will appear here.'
               : 'Try adjusting your search or clearing the filter.'}
           </p>
           {studentPerformance.length === 0 && (
             <Link
-              to="/instructor-dashboard"
+              to={getDashboardPath(user?.role)}
               className="inline-flex items-center gap-2 mt-5 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors"
             >
               <ArrowLeft size={14} /> Back to Dashboard
@@ -269,10 +272,6 @@ export default function InstructorPerformancePage() {
                     <p className="text-xs text-[var(--color-text-muted)] truncate">{s.user.email}</p>
                   </div>
                   <div className="flex items-center gap-3 shrink-0">
-                    <div className="text-center">
-                      <div className={`text-lg font-extrabold ${scoreColor(s._overallAvg)}`}>{s._overallAvg}%</div>
-                      <div className="text-[10px] text-[var(--color-text-muted)]">Avg Score</div>
-                    </div>
                     <div className="text-center">
                       <div className="text-sm font-bold text-[var(--color-text)]">{s.exams.length}</div>
                       <div className="text-[10px] text-[var(--color-text-muted)]">Attempts</div>
@@ -318,7 +317,7 @@ export default function InstructorPerformancePage() {
                       <Lightbulb size={13} className="text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">AI Recommendation</p>
+                      <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-300 mb-1">Recommendation</p>
                       <p className="text-xs text-indigo-600 dark:text-indigo-400 leading-relaxed">{s._recommendation}</p>
                     </div>
                   </div>

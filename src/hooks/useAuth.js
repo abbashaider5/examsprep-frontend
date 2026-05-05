@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { authApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 export const useAuth = () => {
   const { user, isAuthenticated, setUser, clearUser } = useAuthStore();
@@ -14,7 +15,7 @@ export const useAuth = () => {
     onSuccess: (res) => {
       if (res.data.requiresOTP) return; // caller handles OTP step
       setUser(res.data.user);
-      navigate('/dashboard');
+      navigate(getDashboardPath(res.data.user?.role));
       toast.success('Welcome back!');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Login failed'),
@@ -25,7 +26,8 @@ export const useAuth = () => {
     onSuccess: (res) => {
       if (res.data.requiresOTP) return; // caller handles OTP step
       setUser(res.data.user);
-      navigate('/dashboard');
+      if (res.data.redirectPath) navigate(res.data.redirectPath);
+      else navigate(getDashboardPath(res.data.user?.role));
       toast.success('Account created!');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Signup failed'),
@@ -35,7 +37,8 @@ export const useAuth = () => {
     mutationFn: authApi.verifyOtp,
     onSuccess: (res) => {
       setUser(res.data.user);
-      navigate('/dashboard');
+      if (res.data.redirectPath) navigate(res.data.redirectPath);
+      else navigate(getDashboardPath(res.data.user?.role));
       toast.success(res.data.message || 'Verified!');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'OTP verification failed'),
@@ -51,7 +54,8 @@ export const useAuth = () => {
     onSuccess: (res) => {
       if (res.data.requiresOTP) return;
       setUser(res.data.user);
-      navigate('/dashboard');
+      if (res.data.redirectPath) navigate(res.data.redirectPath);
+      else navigate(getDashboardPath(res.data.user?.role));
       toast.success(res.data.message || 'Signed in with Google');
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Google sign-in failed'),

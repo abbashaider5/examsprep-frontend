@@ -1,16 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarElement, CategoryScale, Chart as ChartJS, LinearScale, Tooltip } from 'chart.js';
 import {
-  Award, BadgeCheck, BarChart2, Bell, Check, CheckCircle, CreditCard,
-  Edit3, Flame, GraduationCap, KeyRound, Lock, RefreshCw,
-  Settings, Shield, Sliders, Star, Trophy, User, X, Zap,
+  ArrowLeft, Award, BadgeCheck, BarChart2, Camera, Check, Edit3, Loader2, Settings, Shield, Star, Trophy, User, X, Zap,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import Modal from '../components/Modal.jsx';
-import { paymentApi, profileApi } from '../services/api.js';
+import { profileApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 ChartJS.register(BarElement, CategoryScale, LinearScale, Tooltip);
@@ -23,11 +20,14 @@ const PLAN_INFO = {
 
 const TABS = [
   { id: 'account',      label: 'Account',      icon: User },
-  { id: 'subscription', label: 'Subscription', icon: CreditCard, instructorOnly: true, hideForUserRole: true },
-  { id: 'billing',      label: 'Billing',      icon: BarChart2, instructorOnly: true, hideForUserRole: true },
-  { id: 'preferences',  label: 'Preferences',  icon: Settings, instructorOnly: true, hideForUserRole: true },
   { id: 'performance',  label: 'Performance',  icon: Star },
 ];
+
+const COUNTRIES = [
+  'India', 'United States', 'United Kingdom', 'Canada', 'Australia',
+  'Germany', 'France', 'Singapore', 'United Arab Emirates', 'Other',
+];
+
 
 export default function ProfilePage() {
   const { user, setUser } = useAuthStore();
@@ -35,43 +35,17 @@ export default function ProfilePage() {
   const [tab, setTab] = useState('account');
   const [editing, setEditing] = useState(false);
   const [name, setName] = useState(user?.name || '');
-  const [pwForm, setPwForm] = useState({ current: '', new: '', confirm: '' });
-  const [twoFactorAction, setTwoFactorAction] = useState(null);
-
-  // Instructor preferences — persisted in localStorage
-  const PREF_KEY = 'instructor_prefs';
-  const loadPrefs = () => {
-    try { return JSON.parse(localStorage.getItem(PREF_KEY)) || {}; } catch { return {}; }
-  };
-  const [prefs, setPrefs] = useState(() => ({
-    defaultDifficulty: 'medium',
-    defaultQuestions: 10,
-    defaultPassingScore: 60,
-    emailOnAttempt: true,
-    emailOnBatchJoin: true,
-    weeklyReport: false,
-    ...loadPrefs(),
-  }));
-
-  const savePrefs = (updated) => {
-    setPrefs(updated);
-    localStorage.setItem(PREF_KEY, JSON.stringify(updated));
-    toast.success('Preferences saved');
-  };
+  const [profileForm, setProfileForm] = useState({
+    schoolName: user?.schoolName || '',
+    country: user?.address?.country || '',
+    state: user?.address?.state || '',
+    city: user?.address?.city || '',
+    zipCode: user?.address?.zipCode || '',
+  });
 
   const { data: analyticsData } = useQuery({
     queryKey: ['analytics'],
     queryFn: () => profileApi.analytics().then(r => r.data),
-  });
-
-  const { data: subData, isLoading: loadingSub } = useQuery({
-    queryKey: ['subscription'],
-    queryFn: () => paymentApi.getSubscription().then(r => r.data),
-  });
-
-  const { data: txnData, isLoading: loadingTxn } = useQuery({
-    queryKey: ['transactions'],
-    queryFn: () => paymentApi.getTransactions().then(r => r.data),
   });
 
   const updateMut = useMutation({
@@ -85,14 +59,16 @@ export default function ProfilePage() {
     onError: () => toast.error('Update failed'),
   });
 
-  const changePwMut = useMutation({
-    mutationFn: (data) => profileApi.changePassword(data),
-    onSuccess: () => {
-      toast.success('Password changed successfully');
-      setPwForm({ current: '', new: '', confirm: '' });
+  const avatarMut = useMutation({
+    mutationFn: (file) => profileApi.uploadAvatar(file),
+    onSuccess: (res) => {
+      if (res?.data?.user) setUser(res.data.user);
+      qc.invalidateQueries({ queryKey: ['me'] });
+      toast.success('Profile image updated');
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to change password'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to upload profile image'),
   });
+
 
   const topicPerf = analyticsData?.topicPerf || {};
   const chartData = {
@@ -105,50 +81,99 @@ export default function ProfilePage() {
   const PlanIcon = planInfo.icon;
   const isFreePlan = plan === 'free';
   const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
+  const isStudent = user?.role === 'user';
   const visibleTabs = TABS.filter((t) => {
     if (user?.role === 'user' && t.hideForUserRole) return false;
     return !t.instructorOnly || isInstructor || !isFreePlan;
   });
-  const transactions = txnData?.transactions || [];
   const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-  const fmtAmount = (paise) => `₹${(paise / 100).toFixed(0)}`;
-  const usedExams = (user?.monthlyLimit || 3) - (user?.remaining ?? user?.monthlyLimit ?? 3);
-  const usagePct = Math.min(100, (usedExams / (user?.monthlyLimit || 3)) * 100);
+  const joinDate = user?.createdAt ? fmtDate(user.createdAt) : '—';
+  const roleCountry = user?.address?.country || 'Not set';
 
-  const handleToggleTwoFactor = () => {
-    setTwoFactorAction(!user?.twoFactorEnabled ? 'enable' : 'disable');
+  const handleProfileDetailsSave = () => {
+    const clean = {
+      schoolName: profileForm.schoolName.trim(),
+      country: profileForm.country.trim(),
+      state: profileForm.state.trim(),
+      city: profileForm.city.trim(),
+      zipCode: profileForm.zipCode.trim(),
+    };
+    if (clean.zipCode && !/^[A-Za-z0-9\- ]{3,20}$/.test(clean.zipCode)) {
+      toast.error('Please enter a valid zip/postal code');
+      return;
+    }
+    updateMut.mutate({
+      schoolName: clean.schoolName,
+      address: {
+        country: clean.country,
+        state: clean.state,
+        city: clean.city,
+        zipCode: clean.zipCode,
+      },
+    });
   };
 
-  const confirmToggleTwoFactor = () => {
-    const enabling = twoFactorAction === 'enable';
-    updateMut.mutate(
-      { twoFactorEnabled: enabling },
-      {
-        onSuccess: (res) => {
-          if (res?.data?.user) setUser(res.data.user);
-          qc.invalidateQueries({ queryKey: ['me'] });
-          toast.success(`2FA ${enabling ? 'enabled' : 'disabled'}`);
-          setTwoFactorAction(null);
-        },
-        onError: () => setTwoFactorAction(null),
-      }
-    );
-  };
+
+  useEffect(() => {
+    setName(user?.name || '');
+    setProfileForm({
+      schoolName: user?.schoolName || '',
+      country: user?.address?.country || '',
+      state: user?.address?.state || '',
+      city: user?.address?.city || '',
+      zipCode: user?.address?.zipCode || '',
+    });
+  }, [user]);
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in max-w-4xl">
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">Profile</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">Manage your personal and organization details.</p>
+        </div>
+        <Link to="/dashboard" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
+          <ArrowLeft size={14} /> Back
+        </Link>
+      </div>
 
       {/* ── Profile header ── */}
       <div className="card mb-6 flex flex-col sm:flex-row items-start sm:items-center gap-5">
-        <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary)] text-white text-2xl font-bold flex items-center justify-center shrink-0">
-          {user?.name?.[0]?.toUpperCase()}
+        <div className="relative shrink-0">
+          {user?.avatar ? (
+            <img
+              src={user.avatar}
+              alt={user?.name || 'Profile'}
+              className="w-16 h-16 rounded-2xl object-cover border border-[var(--color-border)]"
+            />
+          ) : (
+            <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary)] text-white text-2xl font-bold flex items-center justify-center">
+              {user?.name?.[0]?.toUpperCase()}
+            </div>
+          )}
+          <label className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-[var(--color-surface)] border border-[var(--color-border)] flex items-center justify-center cursor-pointer hover:border-[var(--color-primary)]">
+            {avatarMut.isPending ? <Loader2 size={13} className="animate-spin text-[var(--color-primary)]" /> : <Camera size={13} className="text-[var(--color-text-muted)]" />}
+            <input
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                avatarMut.mutate(file);
+                e.target.value = '';
+              }}
+            />
+          </label>
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
             <h2 className="text-lg font-bold text-[var(--color-text)]">{user?.name}</h2>
-            <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${planInfo.color}`}>
-              <PlanIcon size={10} className="inline mr-1" />{planInfo.label}
-            </span>
+            {!isStudent && (
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${planInfo.color}`}>
+                <PlanIcon size={10} className="inline mr-1" />{planInfo.label}
+              </span>
+            )}
             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] capitalize">
               {user?.role || 'user'}
             </span>
@@ -156,20 +181,18 @@ export default function ProfilePage() {
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{user?.email}</p>
           <div className="flex flex-wrap gap-4 mt-2">
             <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-              <GraduationCap size={12} className="text-[var(--color-primary)]" />
-              <span className="font-medium text-[var(--color-text)]">{user?.level || 'Beginner'}</span>
+              <span className="font-medium text-[var(--color-text)]">{user?.totalExams || 0}</span> exams attempted
             </div>
             <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-              <Flame size={12} className="text-orange-500" />
-              <span className="font-medium text-[var(--color-text)]">{user?.streak || 0} day streak</span>
+              <span className="font-medium text-[var(--color-text)]">Join Date:</span> {joinDate}
             </div>
+            {isInstructor && (
+              <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+                <span className="font-medium text-[var(--color-text)]">Country:</span> {roleCountry}
+              </div>
+            )}
             <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-              <Star size={12} className="text-purple-500" />
-              <span className="font-medium text-[var(--color-text)]">{user?.xp || 0} XP</span>
-            </div>
-            <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-              <Trophy size={12} className="text-yellow-500" />
-              <span className="font-medium text-[var(--color-text)]">{user?.totalExams || 0} exams taken</span>
+              <span className="font-medium text-[var(--color-text)]">Profile image:</span> Editable
             </div>
           </div>
         </div>
@@ -243,353 +266,81 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* Change Password */}
           <div className="card">
             <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <KeyRound size={15} className="text-[var(--color-primary)]" /> Change Password
+              <Settings size={15} className="text-[var(--color-primary)]" /> Organization & Address
             </h3>
-            <div className="space-y-3">
-              <div>
-                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Current Password</label>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="sm:col-span-2">
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">School Name</label>
                 <input
-                  type="password"
                   className="input w-full text-sm"
-                  placeholder="Enter current password"
-                  value={pwForm.current}
-                  onChange={e => setPwForm(p => ({ ...p, current: e.target.value }))}
+                  value={profileForm.schoolName}
+                  onChange={(e) => setProfileForm(p => ({ ...p, schoolName: e.target.value }))}
+                  placeholder="Enter school or organization name"
                 />
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">New Password</label>
-                  <input
-                    type="password"
-                    className="input w-full text-sm"
-                    placeholder="Min 6 characters"
-                    value={pwForm.new}
-                    onChange={e => setPwForm(p => ({ ...p, new: e.target.value }))}
-                  />
-                </div>
-                <div>
-                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Confirm Password</label>
-                  <input
-                    type="password"
-                    className="input w-full text-sm"
-                    placeholder="Repeat new password"
-                    value={pwForm.confirm}
-                    onChange={e => setPwForm(p => ({ ...p, confirm: e.target.value }))}
-                  />
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  if (pwForm.new.length < 6) { toast.error('Password must be at least 6 characters'); return; }
-                  if (pwForm.new !== pwForm.confirm) { toast.error('Passwords do not match'); return; }
-                  changePwMut.mutate({ currentPassword: pwForm.current, newPassword: pwForm.new });
-                }}
-                disabled={!pwForm.current || !pwForm.new || changePwMut.isPending}
-                className="btn-primary py-2 px-6 text-sm disabled:opacity-50"
-              >
-                {changePwMut.isPending ? 'Updating...' : 'Update Password'}
-              </button>
-            </div>
-          </div>
-
-          {/* Two-factor authentication */}
-          <div className="card">
-            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <Shield size={15} className="text-[var(--color-primary)]" /> Security
-            </h3>
-            <div className="flex items-start justify-between gap-4">
               <div>
-                <p className="text-sm font-medium text-[var(--color-text)] flex items-center gap-1.5">
-                  <Lock size={14} className="text-[var(--color-primary)]" /> Two-Factor Authentication (2FA)
-                </p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  Add an extra verification step during login to improve account security.
-                </p>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Country</label>
+                <select
+                  className="input w-full text-sm"
+                  value={profileForm.country}
+                  onChange={(e) => setProfileForm(p => ({ ...p, country: e.target.value }))}
+                >
+                  <option value="">Select country</option>
+                  {COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
+                </select>
               </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">State</label>
+                <input
+                  className="input w-full text-sm"
+                  value={profileForm.state}
+                  onChange={(e) => setProfileForm(p => ({ ...p, state: e.target.value }))}
+                  placeholder="State"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">City</label>
+                <input
+                  className="input w-full text-sm"
+                  value={profileForm.city}
+                  onChange={(e) => setProfileForm(p => ({ ...p, city: e.target.value }))}
+                  placeholder="City"
+                />
+              </div>
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Zip Code</label>
+                <input
+                  className="input w-full text-sm"
+                  value={profileForm.zipCode}
+                  onChange={(e) => setProfileForm(p => ({ ...p, zipCode: e.target.value }))}
+                  placeholder="Zip / postal code"
+                />
+              </div>
+            </div>
+            <div className="mt-4">
               <button
-                onClick={handleToggleTwoFactor}
+                className="btn-primary py-2 px-6 text-sm disabled:opacity-60"
                 disabled={updateMut.isPending}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 mt-0.5 ${user?.twoFactorEnabled ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
-                title="Toggle two-factor authentication"
+                onClick={handleProfileDetailsSave}
               >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${user?.twoFactorEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                {updateMut.isPending ? 'Saving...' : 'Save details'}
               </button>
             </div>
           </div>
-        </div>
-      )}
 
-      {/* ── Subscription tab ── */}
-      {tab === 'subscription' && (
-        <div className="space-y-5">
-          {/* Current plan */}
-          <div className={`card border-2 ${planInfo.border}`}>
-            <div className="flex items-start justify-between gap-4 mb-4">
-              <div>
-                <h3 className="font-semibold text-[var(--color-text)] text-sm mb-1 flex items-center gap-2">
-                  <CreditCard size={15} className="text-[var(--color-primary)]" /> Current Plan
-                </h3>
-                <div className="flex items-center gap-2 flex-wrap">
-                  <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${planInfo.color}`}>
-                    <PlanIcon size={13} /> {planInfo.label}
-                  </span>
-                  {!isFreePlan && (
-                    <span className="text-xs bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-2.5 py-1 rounded-full font-medium">
-                      Active
-                    </span>
-                  )}
-                </div>
-              </div>
-              {isFreePlan ? (
-                <Link to="/pricing" className="btn-primary text-xs py-1.5 px-4 shrink-0 flex items-center gap-1.5">
-                  <Zap size={12} /> Upgrade
-                </Link>
-              ) : (
-                <Link to="/pricing" className="btn-secondary text-xs py-1.5 px-4 shrink-0 flex items-center gap-1.5">
-                  <RefreshCw size={12} /> Renew / Change
-                </Link>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 py-4 border-t border-[var(--color-border)]">
-              <div>
-                <div className="text-xs text-[var(--color-text-muted)] mb-0.5">Plan</div>
-                <div className="font-semibold text-[var(--color-text)] text-sm capitalize">{plan}</div>
-              </div>
-              <div>
-                <div className="text-xs text-[var(--color-text-muted)] mb-0.5">Status</div>
-                <div className="font-semibold text-sm">
-                  {isFreePlan
-                    ? <span className="text-slate-500">Free tier</span>
-                    : <span className="text-green-600 dark:text-green-400">Active</span>
-                  }
-                </div>
-              </div>
-              {!isFreePlan && user?.planExpiresAt && (
-                <div>
-                  <div className="text-xs text-[var(--color-text-muted)] mb-0.5">Expires</div>
-                  <div className="font-semibold text-[var(--color-text)] text-sm">{fmtDate(user.planExpiresAt)}</div>
-                </div>
-              )}
-            </div>
-
-            {/* Usage bar */}
-            <div className="pt-4 border-t border-[var(--color-border)]">
-              <div className="flex items-center justify-between text-xs mb-2">
-                <span className="text-[var(--color-text-muted)] font-medium">Monthly Exam Usage</span>
-                <span className="font-bold text-[var(--color-text)]">{usedExams} / {user?.monthlyLimit || 3}</span>
-              </div>
-              <div className="bg-[var(--color-border)] rounded-full h-2 overflow-hidden">
-                <div
-                  className={`h-2 rounded-full transition-all ${usagePct >= 90 ? 'bg-red-500' : usagePct >= 70 ? 'bg-amber-500' : 'bg-[var(--color-primary)]'}`}
-                  style={{ width: `${usagePct}%` }}
-                />
-              </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1.5">
-                {user?.remaining ?? 0} exam{user?.remaining !== 1 ? 's' : ''} remaining this month
-              </p>
-            </div>
-          </div>
-
-          {/* Plan features comparison */}
           <div className="card">
-            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <Shield size={15} className="text-[var(--color-primary)]" /> Plan Features
-            </h3>
-            <div className="space-y-2">
-              {[
-                { label: 'Monthly exam creation', free: '3 exams', pro: '10 exams', enterprise: '30 exams' },
-                { label: 'Max questions per exam', free: '10', pro: '20', enterprise: '30' },
-                { label: 'AI Proctoring', free: false, pro: true, enterprise: true },
-                { label: 'Instructor tools', free: false, pro: true, enterprise: true },
-                { label: 'Priority support', free: false, pro: false, enterprise: true },
-              ].map(row => (
-                <div key={row.label} className="flex items-center text-sm">
-                  <span className="flex-1 text-[var(--color-text-muted)]">{row.label}</span>
-                  {(['free', 'pro', 'enterprise']).map(p => (
-                    <div key={p} className={`w-24 text-center text-xs ${p === plan ? 'font-bold text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'}`}>
-                      {typeof row[p] === 'boolean'
-                        ? (row[p]
-                          ? <CheckCircle size={13} className={`inline ${p === plan ? 'text-[var(--color-primary)]' : 'text-green-500'}`} />
-                          : <X size={13} className="inline text-[var(--color-border)]" />
-                        )
-                        : row[p]
-                      }
-                    </div>
-                  ))}
-                </div>
-              ))}
-              <div className="flex items-center text-xs pt-2 border-t border-[var(--color-border)]">
-                <span className="flex-1" />
-                {['free', 'pro', 'enterprise'].map(p => (
-                  <div key={p} className={`w-24 text-center font-semibold capitalize ${p === plan ? 'text-[var(--color-primary)]' : 'text-[var(--color-text-muted)]'}`}>
-                    {p}
-                  </div>
-                ))}
-              </div>
-            </div>
-            {isFreePlan && (
-              <div className="mt-4 pt-4 border-t border-[var(--color-border)]">
-                <Link to="/pricing" className="btn-primary w-full py-2.5 text-sm flex items-center justify-center gap-2">
-                  <Zap size={14} /> Upgrade from ₹149/mo
-                </Link>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {/* ── Billing tab ── */}
-      {tab === 'billing' && (
-        <div className="card">
-          <h3 className="font-semibold text-[var(--color-text)] text-sm mb-5 flex items-center gap-2">
-            <CreditCard size={15} className="text-[var(--color-primary)]" /> Transaction History
-          </h3>
-          {loadingTxn ? (
-            <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="skeleton h-14" />)}</div>
-          ) : transactions.length === 0 ? (
-            <div className="text-center py-12">
-              <CreditCard size={36} className="mx-auto mb-3 text-[var(--color-border)]" />
-              <p className="text-sm text-[var(--color-text-muted)]">No transactions yet.</p>
-              {isFreePlan && (
-                <Link to="/pricing" className="text-xs text-[var(--color-primary)] hover:underline mt-2 inline-block">
-                  Upgrade your plan to get started
-                </Link>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-1">
-              {/* Header */}
-              <div className="grid grid-cols-4 text-xs text-[var(--color-text-muted)] font-medium py-2 px-3">
-                <span>Plan</span>
-                <span>Date</span>
-                <span className="text-right">Amount</span>
-                <span className="text-right">Status</span>
-              </div>
-              {transactions.map(txn => (
-                <div key={txn._id} className="py-3 px-3 rounded-lg hover:bg-[var(--color-bg-alt)] transition-colors">
-                  <div className="grid grid-cols-4 items-center">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${txn.status === 'paid' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-[var(--color-bg-alt)]'}`}>
-                        <CreditCard size={12} className={txn.status === 'paid' ? 'text-green-500' : 'text-[var(--color-text-muted)]'} />
-                      </div>
-                      <span className="text-sm font-medium text-[var(--color-text)] capitalize">{txn.plan} Plan</span>
-                    </div>
-                    <span className="text-xs text-[var(--color-text-muted)]">{fmtDate(txn.createdAt)}</span>
-                    <span className={`text-sm font-semibold text-right ${txn.status === 'paid' ? 'text-green-600 dark:text-green-400' : 'text-[var(--color-text-muted)]'}`}>
-                      {fmtAmount(txn.amount)}
-                    </span>
-                    <div className="flex justify-end">
-                      <span className={`text-xs font-medium px-2 py-0.5 rounded-full capitalize ${txn.status === 'paid' ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400'}`}>
-                        {txn.status}
-                      </span>
-                    </div>
-                  </div>
-                  {txn.razorpayOrderId && (
-                    <div className="mt-1.5 ml-9 flex flex-wrap gap-x-4 gap-y-0.5">
-                      <span className="text-[10px] text-[var(--color-text-muted)] font-mono" title={txn.razorpayOrderId}>
-                        Order: {txn.razorpayOrderId}
-                      </span>
-                      {txn.razorpayPaymentId && (
-                        <span className="text-[10px] text-[var(--color-text-muted)] font-mono" title={txn.razorpayPaymentId}>
-                          Payment: {txn.razorpayPaymentId}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Preferences tab (instructor) ── */}
-      {tab === 'preferences' && (
-        <div className="space-y-5">
-          {/* Test defaults */}
-          <div className="card">
-            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <Sliders size={15} className="text-[var(--color-primary)]" /> Default Test Settings
-            </h3>
-            <p className="text-xs text-[var(--color-text-muted)] mb-5">These values are pre-filled when you create a new test. You can always override them per test.</p>
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-              <div>
-                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Difficulty</label>
-                <select
-                  value={prefs.defaultDifficulty}
-                  onChange={e => savePrefs({ ...prefs, defaultDifficulty: e.target.value })}
-                  className="input w-full text-sm"
-                >
-                  <option value="easy">Easy</option>
-                  <option value="medium">Medium</option>
-                  <option value="hard">Hard</option>
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Number of Questions</label>
-                <select
-                  value={prefs.defaultQuestions}
-                  onChange={e => savePrefs({ ...prefs, defaultQuestions: Number(e.target.value) })}
-                  className="input w-full text-sm"
-                >
-                  {[5, 10, 15, 20, 25, 30].map(n => <option key={n} value={n}>{n} questions</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 block">Default Passing Score</label>
-                <div className="flex items-center gap-3">
-                  <input
-                    type="range"
-                    min={30}
-                    max={100}
-                    step={5}
-                    value={prefs.defaultPassingScore}
-                    onChange={e => setPrefs(p => ({ ...p, defaultPassingScore: Number(e.target.value) }))}
-                    onMouseUp={e => savePrefs({ ...prefs, defaultPassingScore: Number(e.target.value) })}
-                    onTouchEnd={e => savePrefs({ ...prefs, defaultPassingScore: Number(e.target.value) })}
-                    className="flex-1 accent-[var(--color-primary)]"
-                  />
-                  <span className="text-sm font-bold text-[var(--color-primary)] w-10 shrink-0 text-right">{prefs.defaultPassingScore}%</span>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Email notifications */}
-          <div className="card">
-            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <Bell size={15} className="text-[var(--color-primary)]" /> Email Notifications
-            </h3>
-            <div className="space-y-4">
-              {[
-                { key: 'emailOnAttempt', label: 'New test attempt', desc: 'Get notified when a student attempts one of your tests' },
-                { key: 'emailOnBatchJoin', label: 'Student joins batch', desc: 'Get notified when a new student accepts a batch invite' },
-                { key: 'weeklyReport', label: 'Weekly performance report', desc: 'Receive a weekly email summary of your students\' performance' },
-              ].map(({ key, label, desc }) => (
-                <div key={key} className="flex items-start justify-between gap-4">
-                  <div>
-                    <p className="text-sm font-medium text-[var(--color-text)]">{label}</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{desc}</p>
-                  </div>
-                  <button
-                    onClick={() => savePrefs({ ...prefs, [key]: !prefs[key] })}
-                    className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors shrink-0 mt-0.5 ${prefs[key] ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
-                  >
-                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${prefs[key] ? 'translate-x-6' : 'translate-x-1'}`} />
-                  </button>
-                </div>
-              ))}
-            </div>
-            <p className="text-[10px] text-[var(--color-text-muted)] mt-4 pt-4 border-t border-[var(--color-border)]">
-              Note: These preferences are stored locally on this device. Email delivery depends on your account settings.
+            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-2">Settings moved</h3>
+            <p className="text-sm text-[var(--color-text-muted)]">
+              Security and preference controls are now available in the dedicated Settings page.
             </p>
           </div>
         </div>
       )}
+
+      
+
 
       {/* ── Performance tab ── */}
       {tab === 'performance' && (
@@ -633,60 +384,6 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {twoFactorAction && (
-        <Modal onClose={() => setTwoFactorAction(null)}>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-md p-5">
-            <div className="flex items-start justify-between gap-3 mb-3">
-              <div>
-                <h3 className="text-lg font-bold text-[var(--color-text)]">
-                  {twoFactorAction === 'enable' ? 'Enable Two-Factor Authentication' : 'Disable Two-Factor Authentication'}
-                </h3>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                  {twoFactorAction === 'enable'
-                    ? 'This adds an OTP step to every login for stronger account security.'
-                    : 'This removes the OTP step and lowers sign-in security.'}
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTwoFactorAction(null)}
-                className="text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="rounded-xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] p-3 mb-4">
-              <ul className="space-y-1.5 text-xs text-[var(--color-text-muted)]">
-                <li>• Account: <span className="text-[var(--color-text)] font-medium">{user?.email}</span></li>
-                <li>• New state: <span className="text-[var(--color-text)] font-medium">{twoFactorAction === 'enable' ? '2FA Enabled' : '2FA Disabled'}</span></li>
-                <li>• Impact: {twoFactorAction === 'enable' ? 'OTP will be required on login.' : 'Login will use password only.'}</li>
-              </ul>
-            </div>
-
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTwoFactorAction(null)}
-                className="btn-secondary flex-1 py-2.5 text-sm"
-                disabled={updateMut.isPending}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmToggleTwoFactor}
-                className={`flex-1 py-2.5 text-sm rounded-lg font-semibold text-white ${twoFactorAction === 'enable' ? 'bg-[var(--color-primary)] hover:opacity-90' : 'bg-red-500 hover:bg-red-600'}`}
-                disabled={updateMut.isPending}
-              >
-                {updateMut.isPending
-                  ? (twoFactorAction === 'enable' ? 'Enabling...' : 'Disabling...')
-                  : (twoFactorAction === 'enable' ? 'Confirm Enable' : 'Confirm Disable')}
-              </button>
-            </div>
-          </div>
-        </Modal>
-      )}
     </div>
   );
 }

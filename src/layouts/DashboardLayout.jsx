@@ -2,68 +2,84 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
   BarChart2,
-  BookmarkCheck, BookOpen, Brain,
+  BookmarkCheck, BookOpen,
   ChevronDown,
-  GraduationCap, LayoutDashboard, LogOut, Menu,
+  GraduationCap, HelpCircle, LayoutDashboard,
   LifeBuoy,
-  MessageSquare,
+  Lightbulb,
+  LogOut, Menu,
   Moon,
   Plus, RefreshCw,
   Settings,
-  Shield, Sun,
+  Sun,
   Trophy, User, Users, X, Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
-import { Link, Outlet, useLocation } from 'react-router-dom';
+import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom';
+import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
 import FeedbackModal from '../components/FeedbackModal.jsx';
+import HelpSearch from '../components/HelpSearch.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
+import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
 import { useAuth } from '../hooks/useAuth.js';
 import { notificationApi } from '../services/api.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
-import likhitaiLogo from '../assets/logos/likhitai-logo.png';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
-// Instructor nav — items may have `children` for submenus
+/** Instructor sidebar: top-level links plus collapsible groups for tests-related routes. */
 const INSTRUCTOR_SIDEBAR_NAV = [
-  { to: '/instructor-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { type: 'link', to: '/instructor-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
   {
-    id: 'tests', icon: BookmarkCheck, label: 'Tests',
+    type: 'group',
+    id: 'tests',
+    label: 'Tests',
+    icon: BookOpen,
     children: [
-      { to: '/tests', icon: BookOpen, label: 'All Tests' },
-      { to: '/create-exam', icon: Plus, label: 'Create Test' },
+      { to: '/tests', icon: BookOpen, label: 'All tests' },
+      { to: '/create-exam', icon: Plus, label: 'Create test' },
+      { to: '/test-reports', icon: BookmarkCheck, label: 'Test reports' },
     ],
   },
-  { to: '/batches', icon: Users, label: 'Batches' },
-  {
-    id: 'reports', icon: BarChart2, label: 'Reports',
-    children: [
-      { to: '/instructor/performance', icon: Brain, label: 'AI Insights' },
-      { to: '/test-reports', icon: BookmarkCheck, label: 'Test Reports' },
-    ],
-  },
-  { to: '/certificates', icon: Award, label: 'Certificates' },
-  { to: '/profile', icon: Settings, label: 'Settings' },
+  { type: 'link', to: '/batches', icon: Users, label: 'Batches', badgeKey: 'batch' },
+  { type: 'link', to: '/instructor/performance', icon: BarChart2, label: 'Insights' },
+  { type: 'link', to: '/certificates', icon: Award, label: 'Certificates' },
+  { type: 'link', to: '/profile', icon: User, label: 'Profile' },
+  { type: 'link', to: '/plan', icon: Zap, label: 'Plan' },
+  { type: 'link', to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
-// Student nav
+function pathMatchesInstructorChild(to, pathname) {
+  if (to === '/test-reports') return pathname === '/test-reports' || pathname.startsWith('/instructor/report');
+  return pathname === to;
+}
+
+function instructorGroupHasActiveChild(children, pathname) {
+  return children.some(c => pathMatchesInstructorChild(c.to, pathname));
+}
+
 const STUDENT_NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  { to: '/tests', icon: GraduationCap, label: 'My Tests' },
+  { to: '/tests', icon: GraduationCap, label: 'My tests' },
   { to: '/performance', icon: BarChart2, label: 'Performance' },
   { to: '/certificates', icon: Award, label: 'Certificates' },
   { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
   { to: '/batches', icon: Users, label: 'Batches' },
   { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
 ];
 
 // For pageTitle lookup
 const ALL_NAV_FLAT = [
   ...STUDENT_NAV,
+  { to: '/profile', label: 'Profile' },
   { to: '/instructor-dashboard', label: 'Dashboard' },
   { to: '/test-reports', label: 'Reports' },
-  { to: '/instructor/performance', label: 'AI Insights' },
+  { to: '/instructor/performance', label: 'Insights' },
   { to: '/test-reports', label: 'Test Reports' },
   { to: '/tickets', label: 'Ticketing' },
+  { to: '/admin-dashboard', label: 'Admin' },
+  { to: '/settings', label: 'Settings' },
 ];
 
 const ROLE_COLORS = {
@@ -82,23 +98,23 @@ function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false
     <Link
       to={to}
       onClick={onClick}
-      className={`flex items-center gap-3 px-3 py-2 rounded-xl text-sm font-medium transition-all ${indent ? 'pl-4' : ''} ${active
-        ? 'bg-gradient-to-r from-[var(--color-primary)]/15 to-[var(--color-primary)]/5 text-[var(--color-primary)] font-semibold border border-[var(--color-primary)]/20'
-        : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)]'
-      }`}
+      className={`group flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors duration-150 ${indent ? 'pl-2 ml-2.5 border-l border-[var(--color-border)]' : ''} ${active
+        ? 'bg-[var(--color-primary)]/12 text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+        : 'text-[var(--color-text-muted)] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-[var(--color-text)]'
+      } ${collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5'}`}
       title={collapsed ? label : ''}
     >
-      <div className="relative shrink-0">
-        <Icon size={indent ? 14 : 18} />
+      <div className="relative shrink-0 opacity-90 group-hover:opacity-100">
+        <Icon size={indent ? 15 : 17} strokeWidth={active ? 2.25 : 2} />
         {badge > 0 && (
           <span className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] bg-red-500 text-white text-[9px] font-bold rounded-full flex items-center justify-center leading-none px-0.5">
             {badge > 9 ? '9+' : badge}
           </span>
         )}
       </div>
-      {!collapsed && <span className="flex-1">{label}</span>}
+      {!collapsed && <span className="flex-1 truncate">{label}</span>}
       {!collapsed && badge > 0 && (
-        <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1">
+        <span className="ml-auto min-w-[18px] h-[18px] bg-red-500 text-white text-[10px] font-bold rounded-full flex items-center justify-center px-1 shrink-0">
           {badge > 9 ? '9+' : badge}
         </span>
       )}
@@ -106,56 +122,72 @@ function SidebarLink({ to, icon: Icon, label, collapsed, onClick, indent = false
   );
 }
 
-// ── Submenu group ─────────────────────────────────────────────────────────────
-function NavGroup({ id, icon: Icon, label, children, collapsed, openMenus, setOpenMenus, onChildClick }) {
-  const { pathname } = useLocation();
-  const isChildActive = children.some(c => pathname === c.to || pathname.startsWith(c.to + '/'));
-  // isOpen is ONLY driven by openMenus — so user can always toggle open/close
-  const isOpen = openMenus.includes(id);
+function InstructorNavGroupButton({
+  group,
+  collapsed,
+  open,
+  onToggle,
+  pathname,
+  onMobileClose,
+}) {
+  const childActive = instructorGroupHasActiveChild(group.children, pathname);
+  const Icon = group.icon;
 
-  const toggle = () => {
-    setOpenMenus(prev =>
-      prev.includes(id) ? prev.filter(m => m !== id) : [...prev, id]
+  if (collapsed) {
+    return (
+      <Link
+        to={group.children[0].to}
+        onClick={onMobileClose}
+        title={`${group.label} — ${group.children.map(c => c.label).join(', ')}`}
+        className={`group flex items-center justify-center rounded-lg text-[13px] font-medium transition-colors px-2 py-2.5 ${
+          childActive
+            ? 'bg-[var(--color-primary)]/12 text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+            : 'text-[var(--color-text-muted)] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-[var(--color-text)]'
+        }`}
+      >
+        <Icon size={17} strokeWidth={childActive ? 2.25 : 2} className="shrink-0 opacity-90" />
+      </Link>
     );
-  };
+  }
 
   return (
-    <div>
-      <button
-        onClick={toggle}
-        className={`flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm font-medium w-full transition-all ${
-          isChildActive
-            ? 'bg-gradient-to-r from-[var(--color-primary)]/10 to-[var(--color-primary)]/5 text-[var(--color-primary)] font-semibold'
-            : 'text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)]'
-        }`}
-        title={collapsed ? label : ''}
-      >
-        <Icon size={18} className="shrink-0" />
-        {!collapsed && (
-          <>
-            <span className="flex-1 text-left">{label}</span>
-            <ChevronDown size={14} className={`transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`} />
-          </>
-        )}
-      </button>
+    <button
+      type="button"
+      onClick={onToggle}
+      className={`group flex w-full items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors px-3 py-2.5 text-left ${
+        childActive
+          ? 'bg-[var(--color-primary)]/12 text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+          : 'text-[var(--color-text-muted)] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-[var(--color-text)]'
+      }`}
+    >
+      <div className="relative shrink-0 opacity-90">
+        <Icon size={17} strokeWidth={childActive ? 2.25 : 2} />
+      </div>
+      <span className="flex-1 truncate">{group.label}</span>
+      <ChevronDown size={16} strokeWidth={2} className={`shrink-0 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+    </button>
+  );
+}
 
-      {/* Children — shown when expanded and not collapsed */}
-      {!collapsed && isOpen && (
-        <div className="mt-0.5 ml-3 pl-3 border-l border-[var(--color-border)] space-y-0.5">
-          {children.map(child => (
-            <SidebarLink
-              key={child.to + child.label}
-              to={child.to}
-              icon={child.icon}
-              label={child.label}
-              collapsed={false}
-              indent
-              onClick={onChildClick}
-            />
-          ))}
-        </div>
-      )}
-    </div>
+function AdminNavLink({ tab, label, icon: Icon, collapsed, onClick }) {
+  const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
+  const currentTab = searchParams.get('tab') || 'overview';
+  const active = pathname === '/admin-dashboard' && currentTab === tab;
+  const to = `/admin-dashboard?tab=${encodeURIComponent(tab)}`;
+  return (
+    <Link
+      to={to}
+      onClick={onClick}
+      className={`group flex items-center gap-2.5 rounded-lg text-[13px] font-medium transition-colors ${active
+        ? 'bg-[var(--color-primary)]/12 text-[var(--color-primary)] shadow-[inset_3px_0_0_0_var(--color-primary)]'
+        : 'text-[var(--color-text-muted)] hover:bg-black/[0.04] dark:hover:bg-white/[0.06] hover:text-[var(--color-text)]'
+      } ${collapsed ? 'justify-center px-2 py-2.5' : 'px-3 py-2.5'}`}
+      title={collapsed ? label : ''}
+    >
+      <Icon size={17} className="shrink-0" strokeWidth={active ? 2.25 : 2} />
+      {!collapsed && <span className="flex-1 truncate">{label}</span>}
+    </Link>
   );
 }
 
@@ -166,11 +198,25 @@ export default function DashboardLayout() {
   const { logout } = useAuth();
   const qc = useQueryClient();
   const { pathname } = useLocation();
+  const [searchParams] = useSearchParams();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [openMenus, setOpenMenus] = useState(['tests']); // tests open by default
+  const [instructorOpenGroups, setInstructorOpenGroups] = useState(() => new Set(['tests']));
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+
+  useEffect(() => {
+    setInstructorOpenGroups(prev => {
+      const next = new Set(prev);
+      INSTRUCTOR_SIDEBAR_NAV.forEach(entry => {
+        if (entry.type === 'group' && instructorGroupHasActiveChild(entry.children, pathname)) {
+          next.add(entry.id);
+        }
+      });
+      return next;
+    });
+  }, [pathname]);
 
   // Reuse the cached notifications query to compute batch badge
   const { data: notifData } = useQuery({
@@ -181,47 +227,35 @@ export default function DashboardLayout() {
   });
   const batchBadge = notifData?.notifications?.filter(n => n.type === 'batch_joined' && !n.isRead).length || 0;
 
-  // Auto-open submenu groups when navigating to a child route
-  useEffect(() => {
-    const activeGroups = INSTRUCTOR_SIDEBAR_NAV
-      .filter(item => item.children?.some(c => pathname === c.to || pathname.startsWith(c.to + '/')))
-      .map(item => item.id);
-    if (activeGroups.length > 0) {
-      setOpenMenus(prev => {
-        const next = [...prev];
-        activeGroups.forEach(id => { if (!next.includes(id)) next.push(id); });
-        return next;
-      });
-    }
-  }, [pathname]);
-
   const handleRefresh = async () => {
     setRefreshing(true);
     await qc.invalidateQueries();
     setTimeout(() => setRefreshing(false), 600);
   };
 
+  const adminTabLabel = pathname === '/admin-dashboard'
+    ? (ADMIN_PANEL_TABS.find(t => t.id === (searchParams.get('tab') || 'overview'))?.label ?? 'Overview')
+    : null;
+
   const pageTitle =
-    ALL_NAV_FLAT.find(n => n.to === pathname)?.label
-    || (pathname === '/admin' ? 'Admin Panel'
-      : pathname.startsWith('/instructor/report') ? 'Exam Report'
+    (pathname === '/admin-dashboard' && adminTabLabel ? adminTabLabel : null)
+    || ALL_NAV_FLAT.find(n => n.to === pathname)?.label
+    || (pathname.startsWith('/instructor/report') ? 'Exam Report'
       : pathname === '/test-reports' ? 'Reports'
-      : pathname === '/instructor/performance' ? 'AI Insights'
+      : pathname === '/instructor/performance' ? 'Insights'
       : pathname === '/create-exam' ? 'Create Test'
       : pathname === '/batches' ? 'Batches'
       : pathname === '/instructor-dashboard' ? 'Dashboard'
-      : pathname === '/tests' ? isInstructorRole(user) ? 'All Tests' : 'My Tests'
+      : pathname === '/tests' ? user?.role === 'instructor' ? 'All Tests' : 'My Tests'
       : pathname === '/tickets' ? 'Ticketing'
       : 'Dashboard');
 
-  function isInstructorRole(u) {
-    return u?.role === 'instructor' || u?.role === 'admin';
-  }
-
   const isFreePlan = !user?.plan || user.plan === 'free';
+  const isStudent = user?.role === 'user';
   const remaining = user?.remaining ?? null;
   const isAdmin = user?.role === 'admin';
-  const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
+  const isInstructorNav = user?.role === 'instructor';
+  const dashboardHome = getDashboardPath(user?.role);
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
@@ -230,74 +264,142 @@ export default function DashboardLayout() {
       )}
 
       {/* ── Sidebar ── */}
-      <aside className={`fixed lg:relative z-30 flex flex-col h-full bg-[var(--color-surface)] border-r border-[var(--color-border)] transition-all duration-300
-        ${collapsed ? 'w-16' : 'w-64'}
+      <aside className={`fixed lg:relative z-30 flex flex-col h-full transition-all duration-300 ease-out
+        bg-gradient-to-b from-slate-50/95 to-white dark:from-slate-950 dark:to-slate-900/95
+        border-r border-slate-200/80 dark:border-slate-800/90
+        shadow-[4px_0_24px_-8px_rgba(15,23,42,0.08)] dark:shadow-[4px_0_24px_-8px_rgba(0,0,0,0.35)]
+        ${collapsed ? 'w-[4.25rem]' : 'w-[15.5rem] sm:w-60'}
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 p-4 border-b border-[var(--color-border)] min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
-          <img src={likhitaiLogo} alt="LikhitAI" className={collapsed ? 'h-8 w-8 object-contain' : 'h-8 w-auto'} />
+        <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-slate-200/70 dark:border-slate-800 min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
+          <Link
+            to={dashboardHome}
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center rounded-xl ring-1 ring-transparent hover:ring-[var(--color-primary)]/25 transition-all ${collapsed ? 'justify-center p-1' : ''}`}
+          >
+            <img src={likhitaiLogo} alt="LikhitAI" className={collapsed ? 'h-8 w-8 object-contain' : 'h-8 w-auto'} />
+          </Link>
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto p-3 space-y-0.5">
-          {isInstructor ? (
+        <nav className="flex-1 overflow-y-auto px-2.5 py-3 space-y-1">
+          {isAdmin ? (
             <>
-              {/* Instructor navigation with submenus */}
-              {INSTRUCTOR_SIDEBAR_NAV.map(item =>
-                item.children ? (
-                  <NavGroup
-                    key={item.id}
-                    id={item.id}
-                    icon={item.icon}
-                    label={item.label}
-                    children={item.children}
-                    collapsed={collapsed}
-                    openMenus={openMenus}
-                    setOpenMenus={setOpenMenus}
-                    onChildClick={() => setMobileOpen(false)}
-                  />
-                ) : (
-                  <SidebarLink key={item.to} {...item} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={item.to === '/batches' ? batchBadge : 0} />
-                )
+              {!collapsed && (
+                <div className="px-2 pb-3 mb-1 border-b border-slate-200/60 dark:border-slate-800/80">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Navigation</span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 leading-snug">Console · LikhitAI</p>
+                </div>
               )}
+              {ADMIN_PANEL_TABS.map(t => (
+                <AdminNavLink
+                  key={t.id}
+                  tab={t.id}
+                  label={t.label}
+                  icon={t.icon}
+                  collapsed={collapsed}
+                  onClick={() => setMobileOpen(false)}
+                />
+              ))}
+              <div className="pt-3 mt-2 mx-1 border-t border-slate-200/70 dark:border-slate-800/80" />
+              <SidebarLink to="/profile" icon={User} label="Profile" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+              <SidebarLink to="/plan" icon={Zap} label="Plan" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+              <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+            </>
+          ) : isInstructorNav ? (
+            <>
+              {!collapsed && (
+                <div className="px-2 pb-2 mb-1 border-b border-slate-200/60 dark:border-slate-800/80">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Workspace</span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Tests · batches · reports</p>
+                </div>
+              )}
+              {INSTRUCTOR_SIDEBAR_NAV.map(entry => {
+                if (entry.type === 'link') {
+                  const badge = entry.badgeKey === 'batch' ? batchBadge : 0;
+                  return (
+                    <SidebarLink
+                      key={entry.to}
+                      to={entry.to}
+                      icon={entry.icon}
+                      label={entry.label}
+                      collapsed={collapsed}
+                      onClick={() => setMobileOpen(false)}
+                      badge={badge}
+                    />
+                  );
+                }
+                const open = instructorOpenGroups.has(entry.id);
+                return (
+                  <div key={entry.id} className="space-y-0.5">
+                    <InstructorNavGroupButton
+                      group={entry}
+                      collapsed={collapsed}
+                      open={open}
+                      pathname={pathname}
+                      onMobileClose={() => setMobileOpen(false)}
+                      onToggle={() => {
+                        setInstructorOpenGroups(prev => {
+                          const n = new Set(prev);
+                          if (n.has(entry.id)) n.delete(entry.id);
+                          else n.add(entry.id);
+                          return n;
+                        });
+                      }}
+                    />
+                    {!collapsed && open && (
+                      <div className="space-y-0.5 pl-1 ml-2.5 border-l border-[var(--color-border)]">
+                        {entry.children.map(child => (
+                          <SidebarLink
+                            key={child.to}
+                            to={child.to}
+                            icon={child.icon}
+                            label={child.label}
+                            collapsed={false}
+                            onClick={() => setMobileOpen(false)}
+                            indent
+                          />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
 
               {/* Quick create button */}
               {!collapsed && (
-                <div className="pt-2">
+                <div className="pt-2 px-0.5">
                   <Link
                     to="/create-exam"
                     onClick={() => setMobileOpen(false)}
-                    className="flex items-center justify-center gap-2 w-full py-2 rounded-xl bg-[var(--color-primary)]/10 hover:bg-[var(--color-primary)]/20 text-[var(--color-primary)] text-xs font-semibold transition-colors border border-[var(--color-primary)]/20"
+                    className="flex items-center justify-center gap-2 w-full py-2.5 rounded-lg bg-[var(--color-primary)] text-white text-xs font-semibold shadow-sm shadow-teal-900/10 hover:opacity-95 transition-opacity"
                   >
-                    <Zap size={13} /> + Create Test
+                    <Zap size={14} /> Create test
                   </Link>
                 </div>
               )}
             </>
           ) : (
-            /* Student navigation */
-            STUDENT_NAV.map(n => (
-              <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={n.to === '/batches' ? batchBadge : 0} />
-            ))
-          )}
-
-          {/* Admin section */}
-          {isAdmin && (
             <>
-              {!collapsed && (
-                <div className="pt-3 pb-1 px-1">
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] opacity-60">Admin</span>
-                </div>
-              )}
-              {collapsed && <div className="my-2 border-t border-[var(--color-border)]" />}
-              <SidebarLink to="/admin" icon={Shield} label="Admin Panel" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+              {STUDENT_NAV.map(n => (
+                <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={n.to === '/batches' ? batchBadge : 0} />
+              ))}
             </>
           )}
         </nav>
 
         {/* Sidebar logout */}
-        <div className="p-3 border-t border-[var(--color-border)]">
+        <div className="p-3 border-t border-slate-200/70 dark:border-slate-800/80 bg-white/40 dark:bg-slate-950/40">
+          <Link
+            to="/help"
+            onClick={() => setMobileOpen(false)}
+            className={`flex items-center gap-2 w-full px-3 py-2 mb-2 rounded-lg text-sm text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)] hover:text-[var(--color-text)] transition-colors ${collapsed ? 'justify-center' : ''}`}
+            title="Help"
+          >
+            <HelpCircle size={16} />
+            {!collapsed && 'Help'}
+          </Link>
           <Link
             to="/tickets"
             onClick={() => setMobileOpen(false)}
@@ -321,26 +423,30 @@ export default function DashboardLayout() {
       {/* ── Main area ── */}
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Topbar */}
-        <header className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
-          <div className="flex items-center gap-3">
+        <header className="flex items-center justify-between h-16 px-4 sm:px-6 border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0 gap-2">
+          <div className="flex items-center gap-3 min-w-0 shrink">
             <button className="lg:hidden p-2 rounded-lg hover:bg-[var(--color-bg-alt)]" onClick={() => setMobileOpen(o => !o)}>
               {mobileOpen ? <X size={20} /> : <Menu size={20} />}
             </button>
             <button className="hidden lg:flex p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]" onClick={() => setCollapsed(c => !c)}>
               <Menu size={18} />
             </button>
-            <h1 className="font-semibold text-[var(--color-text)] text-sm hidden sm:block">{pageTitle}</h1>
+            <h1 className="font-semibold text-[var(--color-text)] text-sm hidden sm:block truncate">{pageTitle}</h1>
           </div>
 
-          <div className="flex items-center gap-2">
-            {remaining !== null && remaining <= 1 && !isFreePlan && !isAdmin && (
-              <Link to="/pricing" className="hidden sm:flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 text-amber-700 dark:text-amber-400 rounded-full px-3 py-1 text-xs font-medium hover:bg-amber-100 transition-colors">
+          <div className="flex-1 flex justify-center min-w-0 px-1 sm:px-3">
+            <HelpSearch />
+          </div>
+
+          <div className="flex items-center gap-2 shrink-0">
+            {remaining !== null && remaining <= 1 && !isFreePlan && !isAdmin && !isStudent && (
+              <Link to="/plan" className="hidden sm:flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 text-amber-700 dark:text-amber-400 rounded-full px-3 py-1 text-xs font-medium hover:bg-amber-100 transition-colors">
                 <Zap size={11} /> {remaining} exam{remaining !== 1 ? 's' : ''} left
               </Link>
             )}
-            {!isFreePlan && !isAdmin && (
+            {!isFreePlan && !isAdmin && !isStudent && (
               <Link
-                to="/pricing"
+                to="/plan"
                 className={`hidden sm:flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full transition-all ${
                   user?.plan === 'enterprise'
                     ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 hover:bg-purple-200'
@@ -351,19 +457,12 @@ export default function DashboardLayout() {
                 {user?.plan?.toUpperCase()}
               </Link>
             )}
-            {/* XP (students only) */}
-            {!isInstructor && (
-              <div className="hidden sm:flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-full px-3 py-1 text-xs">
-                <span className="text-[var(--color-text-muted)]">XP</span>
-                <span className="font-bold text-[var(--color-primary)]">{user?.xp || 0}</span>
-              </div>
-            )}
             <button
               onClick={() => setShowFeedback(true)}
               className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] transition-colors"
               title="Give feedback"
             >
-              <MessageSquare size={18} />
+              <Lightbulb size={18} />
             </button>
             <NotificationDropdown />
             <button
@@ -376,18 +475,42 @@ export default function DashboardLayout() {
             <button onClick={toggle} className="p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">
               {dark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
-            {/* User avatar */}
-            <Link to="/profile" className="flex items-center gap-2 hover:bg-[var(--color-bg-alt)] rounded-xl px-2 py-1 transition-colors">
-              <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
-                {user?.name?.[0]?.toUpperCase()}
-              </div>
-              <div className="hidden md:block text-left">
-                <p className="text-xs font-semibold text-[var(--color-text)] leading-tight">{user?.name}</p>
-                <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${ROLE_COLORS[user?.role] || ROLE_COLORS.user}`}>
-                  {user?.role || 'user'}
-                </span>
-              </div>
-            </Link>
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setUserMenuOpen(v => !v)}
+                className="flex items-center gap-2 hover:bg-[var(--color-bg-alt)] rounded-xl px-2 py-1 transition-colors"
+              >
+                {user?.avatar ? (
+                  <img src={user.avatar} alt={user?.name || 'User'} className="w-8 h-8 rounded-full object-cover border border-[var(--color-border)]" />
+                ) : (
+                  <div className="w-8 h-8 rounded-full bg-gradient-to-br from-teal-500 to-blue-600 text-white flex items-center justify-center text-xs font-bold shrink-0">
+                    {user?.name?.[0]?.toUpperCase()}
+                  </div>
+                )}
+                <div className="hidden md:block text-left">
+                  <p className="text-xs font-semibold text-[var(--color-text)] leading-tight">{user?.name}</p>
+                  <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded capitalize ${ROLE_COLORS[user?.role] || ROLE_COLORS.user}`}>
+                    {user?.role || 'user'}
+                  </span>
+                </div>
+                <ChevronDown size={14} className="text-[var(--color-text-muted)]" />
+              </button>
+              {userMenuOpen && (
+                <div className="absolute right-0 mt-2 w-48 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl z-50 py-1">
+                  <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">View Profile</Link>
+                  {!isStudent && <Link to="/plan" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Plan</Link>}
+                  <Link to="/settings" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Settings</Link>
+                  <button
+                    type="button"
+                    onClick={() => { setUserMenuOpen(false); logout.mutate(); }}
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                  >
+                    Logout
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </header>
 

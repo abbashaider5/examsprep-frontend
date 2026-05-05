@@ -30,12 +30,15 @@ import toast from 'react-hot-toast';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import Webcam from 'react-webcam';
 import { examApi, instructorApi, resultApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 // ─── Phases ───────────────────────────────────────────────
 // LOADING → (invite ? INVITE_ACCEPT) → (proctored ? PREFLIGHT : INSTRUCTIONS) → INSTRUCTIONS → EXAM
 
 export default function ExamPage() {
   const { id } = useParams();
+  const { user } = useAuthStore();
   const [searchParams] = useSearchParams();
   const isPractice = searchParams.get('practice') === 'true';
   const inviteToken = searchParams.get('invite') || null;
@@ -96,6 +99,10 @@ export default function ExamPage() {
   const screenshotCountRef = useRef(0);
   const screenshotIntervalRef = useRef(null);
   const proctoringEventsRef = useRef([]);
+  const qTimeAccumRef = useRef({});
+  const qSegmentStartRef = useRef(null);
+  const lastQuestionIdxRef = useRef(0);
+  const phaseWasExamRef = useRef(false);
   const audioMonitorIntervalRef = useRef(null);
   const audioStreamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -103,6 +110,9 @@ export default function ExamPage() {
   const faceApiReadyRef = useRef(false);
   const cocoModelRef = useRef(null);
   const objectCheckIntervalRef = useRef(null);
+  const fullscreenRestoreTimerRef = useRef(null);
+  const examShellRef = useRef(null);
+  const [needsFullscreenReturn, setNeedsFullscreenReturn] = useState(false);
 
   // When an invite token is present, validate it first (public endpoint — no auth required)
   const { data: inviteValidation, isLoading: inviteLoading, error: inviteError } = useQuery({
@@ -115,8 +125,11 @@ export default function ExamPage() {
 
   // Main exam fetch — skipped while in invite_accept phase; enabled after invite is accepted
   const { data, isLoading: examLoading, error } = useQuery({
-    queryKey: ['exam', id],
-    queryFn: () => examApi.getById(id).then(r => r.data),
+    queryKey: ['exam', id, isPractice ? 'practice' : 'live'],
+    queryFn: () =>
+      examApi
+        .getById(id, isPractice ? { params: { practice: 'true' } } : {})
+        .then(r => r.data),
     enabled: examQueryEnabled,
     retry: 1,
   });
@@ -172,17 +185,27 @@ export default function ExamPage() {
     const currentProctoringEvents = proctoringEventsRef.current;
 
     if (!exam) return;
+    // Flush active question segment into accumulators
+    if (phaseWasExamRef.current && qSegmentStartRef.current != null && exam.questions?.length) {
+      const now = Date.now();
+      const dt = Math.round((now - qSegmentStartRef.current) / 1000);
+      const li = lastQuestionIdxRef.current;
+      if (dt > 0 && li >= 0 && exam.questions[li]) {
+        qTimeAccumRef.current[li] = (qTimeAccumRef.current[li] || 0) + dt;
+      }
+      qSegmentStartRef.current = null;
+    }
     const answersArray = exam.questions.map((_, i) => ({
       questionIndex: i,
       selectedOption: currentAnswers[i] ?? null,
       code: currentCodeAnswers[i] || '',
       textAnswer: currentTextAnswers[i] || '',
       flagged: currentFlagged.has(i),
-      timeTaken: 0,
+      timeTaken: Math.max(0, Math.round(Number(qTimeAccumRef.current[i]) || 0)),
       isCorrect: false,
     }));
     submitMut.mutate({ examId: id, answers: answersArray, timeTaken, violations: currentViolations, proctoringEvents: currentProctoringEvents });
-  }, [submitMut, exam, id]);
+  }, [submitMut, exam, id, phase]);
 
   // ── Timer ─────────────────────────────────────────────────
   useEffect(() => {
@@ -265,13 +288,29 @@ export default function ExamPage() {
     // Window blur (alt-tab, switching apps)
     const onBlur = () => raiseViolation('Window focus lost!', { type: 'window_blur', source: 'window' });
 
-    // Fullscreen exit
     const onFSChange = () => {
-      if (!document.fullscreenElement && exam?.proctored) {
-        document.documentElement.requestFullscreen?.().catch(() => {
-          raiseViolation('Fullscreen exited!', { type: 'fullscreen_exit', source: 'fullscreen' });
-        });
+      if (!exam?.proctored) return;
+      if (document.fullscreenElement) {
+        if (fullscreenRestoreTimerRef.current) {
+          clearTimeout(fullscreenRestoreTimerRef.current);
+          fullscreenRestoreTimerRef.current = null;
+        }
+        setNeedsFullscreenReturn(false);
+        setWarning(null);
+        return;
       }
+      if (fullscreenRestoreTimerRef.current) {
+        clearTimeout(fullscreenRestoreTimerRef.current);
+        fullscreenRestoreTimerRef.current = null;
+      }
+      pushProctoringEvent({
+        type: 'fullscreen_exit',
+        source: 'fullscreen',
+        severity: 'warning',
+        message: 'Exited fullscreen during exam',
+      });
+      setNeedsFullscreenReturn(true);
+      setWarning('Fullscreen is required during this exam. Use “Return to fullscreen” to continue.');
     };
 
     // Block keyboard shortcuts
@@ -301,6 +340,10 @@ export default function ExamPage() {
     document.addEventListener('selectstart', preventDefault);
 
     return () => {
+      if (fullscreenRestoreTimerRef.current) {
+        clearTimeout(fullscreenRestoreTimerRef.current);
+        fullscreenRestoreTimerRef.current = null;
+      }
       document.removeEventListener('visibilitychange', onVisChange);
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('fullscreenchange', onFSChange);
@@ -311,7 +354,26 @@ export default function ExamPage() {
       document.removeEventListener('paste', preventDefault);
       document.removeEventListener('selectstart', preventDefault);
     };
-  }, [phase, isPractice, exam?.proctored, raiseViolation]);
+  }, [phase, isPractice, exam?.proctored, raiseViolation, pushProctoringEvent]);
+
+  useEffect(() => {
+    if (phase !== 'exam' || isPractice) return undefined;
+    let cancelled = false;
+    const run = () => {
+      if (cancelled) return;
+      const el = examShellRef.current;
+      if (!el) {
+        requestAnimationFrame(run);
+        return;
+      }
+      el.requestFullscreen?.().catch(() => {});
+    };
+    const id = requestAnimationFrame(() => requestAnimationFrame(run));
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(id);
+    };
+  }, [phase, isPractice]);
 
   // ── Camera / Face Monitoring ──────────────────────────────
   useEffect(() => {
@@ -703,6 +765,29 @@ export default function ExamPage() {
     };
   }, [phase, isPractice, exam?.proctored, raiseViolation, pushProctoringEvent]);
 
+  // ── Per-question time (seconds on each question index) ─────────
+  useEffect(() => {
+    if (phase !== 'exam' || !exam) {
+      phaseWasExamRef.current = false;
+      return;
+    }
+    const now = Date.now();
+    if (!phaseWasExamRef.current) {
+      phaseWasExamRef.current = true;
+      qTimeAccumRef.current = {};
+      qSegmentStartRef.current = now;
+      lastQuestionIdxRef.current = current;
+      return;
+    }
+    const dt = Math.round((now - qSegmentStartRef.current) / 1000);
+    const li = lastQuestionIdxRef.current;
+    if (dt > 0 && li >= 0 && exam.questions?.[li]) {
+      qTimeAccumRef.current[li] = (qTimeAccumRef.current[li] || 0) + dt;
+    }
+    qSegmentStartRef.current = now;
+    lastQuestionIdxRef.current = current;
+  }, [current, phase, exam]);
+
   // ── Keep answers/flagged/code refs in sync ─────────────────────
   useEffect(() => { answersRef.current = answers; }, [answers]);
   useEffect(() => { flaggedRef.current = flagged; }, [flagged]);
@@ -759,8 +844,14 @@ export default function ExamPage() {
   }, [phase, isPractice]); // eslint-disable-line
 
   // ── Helpers ───────────────────────────────────────────────
+  const requestExamFullscreen = useCallback(() => {
+    const el = examShellRef.current || document.documentElement;
+    el.requestFullscreen?.().catch(() => {
+      setWarning('Could not enter fullscreen. Click “Return to fullscreen” again.');
+    });
+  }, []);
+
   const startExam = () => {
-    if (!isPractice) document.documentElement.requestFullscreen?.().catch(() => {});
     startedAt.current = Date.now();
     setPhase('exam');
   };
@@ -800,7 +891,7 @@ export default function ExamPage() {
         <div className="text-center">
           <AlertTriangle size={40} className="text-red-500 mx-auto mb-3" />
           <p className="text-red-500 mb-3">Failed to load exam.</p>
-          <button onClick={() => navigate('/dashboard')} className="btn-primary text-sm">Go to Dashboard</button>
+          <button onClick={() => navigate(getDashboardPath(user?.role))} className="btn-primary text-sm">Go to Dashboard</button>
         </div>
       </div>
     );
@@ -883,7 +974,7 @@ export default function ExamPage() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => navigate('/dashboard')}
+                onClick={() => navigate(getDashboardPath(user?.role))}
                 className="btn-secondary flex-1 py-2.5 text-sm"
               >
                 Decline
@@ -1257,7 +1348,22 @@ export default function ExamPage() {
   const unanswered = exam.questions.length - answered;
 
   return (
-    <div className="min-h-screen flex flex-col select-none bg-[var(--color-bg)]">
+    <div ref={examShellRef} className="min-h-screen flex flex-col select-none bg-[var(--color-bg)]">
+      {needsFullscreenReturn && exam.proctored && !isPractice && !document.fullscreenElement && (
+        <div className="shrink-0 z-40 flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800">
+          <p className="text-xs text-amber-900 dark:text-amber-100 font-medium">Fullscreen is required for this proctored exam.</p>
+          <button
+            type="button"
+            onClick={() => {
+              setWarning(null);
+              requestExamFullscreen();
+            }}
+            className="btn-primary text-xs py-1.5 px-3 shrink-0"
+          >
+            Return to fullscreen
+          </button>
+        </div>
+      )}
       {/* ── Top Bar ── */}
       <div className="sticky top-0 z-30 bg-[var(--color-surface)] border-b border-[var(--color-border)] shadow-sm">
         <div className="flex items-center justify-between px-4 sm:px-6 h-14 gap-4">
@@ -1543,7 +1649,7 @@ export default function ExamPage() {
                 </button>
               )}
               {isPractice && current === exam.questions.length - 1 && (
-                <button onClick={() => navigate('/dashboard')} className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-1.5">
+                <button onClick={() => navigate(getDashboardPath(user?.role))} className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-1.5">
                   <CheckCircle size={15} /> Finish Study
                 </button>
               )}

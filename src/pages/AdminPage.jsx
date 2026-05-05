@@ -35,6 +35,7 @@ import {
   Search,
   Settings,
   Shield,
+  ShieldCheck,
   Star,
   Trash2,
   ToggleLeft,
@@ -43,29 +44,71 @@ import {
   Users,
   X,
   Zap,
+  Target,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar, Doughnut, Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import ConfirmDialog from '../components/ConfirmDialog.jsx';
+import HelpTopicsTab from '../components/admin/HelpTopicsTab.jsx';
+import Modal from '../components/Modal.jsx';
+import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
 import { adminApi, announcementApi, feedbackApi, groupApi, logsApi, settingsApi, contactApi, resourceApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
-const TABS = [
-  { id: 'overview',       label: 'Overview',         icon: BarChart2 },
-  { id: 'users',          label: 'Users',             icon: Users },
-  { id: 'plans',          label: 'Plan Management',   icon: Layers },
-  { id: 'announcements',  label: 'Announcements',     icon: Megaphone },
-  { id: 'groups',         label: 'Groups',             icon: Users },
-  { id: 'contacts',       label: 'Contact Queries',   icon: Inbox },
-  { id: 'logs',           label: 'Activity Logs',     icon: Activity },
-  { id: 'settings',       label: 'Settings',          icon: Settings },
-  { id: 'payments',       label: 'Payments',          icon: CreditCard },
-  { id: 'feedback',       label: 'Feedback',          icon: MessageSquare },
-  { id: 'resources',      label: 'Resources',         icon: FileText },
-];
+const TABS = ADMIN_PANEL_TABS;
+
+const HUB_TABS = TABS.filter(t => t.id !== 'overview');
+
+const ADMIN_TAB_PAGE = {
+  users: { title: 'User directory', description: 'Search accounts, change roles, block access, and adjust subscription plans.' },
+  plans: { title: 'Plan management', description: 'Monitor paid tiers, renewals, and how capacity is distributed across the platform.' },
+  announcements: { title: 'Announcements', description: 'Broadcast platform news, maintenance windows, and product updates to all users.' },
+  groups: { title: 'Groups & batches', description: 'Oversee study groups, batch membership, and cross-organization access.' },
+  contacts: { title: 'Contact queries', description: 'Review messages from the public contact form and respond in one place.' },
+  logs: { title: 'Activity logs', description: 'Audit security events, admin actions, and system activity for compliance.' },
+  settings: { title: 'System settings', description: 'Control feature flags, limits, and global platform configuration.' },
+  payments: { title: 'Payments & revenue', description: 'Track transactions, subscriptions, and payment history across Razorpay.' },
+  feedback: { title: 'User feedback', description: 'Read product feedback, triage issues, and follow up on quality.' },
+  resources: { title: 'Resource library', description: 'Manage shared PDFs and files available for exam generation.' },
+  help: { title: 'Help center content', description: 'Create and edit role-specific help articles shown in search and the Help center.' },
+};
+
+const TAB_HEADER_GRADIENT = {
+  users: 'from-sky-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  plans: 'from-violet-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  announcements: 'from-amber-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  groups: 'from-teal-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  contacts: 'from-cyan-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  logs: 'from-orange-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  settings: 'from-slate-500/[0.10] via-[var(--color-surface)] to-[var(--color-bg)]',
+  payments: 'from-emerald-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  feedback: 'from-rose-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  resources: 'from-indigo-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
+  help: 'from-sky-500/[0.10] via-[var(--color-surface)] to-[var(--color-bg)]',
+};
+
+function AdminTabPageHeader({ tabId, onBack }) {
+  const meta = ADMIN_TAB_PAGE[tabId];
+  const grad = TAB_HEADER_GRADIENT[tabId] || 'from-[var(--color-primary)]/[0.08] to-[var(--color-bg)]';
+  if (!meta) return null;
+  return (
+    <div className={`mb-6 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br ${grad} p-5 sm:p-6 shadow-sm`}>
+      <button
+        type="button"
+        onClick={onBack}
+        className="mb-4 inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors"
+      >
+        <ChevronLeft size={18} /> Back to overview
+      </button>
+      <h2 className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight">{meta.title}</h2>
+      <p className="text-sm text-[var(--color-text-muted)] mt-2 max-w-2xl leading-relaxed">{meta.description}</p>
+    </div>
+  );
+}
 
 const SEVERITY_COLORS = { info: 'bg-blue-100 text-blue-700', warning: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
 const CATEGORY_COLORS = { auth: 'bg-purple-100 text-purple-700', exam: 'bg-green-100 text-green-700', admin: 'bg-yellow-100 text-yellow-700', proctoring: 'bg-red-100 text-red-700', certificate: 'bg-blue-100 text-blue-700', profile: 'bg-gray-100 text-gray-700' };
@@ -132,37 +175,50 @@ function OverviewTab({ stats, onSetTab }) {
     datasets: [{ data: stats.topSubjects?.map(s => s.count) || [], backgroundColor: '#6366f1', borderRadius: 6 }],
   };
 
+  const plans = stats.plans || { free: 0, pro: 0, enterprise: 0 };
+
   return (
-    <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
-        <StatBox label="Total Users" value={stats.users} icon={<Users size={20} className="text-blue-600" />} color="bg-blue-100 dark:bg-blue-900/30" onClick={() => onSetTab('users')} />
-        <StatBox label="Instructors" value={stats.instructors ?? 0} icon={<Shield size={20} className="text-amber-600" />} color="bg-amber-100 dark:bg-amber-900/30" onClick={() => onSetTab('users')} />
-        <StatBox label="Total Exams" value={stats.exams} icon={<BookOpen size={20} className="text-green-600" />} color="bg-green-100 dark:bg-green-900/30" />
-        <StatBox label="Total Results" value={stats.results} icon={<CheckCircle size={20} className="text-purple-600" />} color="bg-purple-100 dark:bg-purple-900/30" onClick={() => onSetTab('logs')} />
-        <StatBox label="Pass Rate" value={stats.passRate !== undefined ? `${stats.passRate}%` : null} icon={<Shield size={20} className="text-orange-600" />} color="bg-orange-100 dark:bg-orange-900/30" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="font-semibold text-[var(--color-text)] mb-4">New Users (7 days)</h3>
-          <div className="h-48"><Line data={lineDataset(userDays, '#6366f1')} options={baseChartOpts} /></div>
+    <div className="space-y-8">
+      <div>
+        <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Platform snapshot</h2>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
+          <StatBox label="Total users" value={stats.users} icon={<Users size={20} className="text-blue-600" />} color="bg-blue-100 dark:bg-blue-900/30" onClick={() => onSetTab('users')} />
+          <StatBox label="Instructors" value={stats.instructors ?? 0} icon={<Shield size={20} className="text-amber-600" />} color="bg-amber-100 dark:bg-amber-900/30" onClick={() => onSetTab('users')} />
+          <StatBox label="Administrators" value={stats.admins ?? 0} icon={<ShieldCheck size={20} className="text-red-600" />} color="bg-red-100 dark:bg-red-900/30" onClick={() => onSetTab('users')} />
+          <StatBox label="Total exams" value={stats.exams} icon={<BookOpen size={20} className="text-green-600" />} color="bg-green-100 dark:bg-green-900/30" />
+          <StatBox label="Total results" value={stats.results} icon={<CheckCircle size={20} className="text-purple-600" />} color="bg-purple-100 dark:bg-purple-900/30" onClick={() => onSetTab('logs')} />
         </div>
-        <div className="card">
-          <h3 className="font-semibold text-[var(--color-text)] mb-4">Exam Attempts (7 days)</h3>
-          <div className="h-48"><Line data={lineDataset(examDays, '#22c55e')} options={baseChartOpts} /></div>
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4 mt-4">
+          <StatBox label="Free plan" value={plans.free} icon={<Layers size={20} className="text-slate-600" />} color="bg-slate-100 dark:bg-slate-800/50" onClick={() => onSetTab('users')} />
+          <StatBox label="Pro plan" value={plans.pro} icon={<Zap size={20} className="text-blue-600" />} color="bg-blue-100 dark:bg-blue-900/30" onClick={() => onSetTab('plans')} />
+          <StatBox label="Enterprise" value={plans.enterprise} icon={<Star size={20} className="text-indigo-600" />} color="bg-indigo-100 dark:bg-indigo-900/30" onClick={() => onSetTab('plans')} />
+          <StatBox label="Pass rate" value={stats.passRate !== undefined ? `${stats.passRate}%` : null} icon={<Target size={20} className="text-orange-600" />} color="bg-orange-100 dark:bg-orange-900/30" />
         </div>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="card">
-          <h3 className="font-semibold text-[var(--color-text)] mb-4">Score Distribution</h3>
-          <div className="h-56 flex items-center justify-center">
-            <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'right', labels: { font: { size: 11 } } } } }} />
+      <div>
+        <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Trends & distribution</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] mb-4">New users (7 days)</h3>
+            <div className="h-48"><Line data={lineDataset(userDays, '#6366f1')} options={baseChartOpts} /></div>
+          </div>
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] mb-4">Exam attempts (7 days)</h3>
+            <div className="h-48"><Line data={lineDataset(examDays, '#22c55e')} options={baseChartOpts} /></div>
           </div>
         </div>
-        <div className="card">
-          <h3 className="font-semibold text-[var(--color-text)] mb-4">Top Subjects</h3>
-          <div className="h-56"><Bar data={barData} options={baseChartOpts} /></div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mt-6">
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] mb-4">Score distribution</h3>
+            <div className="h-56 flex items-center justify-center">
+              <Doughnut data={doughnutData} options={{ responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'right', labels: { font: { size: 11 } } } } }} />
+            </div>
+          </div>
+          <div className="card">
+            <h3 className="font-semibold text-[var(--color-text)] mb-4">Top subjects</h3>
+            <div className="h-56"><Bar data={barData} options={baseChartOpts} /></div>
+          </div>
         </div>
       </div>
     </div>
@@ -175,10 +231,34 @@ function UsersTab() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [showCreateUser, setShowCreateUser] = useState(false);
+  const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'user', notifyEmail: true });
+  const [deleteUserTarget, setDeleteUserTarget] = useState(null);
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['adminUsers', page, search],
     queryFn: () => adminApi.users(page, search).then(r => r.data),
+  });
+
+  const createUserMut = useMutation({
+    mutationFn: (payload) => adminApi.createUser(payload),
+    onSuccess: (res) => {
+      qc.invalidateQueries({ queryKey: ['adminUsers'] });
+      if (res.data.notifyEmailSent) {
+        toast.success('User created and notification email sent.');
+      } else {
+        toast.success('User created.');
+        if (res.data.emailSendFailed) {
+          toast.error('Email was not delivered (check server logs and Resend: API key, verified domain, FROM address). Temporary password is shown below.', { duration: 10000 });
+        }
+      }
+      if (res.data.temporaryPassword) {
+        toast.success(`Password (copy now): ${res.data.temporaryPassword}`, { duration: 12000 });
+      }
+      setShowCreateUser(false);
+      setNewUser({ name: '', email: '', password: '', role: 'user', notifyEmail: true });
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to create user'),
   });
 
   const roleMut = useMutation({
@@ -200,15 +280,30 @@ function UsersTab() {
   const users = usersData?.users || [];
   const totalPages = usersData?.pages || 1;
 
+  const submitCreateUser = (e) => {
+    e.preventDefault();
+    const payload = {
+      name: newUser.name.trim(),
+      email: newUser.email.trim(),
+      role: newUser.role,
+      notifyEmail: newUser.notifyEmail,
+    };
+    if (newUser.password.trim().length >= 6) payload.password = newUser.password.trim();
+    createUserMut.mutate(payload);
+  };
+
   return (
     <div className="card space-y-4">
-      <div className="flex items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
+      <div className="flex flex-wrap items-center gap-3">
+        <div className="relative flex-1 max-w-xs min-w-[200px]">
           <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
           <input className="input pl-8 text-sm py-2" placeholder="Search users..." value={searchInput} onChange={e => setSearchInput(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { setSearch(searchInput); setPage(1); } }} />
         </div>
-        <button onClick={() => { setSearch(searchInput); setPage(1); }} className="btn-secondary text-xs py-2 px-3">Search</button>
-        {search && <button onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }} className="text-xs text-[var(--color-text-muted)] hover:underline">Clear</button>}
+        <button type="button" onClick={() => { setSearch(searchInput); setPage(1); }} className="btn-secondary text-xs py-2 px-3">Search</button>
+        {search && <button type="button" onClick={() => { setSearch(''); setSearchInput(''); setPage(1); }} className="text-xs text-[var(--color-text-muted)] hover:underline">Clear</button>}
+        <button type="button" onClick={() => setShowCreateUser(true)} className="btn-primary text-xs py-2 px-3 flex items-center gap-1.5 ml-auto">
+          <Plus size={14} /> Create user
+        </button>
       </div>
 
       {isLoading ? (
@@ -263,7 +358,7 @@ function UsersTab() {
                             <button onClick={() => blockMut.mutate(u._id)} className={`text-xs px-2 py-1 rounded border transition-colors ${u.isBlocked ? 'border-green-400 text-green-600 hover:bg-green-50' : 'border-orange-400 text-orange-600 hover:bg-orange-50'}`}>
                               {u.isBlocked ? 'Unblock' : 'Block'}
                             </button>
-                            <button onClick={() => { if (window.confirm(`Delete user ${u.name}?`)) deleteMut.mutate(u._id); }} className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
+                            <button type="button" onClick={() => setDeleteUserTarget(u)} className="text-red-400 hover:text-red-600 p-1.5 rounded hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors">
                               <Trash2 size={14} />
                             </button>
                           </>
@@ -286,6 +381,66 @@ function UsersTab() {
           )}
         </>
       )}
+
+      {showCreateUser && (
+        <Modal onClose={() => !createUserMut.isPending && setShowCreateUser(false)}>
+          <form
+            onSubmit={submitCreateUser}
+            className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-md overflow-hidden"
+          >
+            <div className="p-6 border-b border-[var(--color-border)]">
+              <h3 className="text-lg font-bold text-[var(--color-text)]">Create user</h3>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">Adds an account. Optionally email login instructions.</p>
+            </div>
+            <div className="p-6 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Name</label>
+                <input className="input w-full mt-1 text-sm" value={newUser.name} onChange={e => setNewUser(s => ({ ...s, name: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Email</label>
+                <input type="email" className="input w-full mt-1 text-sm" value={newUser.email} onChange={e => setNewUser(s => ({ ...s, email: e.target.value }))} required />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Role</label>
+                <select className="input w-full mt-1 text-sm" value={newUser.role} onChange={e => setNewUser(s => ({ ...s, role: e.target.value }))}>
+                  <option value="user">User</option>
+                  <option value="instructor">Instructor</option>
+                  <option value="admin">Admin</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Password (optional)</label>
+                <input type="password" className="input w-full mt-1 text-sm" value={newUser.password} onChange={e => setNewUser(s => ({ ...s, password: e.target.value }))} placeholder="Leave blank to auto-generate" autoComplete="new-password" />
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Minimum 6 characters if set.</p>
+              </div>
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input type="checkbox" checked={newUser.notifyEmail} onChange={e => setNewUser(s => ({ ...s, notifyEmail: e.target.checked }))} className="rounded border-[var(--color-border)]" />
+                <span className="text-sm text-[var(--color-text)]">Send welcome email with credentials</span>
+              </label>
+            </div>
+            <div className="flex flex-wrap justify-end gap-2 px-6 py-4 bg-[var(--color-bg-alt)]/60 border-t border-[var(--color-border)]">
+              <button type="button" onClick={() => !createUserMut.isPending && setShowCreateUser(false)} className="btn-secondary text-sm py-2 px-4">Cancel</button>
+              <button type="submit" disabled={createUserMut.isPending} className="btn-primary text-sm py-2 px-4 disabled:opacity-50">
+                {createUserMut.isPending ? 'Creating…' : 'Create user'}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+
+      <ConfirmDialog
+        open={!!deleteUserTarget}
+        onClose={() => !deleteMut.isPending && setDeleteUserTarget(null)}
+        onConfirm={() => {
+          if (!deleteUserTarget) return;
+          deleteMut.mutate(deleteUserTarget._id, { onSuccess: () => setDeleteUserTarget(null) });
+        }}
+        title="Delete this user?"
+        description={deleteUserTarget ? `${deleteUserTarget.name} (${deleteUserTarget.email}) will be removed permanently.` : ''}
+        confirmLabel="Delete user"
+        isPending={deleteMut.isPending}
+      />
     </div>
   );
 }
@@ -1940,8 +2095,18 @@ function ResourcesTab() {
 
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
-  const [activeTab, setActiveTab] = useState('overview');
-  const [tabQuery, setTabQuery] = useState('');
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabParam = searchParams.get('tab') || 'overview';
+  const activeTab = TABS.some(t => t.id === tabParam) ? tabParam : 'overview';
+  const setActiveTab = (id) => setSearchParams({ tab: id }, { replace: true });
+  const isOverview = activeTab === 'overview';
+
+  useEffect(() => {
+    const t = searchParams.get('tab');
+    if (t && !TABS.some(x => x.id === t)) {
+      setSearchParams({ tab: 'overview' }, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   const { data: statsData } = useQuery({
     queryKey: ['adminStats'],
@@ -1949,23 +2114,24 @@ export default function AdminPage() {
     enabled: activeTab === 'overview',
   });
 
-  const visibleTabs = TABS.filter(t =>
-    !tabQuery
-    || t.label.toLowerCase().includes(tabQuery.toLowerCase())
-    || t.id.toLowerCase().includes(tabQuery.toLowerCase())
-  );
-
   return (
-    <div className="animate-fade-in px-4 sm:px-6 lg:px-8 py-8">
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div>
-          <h1 className="text-2xl font-bold text-[var(--color-text)]">Admin Panel</h1>
-          <p className="text-[var(--color-text-muted)] text-sm mt-1">Platform management and analytics</p>
+    <div className="animate-fade-in px-4 sm:px-6 lg:px-8 py-8 max-w-[1600px] mx-auto">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-8">
+        <div className="min-w-0">
+          {isOverview && (
+            <>
+              <h1 className="text-2xl font-bold text-[var(--color-text)] tracking-tight">LikhitAI admin</h1>
+              <p className="text-[var(--color-text-muted)] text-sm mt-1.5 leading-relaxed">
+                Full platform metrics and shortcuts into each management area. Use the sidebar or the cards below to open a section.
+              </p>
+            </>
+          )}
         </div>
-        {/* Mobile tab selector */}
-        <div className="sm:hidden w-44">
+        <div className={`shrink-0 w-full sm:w-52 ${isOverview ? 'sm:hidden' : 'lg:hidden'}`}>
+          <label htmlFor="admin-tab-select" className="sr-only">Switch section</label>
           <select
-            className="input text-sm"
+            id="admin-tab-select"
+            className="input text-sm w-full"
             value={activeTab}
             onChange={(e) => setActiveTab(e.target.value)}
           >
@@ -1974,65 +2140,52 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className="space-y-6">
-        <section className="card p-4">
-          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <Shield size={16} className="text-[var(--color-primary)]" />
-              <p className="text-sm font-semibold text-[var(--color-text)]">Admin Menu</p>
+      {isOverview && (
+        <div className="space-y-10">
+          <OverviewTab stats={statsData} onSetTab={setActiveTab} />
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-4">Management areas</h2>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+              {HUB_TABS.map(t => {
+                const Icon = t.icon;
+                return (
+                  <button
+                    key={t.id}
+                    type="button"
+                    onClick={() => setActiveTab(t.id)}
+                    className="text-left group rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 flex items-start gap-3 transition-all hover:border-[var(--color-primary)]/35 hover:shadow-md"
+                  >
+                    <div className="p-2.5 rounded-xl bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] group-hover:bg-[var(--color-primary)]/10 group-hover:text-[var(--color-primary)] transition-colors">
+                      <Icon size={20} />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-[var(--color-text)] text-sm leading-snug">{t.label}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-1">Open workspace</p>
+                    </div>
+                  </button>
+                );
+              })}
             </div>
-            <div className="relative w-full sm:w-64">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-              <input
-                className="input pl-8 text-sm"
-                placeholder="Search pages…"
-                value={tabQuery}
-                onChange={(e) => setTabQuery(e.target.value)}
-              />
-            </div>
-          </div>
+          </section>
+        </div>
+      )}
 
-          <div className="mt-4 flex flex-wrap gap-2">
-            {visibleTabs.map(t => {
-              const Icon = t.icon;
-              const active = activeTab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setActiveTab(t.id)}
-                  className={`inline-flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all ${
-                    active
-                      ? 'bg-[var(--color-primary)] text-white shadow-sm'
-                      : 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]/80'
-                  }`}
-                >
-                  <Icon size={15} className="shrink-0" />
-                  <span>{t.label}</span>
-                </button>
-              );
-            })}
-            {visibleTabs.length === 0 && (
-              <p className="text-xs text-[var(--color-text-muted)] px-2 py-3">No matching pages</p>
-            )}
-          </div>
-        </section>
-
-        <section className="space-y-6 min-w-0">
-
-          {activeTab === 'overview'      && <OverviewTab stats={statsData} onSetTab={setActiveTab} />}
-          {activeTab === 'users'         && <UsersTab />}
-          {activeTab === 'plans'         && <PlansTab />}
+      {!isOverview && ADMIN_TAB_PAGE[activeTab] && (
+        <div className="min-w-0">
+          <AdminTabPageHeader tabId={activeTab} onBack={() => setActiveTab('overview')} />
+          {activeTab === 'users' && <UsersTab />}
+          {activeTab === 'plans' && <PlansTab />}
           {activeTab === 'announcements' && <AnnouncementsTab />}
-          {activeTab === 'groups'        && <GroupsTab />}
-          {activeTab === 'contacts'      && <ContactsTab />}
-          {activeTab === 'logs'          && <LogsTab />}
-          {activeTab === 'settings'      && <SettingsTab />}
-          {activeTab === 'payments'      && <PaymentsTab />}
-          {activeTab === 'feedback'      && <FeedbackTab />}
-          {activeTab === 'resources'     && <ResourcesTab />}
-        </section>
-      </div>
+          {activeTab === 'groups' && <GroupsTab />}
+          {activeTab === 'contacts' && <ContactsTab />}
+          {activeTab === 'logs' && <LogsTab />}
+          {activeTab === 'settings' && <SettingsTab />}
+          {activeTab === 'payments' && <PaymentsTab />}
+          {activeTab === 'feedback' && <FeedbackTab />}
+          {activeTab === 'resources' && <ResourcesTab />}
+          {activeTab === 'help' && <HelpTopicsTab />}
+        </div>
+      )}
     </div>
   );
 }

@@ -1,13 +1,18 @@
 import {
   ArrowRight, Award, BarChart2, BookOpen, Brain, Briefcase,
-  Camera, Check, CheckCircle, ChevronRight, Clock, Code2, Crown, FileText,
-  GraduationCap, LayoutDashboard, Mail, Monitor,
-  PlayCircle, ShieldCheck, Sparkles, Star, Trophy, UserCheck, Users, Zap, TrendingUp, Target, BookmarkCheck
+  Camera,
+  CheckCircle,
+  Clock, Code2, Crown,
+  GraduationCap, LayoutDashboard,
+  Monitor,
+  ShieldCheck, Sparkles, Star,
+  Target,
+  TrendingUp,
+  UserCheck, Users, Zap
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuthStore } from '../store/index.js';
-import { PLANS } from './PricingPage.jsx';
 
 // Screenshot imports — Vite hashes these filenames for automatic cache-busting
 import ss1 from '../assets/screenshots/demo-screenshots/1.png';
@@ -258,7 +263,8 @@ function ScreenshotShowcase() {
 }
 
 export default function HomePage() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const isInstructor = user?.role === 'instructor';
 
   return (
     <div className="bg-[var(--color-bg)]">
@@ -307,7 +313,7 @@ export default function HomePage() {
           </div>
 
           {/* Core value props — 3 cards */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
+          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
             {[
               { icon: Users, title: 'Manage all your students from one place', desc: 'Create batches, assign tests, track who attempted, who passed, and who needs support.', color: 'from-teal-400 to-cyan-500' },
               { icon: BarChart2, title: 'Track performance with real data', desc: 'Per-student analytics, topic-wise accuracy, score trends, and time analysis on every test.', color: 'from-blue-400 to-indigo-500' },
@@ -321,15 +327,15 @@ export default function HomePage() {
                 <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
               </div>
             ))}
-          </div>
+          </div> */}
 
           {/* Student join note */}
-          <div className="text-center mt-8">
+          {/* <div className="text-center mt-8">
             <p className="text-xs text-[var(--color-text-muted)]">
               <CheckCircle size={12} className="inline mr-1 text-green-500" />
               Your students join <strong className="text-[var(--color-text)]">completely free</strong> — they take your tests, earn certificates, and never pay a thing.
             </p>
-          </div>
+          </div> */}
         </div>
       </section>
 
@@ -353,7 +359,7 @@ export default function HomePage() {
       </section>
 
       {/* ── How It Works — Instructor Flow ── */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+      {/* <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/4 w-64 h-64 bg-teal-50/60 dark:bg-teal-900/8 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-72 h-72 bg-blue-50/50 dark:bg-blue-900/8 rounded-full blur-3xl" />
@@ -397,7 +403,7 @@ export default function HomePage() {
             </div>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ── Screenshots Showcase ── */}
       <ScreenshotShowcase />
@@ -651,7 +657,7 @@ export default function HomePage() {
       </section>
 
       {/* ── Instructor Pricing ── */}
-      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+      {/* <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[600px] h-[300px] bg-gradient-radial from-teal-50/50 via-cyan-50/20 to-transparent dark:from-teal-900/10 dark:to-transparent rounded-full blur-3xl" />
         </div>
@@ -729,7 +735,7 @@ export default function HomePage() {
             </Link>
           </div>
         </div>
-      </section>
+      </section> */}
 
       {/* ── CTA ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">

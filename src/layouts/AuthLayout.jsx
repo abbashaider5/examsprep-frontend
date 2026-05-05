@@ -2,6 +2,7 @@ import { Award, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 const SLIDES = [
@@ -91,10 +92,10 @@ function ImageCarousel() {
 }
 
 export default function AuthLayout() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const { dark, toggle } = useThemeStore();
 
-  if (isAuthenticated) return <Navigate to="/dashboard" replace />;
+  if (isAuthenticated) return <Navigate to={getDashboardPath(user?.role)} replace />;
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg)]">

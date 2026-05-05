@@ -12,7 +12,7 @@ import {
     Tooltip,
 } from 'chart.js';
 import {
-    AlertCircle, BookOpen, Brain, Filter, Flame, Lightbulb,
+    AlertCircle, ArrowLeft, BookOpen, Brain, Filter, Lightbulb,
     Target, TrendingUp, X, Zap,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
@@ -68,7 +68,6 @@ export default function StudyPerformancePage() {
     const trend = analytics?.trend || [];
     const topicPerfGlobal = analytics?.topicPerf || {};
     const totalExams = analytics?.totalExams || 0;
-    const streak = analytics?.streak || 0;
     const rec = recData?.recommendation;
 
     // Build filter options from results
@@ -144,6 +143,27 @@ export default function StudyPerformancePage() {
         ? Math.round(filteredResults.reduce((s, r) => s + r.percentage, 0) / filteredResults.length)
         : null;
 
+    const subjectStats = useMemo(() => {
+        const map = {};
+        filteredResults.forEach((r) => {
+            const subject = r.exam?.subject || 'General';
+            if (!map[subject]) map[subject] = { total: 0, score: 0, time: 0, count: 0 };
+            map[subject].total += 1;
+            map[subject].score += r.percentage || 0;
+            map[subject].time += r.timeTaken || 0;
+            map[subject].count += 1;
+        });
+        return Object.entries(map).map(([subject, stats]) => ({
+            subject,
+            attempts: stats.total,
+            accuracy: Math.round(stats.score / Math.max(1, stats.count)),
+            avgTimeMin: Math.round((stats.time / Math.max(1, stats.count)) / 60),
+        }));
+    }, [filteredResults]);
+
+    const bestSubject = subjectStats.length ? [...subjectStats].sort((a, b) => b.accuracy - a.accuracy)[0] : null;
+    const weakSubject = subjectStats.length ? [...subjectStats].sort((a, b) => a.accuracy - b.accuracy)[0] : null;
+
     const topicEntries = Object.entries(filteredTopicPerf);
     const bestTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] > b[1] ? a : b) : null;
     const worstTopic = topicEntries.length > 0 ? topicEntries.reduce((a, b) => a[1] < b[1] ? a : b) : null;
@@ -189,7 +209,7 @@ export default function StudyPerformancePage() {
     if (totalExams === 0) {
         return (
             <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in text-center">
-                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/30 dark:to-blue-900/20 flex items-center justify-center">
+                <div className="w-20 h-20 mx-auto mb-4 rounded-2xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center">
                     <TrendingUp size={32} className="text-[var(--color-primary)]" />
                 </div>
                 <h2 className="text-xl font-bold text-[var(--color-text)] mb-2">No performance data yet</h2>
@@ -200,30 +220,27 @@ export default function StudyPerformancePage() {
 
     return (
         <div className="px-4 sm:px-6 lg:px-8 py-8 max-w-6xl mx-auto animate-fade-in space-y-5">
-            {/* Hero header */}
-            <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-6 shadow-lg">
-                <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-                <div className="absolute -bottom-6 left-0 w-36 h-36 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
-                <div className="relative flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-                            <TrendingUp size={20} className="text-white" />
-                        </div>
-                        <div>
-                            <h1 className="text-xl font-extrabold text-white leading-tight">Performance</h1>
-                            <p className="text-sm text-teal-100 mt-0.5">Track your progress across all tests</p>
-                        </div>
-                    </div>
+            <div className="flex items-start justify-between gap-3">
+                <div>
+                    <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">Performance</h1>
+                    <p className="text-sm text-[var(--color-text-muted)] mt-1">Detailed insights across tests, subjects, and topics.</p>
+                </div>
+                <div className="flex items-center gap-2">
                     <button
                         onClick={() => setShowFilters(f => !f)}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${showFilters || hasFilter ? 'bg-white/20 text-white ring-2 ring-white/40' : 'bg-white/15 text-white hover:bg-white/25'}`}
+                        className={`btn-secondary inline-flex items-center gap-2 ${showFilters || hasFilter ? 'border-[var(--color-primary)] text-[var(--color-primary)]' : ''}`}
                     >
                         <Filter size={15} />
                         {hasFilter ? 'Filters active' : 'Filter'}
-                        {hasFilter && <span className="w-5 h-5 bg-white/25 text-white rounded-full text-xs flex items-center justify-center">
-                            {[filterExam !== 'all', filterSubject !== 'all', filterTopic !== 'all'].filter(Boolean).length}
-                        </span>}
+                        {hasFilter && (
+                            <span className="ml-1 w-5 h-5 bg-[var(--color-primary)]/15 text-[var(--color-primary)] rounded-full text-xs flex items-center justify-center shrink-0">
+                                {[filterExam !== 'all', filterSubject !== 'all', filterTopic !== 'all'].filter(Boolean).length}
+                            </span>
+                        )}
                     </button>
+                    <Link to="/dashboard" className="btn-secondary inline-flex items-center gap-1.5">
+                        <ArrowLeft size={14} /> Back
+                    </Link>
                 </div>
             </div>
 
@@ -276,13 +293,13 @@ export default function StudyPerformancePage() {
             <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
                 {[
                     { label: 'Exams Taken', value: hasFilter ? filteredResults.length : totalExams, icon: BookOpen, gradient: 'from-teal-400 to-cyan-500' },
-                    { label: 'Avg. Score', value: filteredAvgScore !== null ? `${filteredAvgScore}%` : '—', icon: Target, gradient: 'from-blue-400 to-indigo-500' },
-                    { label: 'Streak', value: `${streak}d`, icon: Flame, gradient: 'from-sky-400 to-blue-500' },
+                    { label: 'Subject Accuracy', value: bestSubject ? `${bestSubject.accuracy}%` : (filteredAvgScore !== null ? `${filteredAvgScore}%` : '—'), icon: Target, gradient: 'from-blue-400 to-indigo-500' },
+                    { label: 'Avg Time / Test', value: filteredResults.length ? `${Math.round((filteredResults.reduce((s, r) => s + (r.timeTaken || 0), 0) / filteredResults.length) / 60)}m` : '—', icon: TrendingUp, gradient: 'from-sky-400 to-blue-500' },
                     { label: 'Topics', value: topicEntries.length, icon: Zap, gradient: 'from-teal-500 to-blue-600' },
-                ].map(({ label, value, icon: Icon, gradient }) => (
+                ].map(({ label, value, icon: Icon }) => (
                     <div key={label} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4 flex items-center gap-3">
-                        <div className={`w-10 h-10 rounded-xl bg-gradient-to-br ${gradient} flex items-center justify-center shrink-0 shadow-sm`}>
-                            <Icon size={18} className="text-white" />
+                        <div className="w-10 h-10 rounded-xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center shrink-0 shadow-sm">
+                            <Icon size={18} className="text-[var(--color-primary)]" />
                         </div>
                         <div>
                             <p className="text-[10px] text-[var(--color-text-muted)] leading-none mb-1">{label}</p>
@@ -290,6 +307,31 @@ export default function StudyPerformancePage() {
                         </div>
                     </div>
                 ))}
+            </div>
+
+            {/* Subject wise performance */}
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
+                <h3 className="text-sm font-bold text-[var(--color-text)] mb-4">Subject-wise Performance</h3>
+                {subjectStats.length === 0 ? (
+                    <p className="text-sm text-[var(--color-text-muted)]">No subject-level data available for the current filter.</p>
+                ) : (
+                    <div className="space-y-2">
+                        {subjectStats.map((s) => (
+                            <div key={s.subject} className="p-3 rounded-xl bg-[var(--color-bg-alt)] border border-[var(--color-border)]">
+                                <div className="flex items-center justify-between gap-3">
+                                    <p className="text-sm font-semibold text-[var(--color-text)]">{s.subject}</p>
+                                    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${s.accuracy >= 75 ? 'bg-emerald-100 text-emerald-700' : s.accuracy >= 50 ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>
+                                        {s.accuracy}% accuracy
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between mt-2 text-xs text-[var(--color-text-muted)]">
+                                    <span>{s.attempts} attempts</span>
+                                    <span>{s.avgTimeMin} min avg time</span>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                )}
             </div>
 
             {/* Charts */}
@@ -360,8 +402,22 @@ export default function StudyPerformancePage() {
 
             {/* Topics + AI Recommendation */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+                {bestSubject && (
+                    <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4">
+                        <p className="text-[9px] font-bold text-emerald-600 uppercase tracking-wide mb-1">Strong Subject</p>
+                        <p className="text-sm font-bold text-[var(--color-text)]">{bestSubject.subject}</p>
+                        <p className="text-xs text-[var(--color-text-muted)]">{bestSubject.accuracy}% accuracy</p>
+                    </div>
+                )}
+                {weakSubject && (
+                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4">
+                        <p className="text-[9px] font-bold text-red-500 uppercase tracking-wide mb-1">Weak Subject</p>
+                        <p className="text-sm font-bold text-[var(--color-text)]">{weakSubject.subject}</p>
+                        <p className="text-xs text-[var(--color-text-muted)]">{weakSubject.accuracy}% accuracy</p>
+                    </div>
+                )}
                 {bestTopic && (
-                    <div className="bg-gradient-to-br from-emerald-50 to-teal-50/50 dark:from-emerald-900/20 dark:to-teal-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-start gap-3">
+                    <div className="bg-emerald-50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl p-4 flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-emerald-500 flex items-center justify-center shrink-0 shadow-sm">
                             <Target size={16} className="text-white" />
                         </div>
@@ -374,7 +430,7 @@ export default function StudyPerformancePage() {
                 )}
 
                 {worstTopic && worstTopic[0] !== bestTopic?.[0] && (
-                    <div className="bg-gradient-to-br from-red-50 to-rose-50/50 dark:from-red-900/20 dark:to-rose-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3">
+                    <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-800 rounded-2xl p-4 flex items-start gap-3">
                         <div className="w-9 h-9 rounded-xl bg-red-500 flex items-center justify-center shrink-0 shadow-sm">
                             <AlertCircle size={16} className="text-white" />
                         </div>
@@ -387,10 +443,10 @@ export default function StudyPerformancePage() {
                 )}
 
                 {!rLoading && (
-                    <div className={`bg-gradient-to-br from-teal-50 to-blue-50/50 dark:from-teal-900/10 dark:to-blue-900/10 border border-teal-200 dark:border-teal-800/40 rounded-2xl p-4 ${(!bestTopic || worstTopic?.[0] === bestTopic?.[0]) ? 'lg:col-span-2' : ''}`}>
+                    <div className={`bg-[var(--color-bg-alt)] border border-[var(--color-border)] rounded-2xl p-4 ${(!bestTopic || worstTopic?.[0] === bestTopic?.[0]) ? 'lg:col-span-2' : ''}`}>
                         <div className="flex items-center gap-2 mb-2">
-                            <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-blue-600 flex items-center justify-center shrink-0">
-                                <Brain size={14} className="text-white" />
+                            <div className="w-7 h-7 rounded-lg bg-[var(--color-bg-alt)] border border-[var(--color-border)] flex items-center justify-center shrink-0">
+                                <Brain size={14} className="text-[var(--color-primary)]" />
                             </div>
                             <p className="text-xs font-bold text-[var(--color-text)]">AI Recommendation</p>
                         </div>

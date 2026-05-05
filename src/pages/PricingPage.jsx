@@ -4,6 +4,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { paymentApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 export const PLANS = [
   {
@@ -143,14 +144,14 @@ export default function PricingPage() {
               remaining: verifyData.remaining,
             });
             toast.success(`${plan.name} plan activated! Enjoy your new features.`);
-            navigate('/dashboard');
+            navigate(getDashboardPath(user?.role));
           } catch (verifyErr) {
             toast.error(verifyErr.response?.data?.message || 'Payment verification failed. Please contact support if amount was deducted.');
           }
           setLoading(null);
         },
         prefill: { name: user?.name, email: user?.email },
-        theme: { color: '#0366AC' },
+        theme: { color: '#0d9488' },
         modal: { ondismiss: () => setLoading(null) },
       };
 

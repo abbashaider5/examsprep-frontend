@@ -9,6 +9,42 @@ import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
 import { examApi } from '../services/api.js';
 
+function stripReviewMeta(q) {
+  if (!q || typeof q !== 'object') return q;
+  const { _reviewMeta, ...rest } = q;
+  return rest;
+}
+
+function rebuildVariantsFromMerged(mergedList, originalVariants) {
+  if (!Array.isArray(originalVariants) || originalVariants.length === 0) {
+    return { questions: mergedList.map(stripReviewMeta), questionVariants: undefined };
+  }
+  const numVariants = originalVariants.length;
+  const qsPer = originalVariants[0]?.length ?? 0;
+  const variants = Array.from({ length: numVariants }, (_, vi) =>
+    Array.from({ length: qsPer }, (_, ii) => {
+      const orig = originalVariants[vi]?.[ii];
+      return orig ? JSON.parse(JSON.stringify(orig)) : null;
+    }),
+  );
+  for (const q of mergedList) {
+    const m = q._reviewMeta;
+    if (!m || typeof m.variantIndex !== 'number' || typeof m.indexInVariant !== 'number') continue;
+    const { variantIndex: vi, indexInVariant: ii } = m;
+    if (variants[vi] && ii >= 0 && ii < variants[vi].length) {
+      variants[vi][ii] = stripReviewMeta(q);
+    }
+  }
+  for (let vi = 0; vi < numVariants; vi++) {
+    for (let ii = 0; ii < qsPer; ii++) {
+      if (variants[vi][ii] == null && originalVariants[vi]?.[ii]) {
+        variants[vi][ii] = JSON.parse(JSON.stringify(originalVariants[vi][ii]));
+      }
+    }
+  }
+  return { questions: variants[0] || mergedList.map(stripReviewMeta), questionVariants: variants };
+}
+
 function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate, onDelete, regenerating }) {
   const typeColors = {
     coding: 'bg-purple-500',
@@ -245,13 +281,30 @@ export default function EditQuestionsPage() {
 
   const [questions, setQuestions] = useState(null);
   const [regeneratingIdx, setRegeneratingIdx] = useState(null);
+  const [usingMerged, setUsingMerged] = useState(false);
+  const [sourceVariants, setSourceVariants] = useState(null);
 
   useEffect(() => {
-    if (data?.questions) setQuestions(data.questions.map(q => ({ ...q })));
+    if (!data) return;
+    if (Array.isArray(data.mergedQuestionsReview) && data.mergedQuestionsReview.length > 0 && data.multipleSets) {
+      setQuestions(data.mergedQuestionsReview.map((q) => ({ ...q })));
+      setSourceVariants(data.questionVariants);
+      setUsingMerged(true);
+    } else {
+      setQuestions((data.questions || []).map((q) => ({ ...q })));
+      setSourceVariants(null);
+      setUsingMerged(false);
+    }
   }, [data]);
 
   const saveMut = useMutation({
-    mutationFn: () => examApi.updateQuestions(id, questions),
+    mutationFn: () => {
+      if (usingMerged && Array.isArray(sourceVariants) && sourceVariants.length > 0) {
+        const { questions: q0, questionVariants } = rebuildVariantsFromMerged(questions, sourceVariants);
+        return examApi.updateQuestions(id, { questions: q0, questionVariants });
+      }
+      return examApi.updateQuestions(id, { questions });
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['myExams'] });
       qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
@@ -347,13 +400,30 @@ export default function EditQuestionsPage() {
       {questions && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 space-y-3">
+            {usingMerged && (
+              <div className="rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-900 dark:text-amber-200 mb-2">
+                Multi-set review: all variants are shown in one list. Saving updates every set. Regenerate and delete are disabled here.
+              </div>
+            )}
             {questions.map((q, i) => {
               const commonProps = {
                 question: q, index: i,
                 onChange: (u) => updateQuestion(i, u),
-                onRegenerate: () => handleRegenerate(i),
-                onDelete: () => removeQuestion(i),
-                regenerating: regeneratingIdx === i,
+                onRegenerate: () => {
+                  if (usingMerged) {
+                    toast.error('Regenerate is not available in multi-set merged review.');
+                    return;
+                  }
+                  handleRegenerate(i);
+                },
+                onDelete: () => {
+                  if (usingMerged) {
+                    toast.error('Cannot remove questions from merged multi-set view.');
+                    return;
+                  }
+                  removeQuestion(i);
+                },
+                regenerating: usingMerged ? false : regeneratingIdx === i,
               };
               if (q.type === 'coding') return <CodingQuestionEditor key={i} {...commonProps} />;
               if (q.type === 'descriptive') return <DescriptiveQuestionEditor key={i} {...commonProps} />;

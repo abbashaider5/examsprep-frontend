@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Award, BookOpen, Download, ExternalLink, GraduationCap, Users } from 'lucide-react';
+import { ArrowLeft, Award, BookOpen, Download, ExternalLink, GraduationCap, Users } from 'lucide-react';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { certificateApi, instructorApi } from '../services/api.js';
@@ -11,19 +11,22 @@ function scoreColor(v) {
 
 export default function CertificatesPage() {
   const { user } = useAuthStore();
-  const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
+  const isAdmin = user?.role === 'admin';
+  const isInstructorOnly = user?.role === 'instructor';
+  const isInstructorOrAdmin = isInstructorOnly || isAdmin;
   const [tab, setTab] = useState('mine');
   const [studentSearch, setStudentSearch] = useState('');
 
   const { data, isLoading } = useQuery({
     queryKey: ['certificates'],
     queryFn: () => certificateApi.getAll().then(r => r.data),
+    enabled: !isInstructorOnly,
   });
 
   const { data: analyticsData, isLoading: loadingAnalytics } = useQuery({
     queryKey: ['instructorAnalyticsDetailed'],
     queryFn: () => instructorApi.getDetailedAnalytics().then(r => r.data),
-    enabled: isInstructor,
+    enabled: isInstructorOrAdmin,
     staleTime: 2 * 60 * 1000,
   });
 
@@ -57,7 +60,9 @@ export default function CertificatesPage() {
     return c.student.name?.toLowerCase().includes(q) || c.student.email?.toLowerCase().includes(q) || c.examTitle?.toLowerCase().includes(q);
   });
 
-  if (isLoading) return (
+  const pageLoading = (isLoading && !isInstructorOnly) || (isInstructorOnly && loadingAnalytics);
+
+  if (pageLoading) return (
     <div className="min-h-screen flex items-center justify-center">
       <div className="w-8 h-8 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin" />
     </div>
@@ -65,27 +70,24 @@ export default function CertificatesPage() {
 
   return (
     <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-      {/* Page header */}
-      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-6 mb-6 shadow-lg">
-        <div className="absolute -top-10 -right-10 w-48 h-48 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute -bottom-8 left-0 w-36 h-36 bg-teal-400/20 rounded-full blur-3xl pointer-events-none" />
-        <div className="relative flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-white/20 flex items-center justify-center shrink-0">
-            <Award size={20} className="text-white" />
-          </div>
-          <div>
-            <h1 className="text-xl font-extrabold text-white leading-tight">Certificates</h1>
-            <p className="text-sm text-teal-100 mt-0.5">
-              {isInstructor
+      <div className="mb-6 flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">Certificates</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">
+            {isInstructorOnly
+              ? `${studentCerts.length} certificate${studentCerts.length !== 1 ? 's' : ''} issued to students`
+              : isInstructorOrAdmin
                 ? `${certs.length} earned · ${studentCerts.length} issued to students`
                 : `${certs.length} certificate${certs.length !== 1 ? 's' : ''} earned`}
-            </p>
-          </div>
+          </p>
         </div>
+        <Link to="/dashboard" className="btn-secondary inline-flex items-center gap-1.5 text-sm">
+          <ArrowLeft size={14} /> Back
+        </Link>
       </div>
 
-      {/* Tab bar — instructors only */}
-      {isInstructor && (
+      {/* Tab bar — admins only (instructors see student issuance only) */}
+      {isAdmin && (
         <div className="flex gap-1 border-b border-[var(--color-border)] mb-6">
           {[
             { id: 'mine', label: 'My Certificates', icon: Award, count: certs.length },
@@ -109,8 +111,8 @@ export default function CertificatesPage() {
         </div>
       )}
 
-      {/* ── My Certificates ── */}
-      {(!isInstructor || tab === 'mine') && (
+      {/* ── My Certificates (students & admins — not pure instructors) ── */}
+      {!isInstructorOnly && (!isAdmin || tab === 'mine') && (
         <>
           {certs.length === 0 ? (
             <div className="card text-center py-16">
@@ -156,8 +158,8 @@ export default function CertificatesPage() {
         </>
       )}
 
-      {/* ── Student Certificates (instructor only) ── */}
-      {isInstructor && tab === 'students' && (
+      {/* ── Student Certificates (instructors & admins on Students tab) ── */}
+      {(isInstructorOnly || (isAdmin && tab === 'students')) && (
         <div className="space-y-4">
           {/* Search */}
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-4">

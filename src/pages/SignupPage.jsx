@@ -3,7 +3,7 @@ import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, User } from 'lucide-re
 import { useEffect, useRef, useState } from 'react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import { useAuth } from '../hooks/useAuth.js';
@@ -32,7 +32,7 @@ const STRENGTH_CONFIG = [
   { label: 'Strong', color: 'bg-green-500' },
 ];
 
-function OTPInput({ email, purpose, onVerify, verifyMut }) {
+function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '' }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
   const [countdown, setCountdown] = useState(30);
@@ -59,7 +59,12 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
     e.preventDefault();
     const code = otp.join('');
     if (code.length < 6) return;
-    onVerify({ email, otp: code, purpose });
+    onVerify({
+      email,
+      otp: code,
+      purpose,
+      ...(examInviteToken ? { examInviteToken } : {}),
+    });
   };
 
   const handleResend = async () => {
@@ -128,11 +133,17 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 }
 
 export default function SignupPage() {
+  const [searchParams] = useSearchParams();
+  const inviteTokenFromUrl = searchParams.get('invite') || '';
+  const emailFromUrl = searchParams.get('email') || '';
+
   const { signup, google, verifyOtp } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
+  /** Preserved through OTP step (URL token + server echo when OTP is required). */
+  const [examInviteForOtp, setExamInviteForOtp] = useState(() => inviteTokenFromUrl);
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const { data: publicSettings } = useQuery({
@@ -145,6 +156,20 @@ export default function SignupPage() {
 
   const strength = getStrength(form.password);
   const sc = STRENGTH_CONFIG[form.password.length === 0 ? 0 : strength] || STRENGTH_CONFIG[0];
+
+  useEffect(() => {
+    if (!emailFromUrl) return;
+    try {
+      const decoded = decodeURIComponent(emailFromUrl);
+      setForm((f) => (f.email ? f : { ...f, email: decoded }));
+    } catch {
+      setForm((f) => (f.email ? f : { ...f, email: emailFromUrl }));
+    }
+  }, [emailFromUrl]);
+
+  useEffect(() => {
+    if (inviteTokenFromUrl) setExamInviteForOtp(inviteTokenFromUrl);
+  }, [inviteTokenFromUrl]);
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -167,8 +192,18 @@ export default function SignupPage() {
       return;
     }
     signup.mutate(
-      { ...form, recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined },
-      { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } },
+      {
+        ...form,
+        recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined,
+        ...(inviteTokenFromUrl || examInviteForOtp ? { examInviteToken: inviteTokenFromUrl || examInviteForOtp } : {}),
+      },
+      {
+        onSuccess: (res) => {
+          if (!res.data.requiresOTP) return;
+          setOtpEmail(form.email);
+          if (res.data.examInviteToken) setExamInviteForOtp(res.data.examInviteToken);
+        },
+      },
     );
   };
 
@@ -177,7 +212,13 @@ export default function SignupPage() {
   if (otpEmail) {
     return (
       <div className="w-full">
-        <OTPInput email={otpEmail} purpose="signup" onVerify={verifyOtp.mutate} verifyMut={verifyOtp} />
+        <OTPInput
+          email={otpEmail}
+          purpose="signup"
+          examInviteToken={examInviteForOtp}
+          onVerify={verifyOtp.mutate}
+          verifyMut={verifyOtp}
+        />
         <button onClick={() => setOtpEmail(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-4">
           ← Back
         </button>
@@ -260,13 +301,15 @@ export default function SignupPage() {
         )}
 
         {mustSolveRecaptcha && (
-          <div className="flex justify-center -my-0.5">
-            <ReCAPTCHA
-              sitekey={recaptchaSiteKey}
-              size="compact"
-              onChange={(token) => setRecaptchaToken(token)}
-              onExpired={() => setRecaptchaToken(null)}
-            />
+          <div className="flex justify-center -my-0.5 overflow-hidden py-1">
+            <div className="origin-top scale-[0.82] sm:scale-90">
+              <ReCAPTCHA
+                sitekey={recaptchaSiteKey}
+                size="compact"
+                onChange={(token) => setRecaptchaToken(token)}
+                onExpired={() => setRecaptchaToken(null)}
+              />
+            </div>
           </div>
         )}
 
@@ -283,15 +326,18 @@ export default function SignupPage() {
         <div className="h-px flex-1 bg-[var(--color-border)]" />
       </div>
 
-      {/* google auth button */}
       <GoogleAuthButton
         disabled={google.isPending}
         onCredential={(payload) => {
-          google.mutate({ ...payload, role: 'user' }, {
-            onSuccess: (res) => {
-              if (res.data.requiresOTP) setOtpEmail(res.data.email);
+          const token = inviteTokenFromUrl || examInviteForOtp;
+          google.mutate(
+            { ...payload, role: 'user', ...(token ? { examInviteToken: token } : {}) },
+            {
+              onSuccess: (res) => {
+                if (res.data.requiresOTP) setOtpEmail(res.data.email);
+              },
             },
-          });
+          );
         }}
       />
 

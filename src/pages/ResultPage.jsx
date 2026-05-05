@@ -10,6 +10,7 @@ import { Link, useLocation, useParams } from 'react-router-dom';
 import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
 import { resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 ChartJS.register(ArcElement, Tooltip, Legend);
 
@@ -18,6 +19,7 @@ export default function ResultPage() {
   const { state } = useLocation();
   const { isAuthenticated, user } = useAuthStore();
   const isInstructor = ['instructor', 'admin'].includes(user?.role);
+  const homePath = getDashboardPath(user?.role);
   const [showFeedback, setShowFeedback] = useState(false);
 
   const { data, isLoading } = useQuery({
@@ -66,7 +68,7 @@ export default function ResultPage() {
             The instructor has chosen to keep results private. You will be notified when results are released.
           </p>
           <div className="flex gap-3 justify-center">
-            <Link to="/dashboard" className="btn-secondary text-sm">Back to Dashboard</Link>
+            <Link to={homePath} className="btn-secondary text-sm">Back to Dashboard</Link>
             {isInstructor && <Link to="/create-exam" className="btn-primary text-sm">Create New Exam</Link>}
           </div>
         </div>
@@ -159,7 +161,7 @@ export default function ResultPage() {
 
           {/* Actions */}
           <div className="flex sm:flex-col gap-2 shrink-0">
-            <Link to="/dashboard" className="btn-secondary text-sm">Dashboard</Link>
+            <Link to={homePath} className="btn-secondary text-sm">Dashboard</Link>
             {isInstructor && <Link to="/create-exam" className="btn-primary text-sm">New Exam</Link>}
           </div>
         </div>

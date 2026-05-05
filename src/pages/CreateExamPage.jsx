@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Camera, CheckCircle, Clock, Code2, Edit3, Eye, EyeOff, FileText, FlipHorizontal, FolderOpen, Globe, Lock, Mail, Percent, Plus, RefreshCw, Search, Shield, Sparkles, Timer, Users, X } from 'lucide-react';
-import { useState } from 'react';
+import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, Clock, Code2, Edit3, Eye, EyeOff, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Lock, Mail, Percent, Plus, RefreshCw, Search, Shield, Sparkles, Timer, Users, Wand2, X } from 'lucide-react';
+import { useEffect, useState } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
+import HelpTooltip from '../components/HelpTooltip.jsx';
 import Modal from '../components/Modal.jsx';
 import { examApi, instructorApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { getDashboardPath } from '../utils/dashboardPath.js';
 
 const schema = z.object({
   title: z.string().min(3, 'Title too short'),
@@ -21,6 +24,21 @@ function ToggleSwitch({ checked, onChange, disabled = false }) {
       <input type="checkbox" className="sr-only peer" checked={checked} disabled={disabled} onChange={onChange} />
       <div className="w-9 h-5 bg-[var(--color-border)] rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-0.5 after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[var(--color-primary)]" />
     </label>
+  );
+}
+
+/** Material-style info icon; tooltip renders in a portal so it is never clipped. */
+function FieldHint({ text, placement = 'top' }) {
+  return (
+    <HelpTooltip content={text} placement={placement}>
+      <button
+        type="button"
+        className="rounded-full p-0.5 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] focus:outline-none focus-visible:ring-2 focus-visible:ring-teal-400/50 align-middle shrink-0"
+        aria-label="More information"
+      >
+        <Info size={14} aria-hidden />
+      </button>
+    </HelpTooltip>
   );
 }
 
@@ -273,6 +291,8 @@ export default function CreateExamPage() {
   const [form, setForm] = useState({
     title: '', subject: '', numQuestions: 10, topics: '',
     proctored: false, examType: 'mcq', timePerQuestionInput: '',
+    mixedMcqPercent: 50,
+    multipleSets: false,
   });
   const [advanced, setAdvanced] = useState({
     allowReattempt: false,
@@ -327,6 +347,22 @@ export default function CreateExamPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to create exam'),
   });
 
+  useEffect(() => {
+    if (!createMut.isPending) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const prevOverscroll = document.documentElement.style.overscrollBehavior;
+    const scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehavior = 'none';
+    if (scrollbarW > 0) document.body.style.paddingRight = `${scrollbarW}px`;
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+      document.documentElement.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [createMut.isPending]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const result = schema.safeParse({ ...form, numQuestions: Number(form.numQuestions) });
@@ -372,7 +408,24 @@ export default function CreateExamPage() {
       timePerQuestion,
       ...((source === 'examprep' || source === 'myresources') && selectedResourceId ? { resourceId: selectedResourceId } : {}),
     };
-    if (isInstructor) Object.assign(payload, { ...advanced, examType, timePerQuestion, passingPercentage: pp, expiryDate: advanced.expiryDate || null });
+    if (isInstructor && examType === 'mixed') {
+      const mp = Number(form.mixedMcqPercent);
+      if (!Number.isFinite(mp) || mp < 10 || mp > 90) {
+        setErrors({ mixedMcqPercent: 'Choose how many questions are MCQ vs descriptive (10–90% MCQ).' });
+        return;
+      }
+      payload.mixedMcqPercent = Math.round(mp);
+    }
+    if (isInstructor) {
+      Object.assign(payload, {
+        ...advanced,
+        examType,
+        timePerQuestion,
+        passingPercentage: pp,
+        expiryDate: advanced.expiryDate || null,
+        multipleSets: !!form.multipleSets,
+      });
+    }
     createMut.mutate(payload);
   };
 
@@ -408,7 +461,7 @@ export default function CreateExamPage() {
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles size={20} /> Create New Exam</h1>
-          <p className="text-teal-100 text-sm mt-1">AI will generate your questions instantly.</p>
+          <p className="text-teal-100 text-sm mt-1">Build a test with questions generated for your topic and settings.</p>
         </div>
       </div>
 
@@ -420,7 +473,15 @@ export default function CreateExamPage() {
             {/* ── Exam Type ── */}
             {(isInstructor || isEnterprise) && (
               <div>
-                <label className="label mb-2">Exam Type</label>
+                <label className="label mb-2 flex items-center gap-1.5 flex-wrap">
+                  Exam Type
+                  {isInstructor && (
+                    <FieldHint
+                      placement="bottom"
+                      text="MCQ: all multiple choice. Descriptive: written answers. Mixed: both types in one exam. Coding: programming tasks (Enterprise)."
+                    />
+                  )}
+                </label>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   {EXAM_TYPES.map(et => (
                     <button
@@ -449,17 +510,55 @@ export default function CreateExamPage() {
                     </button>
                   ))}
                 </div>
+                {isInstructor && form.examType === 'mixed' && !advanced.enableCoding && (
+                  <div className="mt-4 p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 space-y-2">
+                    <label className="label flex items-center gap-1.5">
+                      Question mix (required)
+                      <FieldHint
+                        placement="bottom"
+                        text="Sets how many questions are auto-graded MCQ versus descriptive answers. You can adjust the slider between 10% and 90% MCQ."
+                      />
+                    </label>
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      Choose what share of questions are multiple choice vs written answers (descriptive).
+                    </p>
+                    <div className="flex items-center gap-4 flex-wrap">
+                      <input
+                        type="range"
+                        min={10}
+                        max={90}
+                        value={form.mixedMcqPercent}
+                        onChange={e => setF('mixedMcqPercent')(Number(e.target.value))}
+                        className="flex-1 min-w-[180px] accent-[var(--color-primary)] h-2"
+                      />
+                      <p className="text-sm font-semibold text-[var(--color-text)] tabular-nums shrink-0">
+                        {form.mixedMcqPercent}% MCQ · {100 - form.mixedMcqPercent}% written
+                      </p>
+                    </div>
+                    {errors.mixedMcqPercent && <p className="text-red-500 text-xs">{errors.mixedMcqPercent}</p>}
+                  </div>
+                )}
               </div>
             )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <label className="label">Exam Title</label>
+                <label className="label flex items-center gap-1.5">
+                  Exam Title
+                  {isInstructor && (
+                    <FieldHint placement="bottom" text="Shown to you and to candidates in invites, dashboards, and the exam header." />
+                  )}
+                </label>
                 <input className="input" placeholder="e.g., Python Fundamentals Quiz" value={form.title} onChange={e => setF('title')(e.target.value)} />
                 {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
               </div>
               <div>
-                <label className="label">Subject</label>
+                <label className="label flex items-center gap-1.5">
+                  Subject
+                  {isInstructor && (
+                    <FieldHint placement="bottom" text="Helps the AI focus question generation on the right domain (e.g. Biology, Python)." />
+                  )}
+                </label>
                 <input className="input" placeholder="e.g., Python, Biology, History" value={form.subject} onChange={e => setF('subject')(e.target.value)} />
                 {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
               </div>
@@ -467,7 +566,15 @@ export default function CreateExamPage() {
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
-                <label className="label flex items-center gap-1.5"><Clock size={12} /> Time per Question</label>
+                <label className="label flex items-center gap-1.5 flex-wrap">
+                  <Clock size={12} /> Time per Question
+                  {isInstructor && (
+                    <FieldHint
+                      placement="bottom"
+                      text="Countdown time for each question during the live exam. Use mm:ss (e.g. 01:30) or seconds only. Minimum 10 seconds."
+                    />
+                  )}
+                </label>
                 <div className="flex items-center gap-2">
                   <div className="relative flex-1">
                     <input
@@ -486,7 +593,15 @@ export default function CreateExamPage() {
                 {errors.time && <p className="text-red-500 text-xs mt-1">{errors.time}</p>}
               </div>
               <div>
-                <label className="label">Questions (5–{planMaxQ})</label>
+                <label className="label flex items-center gap-1.5">
+                  Questions (5–{planMaxQ})
+                  {isInstructor && (
+                    <FieldHint
+                      placement="bottom"
+                      text={`How many questions AI will generate. Your plan allows up to ${planMaxQ} per exam.`}
+                    />
+                  )}
+                </label>
                 <input className="input" type="number" min={5} max={planMaxQ} value={form.numQuestions} onChange={e => setF('numQuestions')(e.target.value)} />
                 {errors.numQuestions && <p className="text-red-500 text-xs mt-1">{errors.numQuestions}</p>}
                 {isFreePlan && (
@@ -498,14 +613,28 @@ export default function CreateExamPage() {
             </div>
 
             <div>
-              <label className="label">Topics (optional, comma-separated)</label>
+              <label className="label flex items-center gap-1.5 flex-wrap">
+                Topics (optional, comma-separated)
+                {isInstructor && (
+                  <FieldHint
+                    placement="bottom"
+                    text="Optional keywords (comma-separated) to steer which concepts appear in the generated questions."
+                  />
+                )}
+              </label>
               <input className="input" placeholder="e.g., loops, functions, OOP" value={form.topics} onChange={e => setF('topics')(e.target.value)} />
             </div>
 
             {/* ── Question Source (instructors only) ── */}
             {isInstructor && (
               <div>
-                <label className="label mb-2">Question Generate Source</label>
+                <label className="label mb-2 flex items-center gap-1.5 flex-wrap">
+                  Question Generate Source
+                  <FieldHint
+                    placement="bottom"
+                    text="Web: general AI knowledge. LikhitAI Resources: curated documents. My Resources: your uploads. Resource modes analyse the file to build questions."
+                  />
+                </label>
 
                 {/* 3 source cards */}
                 <div className="grid grid-cols-3 gap-2">
@@ -584,15 +713,55 @@ export default function CreateExamPage() {
               </div>
             )}
 
+            {/* Multiple sets — instructors only; above proctoring */}
+            {isInstructor && (
+              <div className={`rounded-xl border ${form.multipleSets ? 'border-teal-400/70 bg-teal-50/40 dark:bg-teal-900/15' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'} transition-all`}>
+                <div className="flex items-center gap-3 p-4">
+                  <ToggleSwitch
+                    checked={form.multipleSets}
+                    onChange={(e) => {
+                      const on = e.target.checked;
+                      if (on && remaining != null && remaining < 3) {
+                        toast.error('Multiple sets use 3 tests from your usage limit. You need at least 3 remaining.');
+                        return;
+                      }
+                      setF('multipleSets')(on);
+                    }}
+                  />
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium text-[var(--color-text)] flex items-center gap-2 flex-wrap">
+                      <Layers size={14} className="text-teal-600 dark:text-teal-400 shrink-0" />
+                      Multiple Sets
+                      <FieldHint
+                        placement="bottom"
+                        text="Enabling this will create 3 different sets of this test. Each set will be counted as a separate test in your usage limit."
+                      />
+                    </div>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                      Each student gets one random set. You still see a single test in your dashboard.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* AI Proctoring toggle */}
             <div className={`rounded-xl border ${form.proctored ? 'border-[var(--color-primary)] bg-blue-50/40 dark:bg-blue-900/10' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'} transition-all`}>
               <div className={`flex items-center gap-3 p-4 ${isFreePlan ? 'opacity-60' : ''}`}>
                 <ToggleSwitch checked={form.proctored} disabled={isFreePlan} onChange={e => !isFreePlan && setF('proctored')(e.target.checked)} />
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium text-[var(--color-text)] flex items-center gap-2">
-                    <Shield size={14} className="text-[var(--color-primary)]" />
+                  <div className="text-sm font-medium text-[var(--color-text)] flex items-center gap-2 flex-wrap">
+                    <Shield size={14} className="text-[var(--color-primary)] shrink-0" />
                     Enable AI Proctoring
-                    {isFreePlan && <Lock size={13} className="text-[var(--color-text-muted)]" />}
+                    <FieldHint
+                      placement="bottom"
+                      text={
+                        isFreePlan
+                          ? 'AI Proctoring is available on paid plans. It uses camera and microphone checks, detects tab and window changes, and requires fullscreen during the exam.'
+                          : 'Monitors camera and microphone, detects tab switches and leaving fullscreen, and records violations. You can turn on occasional screenshots under Advanced Settings when proctoring is enabled.'
+                      }
+                    />
+                    {isFreePlan && <Lock size={13} className="text-[var(--color-text-muted)] shrink-0" />}
                   </div>
                   <div className="text-xs text-[var(--color-text-muted)]">
                     {isFreePlan
@@ -604,11 +773,21 @@ export default function CreateExamPage() {
               </div>
             </div>
 
-            <button type="submit" disabled={createMut.isPending || remaining === 0} className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed">
+            <button
+              type="submit"
+              disabled={
+                createMut.isPending
+                || remaining === 0
+                || (isInstructor && form.multipleSets && remaining != null && remaining < 3)
+              }
+              className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
+            >
               {createMut.isPending ? (
                 <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating questions…</>
               ) : remaining === 0 ? (
                 <><Lock size={16} /> No exams remaining — Upgrade your plan</>
+              ) : isInstructor && form.multipleSets && remaining != null && remaining < 3 ? (
+                <><Lock size={16} /> Multiple sets need at least 3 tests left on your plan</>
               ) : (
                 <><Sparkles size={16} /> Generate Exam with AI</>
               )}
@@ -620,9 +799,13 @@ export default function CreateExamPage() {
         <div className="space-y-4">
           {isInstructor ? (
             <div className="card">
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1 flex items-center gap-2">
-                <Shield size={14} className="text-[var(--color-primary)]" />
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-1 flex items-center gap-2 flex-wrap">
+                <Shield size={14} className="text-[var(--color-primary)] shrink-0" />
                 Advanced Settings
+                <FieldHint
+                  placement="left"
+                  text="These options control retakes, study tools, what candidates see after the exam, passing rules, and optional expiry. They apply once the exam is generated."
+                />
               </h3>
               <p className="text-xs text-[var(--color-text-muted)] mb-4">Control candidate experience for this exam.</p>
 
@@ -633,7 +816,10 @@ export default function CreateExamPage() {
                       <RefreshCw size={12} className="text-[var(--color-primary)]" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Allow Reattempt</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Allow Reattempt
+                        <FieldHint placement="left" text="Lets a candidate start a new attempt after they finish. Turn off for one-shot assessments." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">Candidates can retake</p>
                     </div>
                   </div>
@@ -646,7 +832,10 @@ export default function CreateExamPage() {
                       <FlipHorizontal size={12} className="text-purple-600 dark:text-purple-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Show Flashcards</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Show Flashcards
+                        <FieldHint placement="left" text="Adds flashcard study mode for this exam’s content on the student tests page, when you allow study features." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">Study mode available</p>
                     </div>
                   </div>
@@ -659,7 +848,10 @@ export default function CreateExamPage() {
                       <Eye size={12} className="text-green-600 dark:text-green-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Show Answer Review</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Show Answer Review
+                        <FieldHint placement="left" text="After submitting, candidates can review their attempt. Pair with Show Answers if you want solutions visible." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">After exam completion</p>
                     </div>
                   </div>
@@ -672,7 +864,10 @@ export default function CreateExamPage() {
                       <Award size={12} className="text-amber-600 dark:text-amber-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Generate Certificate</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Generate Certificate
+                        <FieldHint placement="left" text="Issues a certificate when the candidate’s score meets your passing percentage." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">PDF on pass</p>
                     </div>
                   </div>
@@ -685,7 +880,10 @@ export default function CreateExamPage() {
                       <Camera size={12} className="text-rose-600 dark:text-rose-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Screenshot Capture</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Screenshot Capture
+                        <FieldHint placement="left" text="During proctored exams, captures occasional screen snapshots for instructor review. Requires AI Proctoring." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">{!form.proctored ? 'Requires proctoring' : 'Random snapshots'}</p>
                     </div>
                   </div>
@@ -702,6 +900,7 @@ export default function CreateExamPage() {
                         <div className="flex items-center gap-1">
                           <p className="text-xs font-medium text-[var(--color-text)]">Coding Questions</p>
                           <Lock size={10} className="text-[var(--color-text-muted)]" />
+                          <FieldHint placement="left" text="Code-based questions with execution checks are limited to Enterprise. Pick the Coding exam type when available." />
                         </div>
                         <p className="text-[10px] text-[var(--color-text-muted)]"><Link to="/pricing" className="text-[var(--color-primary)] hover:underline">Enterprise only</Link></p>
                       </div>
@@ -716,7 +915,10 @@ export default function CreateExamPage() {
                       <Eye size={12} className="text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Show Result</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Show Result
+                        <FieldHint placement="left" text="Candidates see their score and outcome after the exam. Turn off if you want results only visible to instructors." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">Candidate sees score</p>
                     </div>
                   </div>
@@ -729,7 +931,10 @@ export default function CreateExamPage() {
                       <EyeOff size={12} className="text-teal-600 dark:text-teal-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Show Answers</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Show Answers
+                        <FieldHint placement="left" text="Shows correct answers and AI explanations after the exam when combined with your review settings." />
+                      </p>
                       <p className="text-[10px] text-[var(--color-text-muted)]">Full AI feedback</p>
                     </div>
                   </div>
@@ -742,7 +947,10 @@ export default function CreateExamPage() {
                       <Percent size={12} className="text-teal-600 dark:text-teal-400" />
                     </div>
                     <div>
-                      <p className="text-xs font-medium text-[var(--color-text)]">Passing Score</p>
+                      <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                        Passing Score
+                        <FieldHint placement="left" text="Minimum percentage to pass. Used for pass/fail, certificates, and reports." />
+                      </p>
                       {errors.passingPercentage && <p className="text-red-500 text-[10px]">{errors.passingPercentage}</p>}
                     </div>
                   </div>
@@ -759,7 +967,10 @@ export default function CreateExamPage() {
                         <Timer size={12} className="text-rose-600 dark:text-rose-400" />
                       </div>
                       <div>
-                        <p className="text-xs font-medium text-[var(--color-text)]">Set Expiry Date</p>
+                        <p className="text-xs font-medium text-[var(--color-text)] flex items-center gap-1">
+                          Set Expiry Date
+                          <FieldHint placement="left" text="After this date and time, candidates can no longer start a new attempt. Existing invites respect the same cutoff." />
+                        </p>
                         <p className="text-[10px] text-[var(--color-text-muted)]">{advanced.expiryDate ? 'Test expires at set time' : 'Lifetime (no expiry)'}</p>
                       </div>
                     </div>
@@ -874,7 +1085,7 @@ export default function CreateExamPage() {
       )}
 
       {createdExam && (
-        <InstructorPostCreationModal exam={createdExam} onClose={() => { setCreatedExam(null); navigate('/dashboard'); }} />
+        <InstructorPostCreationModal exam={createdExam} onClose={() => { setCreatedExam(null); navigate(getDashboardPath(user?.role)); }} />
       )}
 
       {showFeedback && (
@@ -891,6 +1102,103 @@ export default function CreateExamPage() {
           onClose={() => setShowResourceModal(false)}
           title={source === 'examprep' ? 'LikhitAI Resources' : 'My Resources'}
         />
+      )}
+
+      {createMut.isPending && typeof document !== 'undefined' && createPortal(
+        (
+          <div
+            className="fixed inset-0 z-[9999] flex items-center justify-center p-4 sm:p-6 pointer-events-auto touch-none"
+            role="alertdialog"
+            aria-modal="true"
+            aria-busy="true"
+            aria-labelledby="test-gen-overlay-title"
+            onWheel={(e) => e.preventDefault()}
+            onTouchMove={(e) => e.preventDefault()}
+          >
+            <style>{`
+              @keyframes testGenOverlayFadeIn {
+                from { opacity: 0; }
+                to { opacity: 1; }
+              }
+              @keyframes testGenModalEnter {
+                from { opacity: 0; transform: scale(0.95); }
+                to { opacity: 1; transform: scale(1); }
+              }
+              @keyframes testGenDot {
+                0%, 75%, 100% { transform: translateY(0); opacity: 0.35; }
+                35% { transform: translateY(-8px); opacity: 1; }
+              }
+            `}</style>
+            <div
+              className="absolute inset-0 cursor-wait"
+              style={{
+                backgroundColor: 'rgba(0,0,0,0.5)',
+                animation: 'testGenOverlayFadeIn 0.22s ease-out forwards',
+              }}
+              aria-hidden
+            />
+            <div
+              className="relative z-10 w-full max-w-lg rounded-3xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl shadow-black/20 overflow-hidden pointer-events-none"
+              style={{ animation: 'testGenModalEnter 0.32s cubic-bezier(0.16, 1, 0.3, 1) 0.04s both' }}
+            >
+              <div className="absolute inset-0 overflow-hidden pointer-events-none" aria-hidden>
+                <div className="absolute -top-32 left-1/2 -translate-x-1/2 w-[140%] h-64 bg-gradient-to-r from-teal-400/35 via-cyan-400/25 to-violet-500/30 opacity-90 animate-pulse" />
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] opacity-[0.07] dark:opacity-[0.12]">
+                  <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+                    <defs>
+                      <pattern id="createExamGenGrid" width="32" height="32" patternUnits="userSpaceOnUse">
+                        <path d="M 32 0 L 0 0 0 32" fill="none" stroke="currentColor" strokeWidth="0.5" className="text-[var(--color-primary)]" />
+                      </pattern>
+                    </defs>
+                    <rect width="100%" height="100%" fill="url(#createExamGenGrid)" />
+                  </svg>
+                </div>
+              </div>
+
+              <div className="relative px-8 sm:px-12 py-12 sm:py-14 text-center">
+                <div className="relative mx-auto mb-10 w-32 h-32 flex items-center justify-center">
+                  <div className="absolute inset-0 rounded-full border-2 border-teal-400/50 animate-ping" style={{ animationDuration: '2.2s' }} />
+                  <div
+                    className="absolute inset-3 rounded-full border border-blue-400/40 animate-ping"
+                    style={{ animationDuration: '2.8s', animationDelay: '0.35s' }}
+                  />
+                  <div className="relative flex h-24 w-24 items-center justify-center rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-blue-600 shadow-xl shadow-teal-500/35">
+                    <Sparkles className="w-11 h-11 text-white drop-shadow-md" strokeWidth={1.35} />
+                  </div>
+                  <div className="absolute -right-1 -bottom-1 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--color-bg-alt)] border border-[var(--color-border)] shadow-md text-[var(--color-primary)]">
+                    <Brain className="w-5 h-5" strokeWidth={1.5} />
+                  </div>
+                </div>
+
+                <div className="inline-flex items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-alt)]/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-4">
+                  <Wand2 className="w-3.5 h-3.5 text-[var(--color-primary)]" />
+                  AI generation
+                </div>
+
+                <h2 id="test-gen-overlay-title" className="text-xl sm:text-2xl font-bold text-[var(--color-text)] tracking-tight mb-3">
+                  Your test is being generated
+                </h2>
+                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed max-w-sm mx-auto mb-10">
+                  Our AI is composing questions to match your topic, difficulty, and format. This may take up to a minute — please keep this page open.
+                </p>
+
+                <div className="flex justify-center gap-2">
+                  {[0, 1, 2, 3, 4].map((i) => (
+                    <span
+                      key={i}
+                      className="h-2 w-2 rounded-full bg-[var(--color-primary)]"
+                      style={{
+                        animation: 'testGenDot 1.15s ease-in-out infinite',
+                        animationDelay: `${i * 0.1}s`,
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+        document.body,
       )}
     </div>
   );
