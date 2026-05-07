@@ -82,6 +82,9 @@ export default function ProfilePage() {
   const isFreePlan = plan === 'free';
   const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
   const isStudent = user?.role === 'user';
+  const isEnterpriseTeacher = user?.role === 'instructor' && !!user?.enterprise?.id;
+  const isPrincipal = user?.role === 'principal';
+  const orgLocked = isEnterpriseTeacher || isPrincipal;
   const visibleTabs = TABS.filter((t) => {
     if (user?.role === 'user' && t.hideForUserRole) return false;
     return !t.instructorOnly || isInstructor || !isFreePlan;
@@ -180,20 +183,22 @@ export default function ProfilePage() {
           </div>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{user?.email}</p>
           <div className="flex flex-wrap gap-4 mt-2">
-            <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-              <span className="font-medium text-[var(--color-text)]">{user?.totalExams || 0}</span> exams attempted
-            </div>
+            {isStudent && (
+              <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+                <span className="font-medium text-[var(--color-text)]">{user?.totalExams || 0}</span> exams attempted
+              </div>
+            )}
             <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
               <span className="font-medium text-[var(--color-text)]">Join Date:</span> {joinDate}
             </div>
             {isInstructor && (
               <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
-                <span className="font-medium text-[var(--color-text)]">Country:</span> {roleCountry}
+                <span className="font-medium text-[var(--color-text)]">Location:</span> {roleCountry}
               </div>
             )}
-            <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
+            {/* <div className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)]">
               <span className="font-medium text-[var(--color-text)]">Profile image:</span> Editable
-            </div>
+            </div> */}
           </div>
         </div>
       </div>
@@ -275,17 +280,19 @@ export default function ProfilePage() {
                 <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">School Name</label>
                 <input
                   className="input w-full text-sm"
-                  value={profileForm.schoolName}
+                  value={orgLocked ? (user?.enterprise?.name || profileForm.schoolName) : profileForm.schoolName}
                   onChange={(e) => setProfileForm(p => ({ ...p, schoolName: e.target.value }))}
                   placeholder="Enter school or organization name"
+                  disabled={orgLocked}
                 />
               </div>
               <div>
                 <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Country</label>
                 <select
                   className="input w-full text-sm"
-                  value={profileForm.country}
+                  value={orgLocked ? (user?.enterprise?.address?.country || profileForm.country) : profileForm.country}
                   onChange={(e) => setProfileForm(p => ({ ...p, country: e.target.value }))}
+                  disabled={orgLocked}
                 >
                   <option value="">Select country</option>
                   {COUNTRIES.map((country) => <option key={country} value={country}>{country}</option>)}
@@ -295,38 +302,47 @@ export default function ProfilePage() {
                 <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">State</label>
                 <input
                   className="input w-full text-sm"
-                  value={profileForm.state}
+                  value={orgLocked ? (user?.enterprise?.address?.state || profileForm.state) : profileForm.state}
                   onChange={(e) => setProfileForm(p => ({ ...p, state: e.target.value }))}
                   placeholder="State"
+                  disabled={orgLocked}
                 />
               </div>
               <div>
                 <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">City</label>
                 <input
                   className="input w-full text-sm"
-                  value={profileForm.city}
+                  value={orgLocked ? (user?.enterprise?.address?.city || profileForm.city) : profileForm.city}
                   onChange={(e) => setProfileForm(p => ({ ...p, city: e.target.value }))}
                   placeholder="City"
+                  disabled={orgLocked}
                 />
               </div>
               <div>
                 <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">Zip Code</label>
                 <input
                   className="input w-full text-sm"
-                  value={profileForm.zipCode}
+                  value={orgLocked ? (user?.enterprise?.address?.zipCode || profileForm.zipCode) : profileForm.zipCode}
                   onChange={(e) => setProfileForm(p => ({ ...p, zipCode: e.target.value }))}
                   placeholder="Zip / postal code"
+                  disabled={orgLocked}
                 />
               </div>
             </div>
             <div className="mt-4">
-              <button
-                className="btn-primary py-2 px-6 text-sm disabled:opacity-60"
-                disabled={updateMut.isPending}
-                onClick={handleProfileDetailsSave}
-              >
-                {updateMut.isPending ? 'Saving...' : 'Save details'}
-              </button>
+              {orgLocked ? (
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Organization details are managed by your school and can’t be edited from this profile.
+                </p>
+              ) : (
+                <button
+                  className="btn-primary py-2 px-6 text-sm disabled:opacity-60"
+                  disabled={updateMut.isPending}
+                  onClick={handleProfileDetailsSave}
+                >
+                  {updateMut.isPending ? 'Saving...' : 'Save details'}
+                </button>
+              )}
             </div>
           </div>
 

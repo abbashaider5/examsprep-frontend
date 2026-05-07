@@ -177,6 +177,7 @@ export default function InstructorAnalyticsPage() {
     const [aiGroupFilter, setAiGroupFilter] = useState('all'); // all | groupId
     const [quickReportExamId, setQuickReportExamId] = useState('');
     const [quickNavBatchId, setQuickNavBatchId] = useState('');
+    const isEnterpriseSchoolInstructor = user?.role === 'instructor' && user?.enterprise?.mode === 'school';
 
     const { data, isLoading, error } = useQuery({
         queryKey: ['instructorAnalyticsDetailed'],
@@ -190,7 +191,10 @@ export default function InstructorAnalyticsPage() {
         timeSeries = [],
         studentPerformance = [],
         groupPerformance = [],
+        classPerformance = [],
     } = data || {};
+    const cohortPerformance = isEnterpriseSchoolInstructor ? classPerformance : groupPerformance;
+    const cohortLabel = isEnterpriseSchoolInstructor ? 'Class' : 'Batch';
 
     // Filter options
     const subjectOptions = [...new Set(examStats.map(e => e.subject).filter(Boolean))];
@@ -258,11 +262,11 @@ export default function InstructorAnalyticsPage() {
             const matchSearch = !aiSearch || s.user.name?.toLowerCase().includes(aiSearch.toLowerCase()) || s.user.email?.toLowerCase().includes(aiSearch.toLowerCase());
             const matchFilter = aiFilter === 'all' || s._overallLevel === aiFilter;
             const matchGroup = aiGroupFilter === 'all' ||
-                groupPerformance.find(g => g._id?.toString() === aiGroupFilter)
+                cohortPerformance.find(g => g._id?.toString() === aiGroupFilter)
                     ?.students?.some(gs => gs.user?._id?.toString() === s.user._id?.toString());
             return matchSearch && matchFilter && matchGroup;
         }).sort((a, b) => a._overallAvg - b._overallAvg); // worst first for attention
-    }, [aiStudents, aiSearch, aiFilter, aiGroupFilter, groupPerformance]);
+    }, [aiStudents, aiSearch, aiFilter, aiGroupFilter, cohortPerformance]);
 
     if (isLoading) {
         return (
@@ -356,7 +360,7 @@ export default function InstructorAnalyticsPage() {
                         </button>
                         <div>
                             <h1 className="text-xl font-extrabold text-white leading-tight">Test reports</h1>
-                            <p className="text-sm text-teal-100 mt-0.5">Attempts and outcomes across your tests and batches</p>
+                            <p className="text-sm text-teal-100 mt-0.5">Attempts and outcomes across your tests and {isEnterpriseSchoolInstructor ? 'classes' : 'batches'}</p>
                         </div>
                     </div>
                     {/* Quick stats */}
@@ -407,7 +411,7 @@ export default function InstructorAnalyticsPage() {
                     </div>
                 </div>
                 <div className="flex-1 min-w-0">
-                    <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">View by batch</label>
+                    <label className="block text-xs font-medium text-[var(--color-text-muted)] mb-1">View by {cohortLabel.toLowerCase()}</label>
                     <select
                         className="input text-sm w-full"
                         value={quickNavBatchId}
@@ -418,8 +422,8 @@ export default function InstructorAnalyticsPage() {
                             setExpandedGroup(v || null);
                         }}
                     >
-                        <option value="">Choose a batch…</option>
-                        {groupPerformance.map(g => (
+                        <option value="">Choose a {cohortLabel.toLowerCase()}…</option>
+                        {cohortPerformance.map(g => (
                             <option key={g._id} value={g._id}>{g.name}</option>
                         ))}
                     </select>
@@ -431,9 +435,9 @@ export default function InstructorAnalyticsPage() {
                 {TABS.map(t => (
                     <button key={t.id} onClick={() => setActiveTab(t.id)}
                         className={`px-4 py-2 text-sm font-medium rounded-xl transition-all ${activeTab === t.id ? 'bg-[var(--color-primary)]/10 text-[var(--color-primary)] font-semibold' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'}`}>
-                        {t.label}
-                        {t.id === 'groups' && groupPerformance.length > 0 && (
-                            <span className="ml-1.5 text-[10px] bg-[var(--color-primary)]/15 text-[var(--color-primary)] px-1.5 py-0.5 rounded-full">{groupPerformance.length}</span>
+                        {t.id === 'groups' ? (isEnterpriseSchoolInstructor ? 'Classes' : t.label) : t.label}
+                        {t.id === 'groups' && cohortPerformance.length > 0 && (
+                            <span className="ml-1.5 text-[10px] bg-[var(--color-primary)]/15 text-[var(--color-primary)] px-1.5 py-0.5 rounded-full">{cohortPerformance.length}</span>
                         )}
                     </button>
                 ))}
@@ -652,22 +656,22 @@ export default function InstructorAnalyticsPage() {
             {/* ── GROUPS TAB ── */}
             {activeTab === 'groups' && (
                 <div className="space-y-4">
-                    {groupPerformance.length === 0 ? (
+                    {cohortPerformance.length === 0 ? (
                         <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl text-center py-16">
                             <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-teal-100 to-blue-100 dark:from-teal-900/30 dark:to-blue-900/20 flex items-center justify-center mx-auto mb-4">
                                 <Users size={24} className="text-[var(--color-primary)]" />
                             </div>
-                            <p className="font-semibold text-[var(--color-text)] mb-1">No batches yet</p>
-                            <p className="text-sm text-[var(--color-text-muted)]">Create batches and invite students to see batch-wise analytics.</p>
-                            <Link to="/batches" className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors">
-                                Manage Batches <ChevronRight size={14} />
+                            <p className="font-semibold text-[var(--color-text)] mb-1">No {isEnterpriseSchoolInstructor ? 'classes' : 'batches'} yet</p>
+                            <p className="text-sm text-[var(--color-text-muted)]">Create {isEnterpriseSchoolInstructor ? 'classes and students' : 'batches'} to see {isEnterpriseSchoolInstructor ? 'class' : 'batch'}-wise analytics.</p>
+                            <Link to={isEnterpriseSchoolInstructor ? '/school/classes' : '/batches'} className="inline-flex items-center gap-2 mt-4 px-4 py-2 rounded-xl bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-sm font-medium hover:bg-[var(--color-primary)]/15 transition-colors">
+                                {isEnterpriseSchoolInstructor ? 'Manage Classes' : 'Manage Batches'} <ChevronRight size={14} />
                             </Link>
                         </div>
                     ) : (
                         <div className="space-y-3">
-                            {groupPerformance.map(g => (
+                            {cohortPerformance.map(g => (
                                 <div key={g._id} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden">
-                                    {/* Group header */}
+                                    {/* Cohort header */}
                                     <button
                                         onClick={() => setExpandedGroup(expandedGroup === g._id ? null : g._id)}
                                         className="w-full flex items-center justify-between px-5 py-4 hover:bg-[var(--color-bg-alt)]/50 transition-colors text-left"
@@ -678,14 +682,14 @@ export default function InstructorAnalyticsPage() {
                                             </div>
                                             <div>
                                                 <p className="font-semibold text-[var(--color-text)]">{g.name}</p>
-                                                <p className="text-xs text-[var(--color-text-muted)]">{g.memberCount} members · {g.activeStudents} active</p>
+                                                <p className="text-xs text-[var(--color-text-muted)]">{isEnterpriseSchoolInstructor ? `${g.studentCount || 0} students` : `${g.memberCount} members · ${g.activeStudents} active`}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-6">
                                             <div className="hidden sm:flex items-center gap-6 text-center">
                                                 {[
                                                     { label: 'Attempts', value: g.totalAttempts },
-                                                    { label: 'Members', value: g.memberCount },
+                                                    { label: isEnterpriseSchoolInstructor ? 'Students' : 'Members', value: isEnterpriseSchoolInstructor ? (g.studentCount || 0) : g.memberCount },
                                                     { label: 'Active', value: g.activeStudents },
                                                 ].map(({ label, value }) => (
                                                     <div key={label}>
@@ -799,14 +803,14 @@ export default function InstructorAnalyticsPage() {
                             <input type="text" placeholder="Search student by name or email…" value={aiSearch}
                                 onChange={e => setAiSearch(e.target.value)}
                                 className="input flex-1 text-sm py-2" />
-                            {groupPerformance.length > 0 && (
+                            {cohortPerformance.length > 0 && (
                                 <select
                                     value={aiGroupFilter}
                                     onChange={e => setAiGroupFilter(e.target.value)}
                                     className="input text-sm py-2 w-full sm:w-48 shrink-0"
                                 >
-                                    <option value="all">All Batches</option>
-                                    {groupPerformance.map(g => (
+                                    <option value="all">{isEnterpriseSchoolInstructor ? 'All Classes' : 'All Batches'}</option>
+                                    {cohortPerformance.map(g => (
                                         <option key={g._id} value={g._id}>{g.name}</option>
                                     ))}
                                 </select>

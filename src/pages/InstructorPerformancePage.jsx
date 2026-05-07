@@ -61,7 +61,8 @@ export default function InstructorPerformancePage() {
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState('all'); // all | weak | average | strong
-  const [groupFilter, setGroupFilter] = useState('all'); // all | groupId
+  const [groupFilter, setGroupFilter] = useState('all'); // all | cohortId
+  const isEnterpriseSchoolInstructor = user?.role === 'instructor' && user?.enterprise?.mode === 'school';
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['instructorAnalyticsDetailed'],
@@ -69,7 +70,8 @@ export default function InstructorPerformancePage() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const { examStats = [], studentPerformance = [], groupPerformance = [] } = data || {};
+  const { examStats = [], studentPerformance = [], groupPerformance = [], classPerformance = [] } = data || {};
+  const cohortPerformance = isEnterpriseSchoolInstructor ? classPerformance : groupPerformance;
 
   const aiStudents = useMemo(() => {
     return studentPerformance.map(s => {
@@ -88,11 +90,11 @@ export default function InstructorPerformancePage() {
       const matchSearch = !search || s.user.name?.toLowerCase().includes(search.toLowerCase()) || s.user.email?.toLowerCase().includes(search.toLowerCase());
       const matchFilter = filter === 'all' || s._overallLevel === filter;
       const matchGroup = groupFilter === 'all' ||
-        groupPerformance.find(g => g._id?.toString() === groupFilter)
+        cohortPerformance.find(g => g._id?.toString() === groupFilter)
           ?.students?.some(gs => gs.user?._id?.toString() === s.user._id?.toString());
       return matchSearch && matchFilter && matchGroup;
     }).sort((a, b) => a._overallAvg - b._overallAvg); // worst-first so struggling students are at top
-  }, [aiStudents, search, filter, groupFilter, groupPerformance]);
+  }, [aiStudents, search, filter, groupFilter, cohortPerformance]);
 
   if (isLoading) {
     return (
@@ -191,14 +193,14 @@ export default function InstructorPerformancePage() {
             onChange={e => setSearch(e.target.value)}
             className="input flex-1 text-sm py-2"
           />
-          {groupPerformance.length > 0 && (
+          {cohortPerformance.length > 0 && (
             <select
               value={groupFilter}
               onChange={e => setGroupFilter(e.target.value)}
               className="input text-sm py-2 w-full sm:w-48 shrink-0"
             >
-              <option value="all">All Batches</option>
-              {groupPerformance.map(g => (
+              <option value="all">{isEnterpriseSchoolInstructor ? 'All Classes' : 'All Batches'}</option>
+              {cohortPerformance.map(g => (
                 <option key={g._id} value={g._id}>{g.name}</option>
               ))}
             </select>
@@ -224,7 +226,7 @@ export default function InstructorPerformancePage() {
           <p className="text-xs text-[var(--color-text-muted)]">
             Showing <strong className="text-[var(--color-primary)]">{filteredStudents.length}</strong> of {aiStudents.length} students
             {filter !== 'all' && ` · filtered by "${filter}"`}
-            {groupFilter !== 'all' && ` · ${groupPerformance.find(g => g._id?.toString() === groupFilter)?.name || 'batch'}`}
+            {groupFilter !== 'all' && ` · ${cohortPerformance.find(g => g._id?.toString() === groupFilter)?.name || (isEnterpriseSchoolInstructor ? 'class' : 'batch')}`}
           </p>
         )}
       </div>

@@ -15,6 +15,10 @@ import CertificatesPage from './pages/CertificatesPage.jsx';
 import ContactPage from './pages/ContactPage.jsx';
 import CreateExamPage from './pages/CreateExamPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import EnterpriseAddTeacherPage from './pages/EnterpriseAddTeacherPage.jsx';
+import EnterpriseDashboardPage from './pages/EnterpriseDashboardPage.jsx';
+import EnterpriseTeachersPage from './pages/EnterpriseTeachersPage.jsx';
+import EnterpriseLogsPage from './pages/EnterpriseLogsPage.jsx';
 import EditQuestionsPage from './pages/EditQuestionsPage.jsx';
 import ExamPage from './pages/ExamPage.jsx';
 import HelpCenterPage from './pages/HelpCenterPage.jsx';
@@ -38,6 +42,10 @@ import ProfilePage from './pages/ProfilePage.jsx';
 import PlanPage from './pages/PlanPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
 import ResultPage from './pages/ResultPage.jsx';
+import SchoolClassesCreatePage from './pages/SchoolClassesPage.jsx';
+import SchoolClassesManagePage from './pages/SchoolClassesManagePage.jsx';
+import SchoolStudentsCreatePage from './pages/SchoolStudentsPage.jsx';
+import SchoolStudentsManagePage from './pages/SchoolStudentsManagePage.jsx';
 import SignupPage from './pages/SignupPage.jsx';
 import StudyModePage from './pages/StudyModePage.jsx';
 import StudyPerformancePage from './pages/StudyPerformancePage.jsx';
@@ -51,6 +59,9 @@ function DashboardPageRoute() {
   if (user?.role === 'admin') {
     return <Navigate to="/admin-dashboard" replace />;
   }
+  if (user?.role === 'principal') {
+    return <Navigate to="/enterprise-dashboard" replace />;
+  }
   if (user?.role === 'instructor') {
     return <Navigate to="/instructor-dashboard" replace />;
   }
@@ -63,13 +74,19 @@ function InstructorDashboardRoute() {
   if (user?.role === 'admin') {
     return <Navigate to="/admin-dashboard" replace />;
   }
+  if (user?.role === 'principal') {
+    return <Navigate to="/enterprise-dashboard" replace />;
+  }
   return <InstructorPage />;
 }
 
-const Guard = ({ children, adminOnly, instructorOnly }) => {
+const Guard = ({ children, adminOnly, instructorOnly, principalOnly }) => {
   const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (adminOnly && user?.role !== 'admin') {
+    return <Navigate to={getDashboardPath(user?.role)} replace />;
+  }
+  if (principalOnly && user?.role !== 'principal') {
     return <Navigate to={getDashboardPath(user?.role)} replace />;
   }
   if (instructorOnly && !['instructor', 'admin'].includes(user?.role)) {
@@ -143,6 +160,14 @@ export default function App() {
           <Route path="batches" element={<GroupsPage />} />
           <Route path="notifications/:id" element={<NotificationDetailPage />} />
           <Route path="tickets" element={<TicketsPage />} />
+          <Route path="enterprise-dashboard" element={<Guard principalOnly><EnterpriseDashboardPage /></Guard>} />
+          <Route path="enterprise/teachers" element={<Guard principalOnly><EnterpriseTeachersPage /></Guard>} />
+          <Route path="enterprise/teachers/new" element={<Guard principalOnly><EnterpriseAddTeacherPage /></Guard>} />
+          <Route path="enterprise/logs" element={<Guard principalOnly><EnterpriseLogsPage /></Guard>} />
+          <Route path="school/classes" element={<Guard instructorOnly><SchoolClassesManagePage /></Guard>} />
+          <Route path="school/classes/new" element={<Guard instructorOnly><SchoolClassesCreatePage /></Guard>} />
+          <Route path="school/students" element={<Guard instructorOnly><SchoolStudentsManagePage /></Guard>} />
+          <Route path="school/students/new" element={<Guard instructorOnly><SchoolStudentsCreatePage /></Guard>} />
         </Route>
 
         {/* Group invite accept (needs auth but no layout) */}

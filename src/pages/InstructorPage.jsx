@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award, BarChart2, BookmarkCheck,
+  BookOpen,
   Download, Edit3,
   Eye, FileText,
   Layers,
@@ -16,7 +17,7 @@ import * as XLSX from 'xlsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
-import { examApi, groupApi, instructorApi } from '../services/api.js';
+import { enterpriseApi, examApi, groupApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 function diffBadgeClass(d) {
@@ -33,9 +34,10 @@ export default function InstructorPage() {
 
   const [selectedExam, setSelectedExam] = useState(null);
   const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteMode, setInviteMode] = useState('email');
+  const [inviteMode, setInviteMode] = useState(() => (user?.enterprise ? 'class' : 'email'));
   const [inviteEmailTab, setInviteEmailTab] = useState('single');
   const [inviteGroupId, setInviteGroupId] = useState('');
+  const [inviteClassIds, setInviteClassIds] = useState([]);
   const [inviteParsedEmails, setInviteParsedEmails] = useState([]);
   const [inviteFileName, setInviteFileName] = useState('');
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -50,7 +52,11 @@ export default function InstructorPage() {
     setInviteParsedEmails([]);
     setInviteFileName('');
     setInviteGroupId('');
+    setInviteClassIds([]);
+    setInviteMode(user?.enterprise ? 'class' : 'email');
   };
+
+  const isEnterpriseInstructor = user?.role === 'instructor' && Boolean(user?.enterprise);
 
   const handleInviteFile = (e) => {
     const file = e.target.files?.[0];
@@ -91,6 +97,12 @@ export default function InstructorPage() {
     queryFn: () => instructorApi.getAnalytics().then(r => r.data),
   });
 
+  const { data: schoolClassesData } = useQuery({
+    queryKey: ['schoolClasses'],
+    queryFn: () => enterpriseApi.schoolClasses().then((r) => r.data),
+    enabled: isEnterpriseInstructor,
+  });
+
   const inviteMut = useMutation({
     mutationFn: ({ examId, email }) => instructorApi.sendInvite(examId, email),
     onSuccess: () => {
@@ -109,6 +121,17 @@ export default function InstructorPage() {
       qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to invite batch'),
+  });
+
+  const classInviteMut = useMutation({
+    mutationFn: ({ examId, classIds }) => instructorApi.sendClassInvite(examId, classIds),
+    onSuccess: (res) => {
+      toast.success(res.data.message);
+      closeInviteModal();
+      qc.invalidateQueries({ queryKey: ['instructorAnalytics'] });
+      qc.invalidateQueries({ queryKey: ['schoolClasses'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to invite class'),
   });
 
   const bulkInviteMut = useMutation({
@@ -155,6 +178,8 @@ export default function InstructorPage() {
 
   const openInviteFor = (exam) => {
     setSelectedExam(exam);
+    setInviteMode(isEnterpriseInstructor ? 'class' : 'email');
+    setInviteClassIds([]);
     setShowInviteModal(true);
   };
 
@@ -189,7 +214,12 @@ export default function InstructorPage() {
           { label: 'Create test', desc: 'Generate a new exam', icon: Zap, to: '/create-exam', accent: 'from-teal-400 to-cyan-500' },
           { label: 'All tests', desc: 'Browse and manage tests', icon: BookmarkCheck, to: '/tests', accent: 'from-blue-400 to-indigo-500' },
           { label: 'Test reports', desc: 'Analytics and attempts', icon: BarChart2, to: '/test-reports', accent: 'from-violet-400 to-purple-500' },
-          { label: 'Batches', desc: 'Groups and invites', icon: Users, to: '/batches', accent: 'from-sky-400 to-blue-500' },
+          ...(user?.enterprise?.mode === 'school'
+            ? [
+                { label: 'Classes', desc: 'Manage classes', icon: BookOpen, to: '/school/classes', accent: 'from-sky-400 to-blue-500' },
+                { label: 'Students', desc: 'Manage students', icon: Users, to: '/school/students', accent: 'from-emerald-400 to-teal-500' },
+              ]
+            : [{ label: 'Batches', desc: 'Groups and invites', icon: Users, to: '/batches', accent: 'from-sky-400 to-blue-500' }]),
           { label: 'Insights', desc: 'Student performance notes', icon: LayoutDashboard, to: '/instructor/performance', accent: 'from-emerald-400 to-teal-500' },
           { label: 'Certificates', desc: 'Issued certificates', icon: Award, to: '/certificates', accent: 'from-amber-400 to-orange-500' },
           { label: 'Settings', desc: 'Security and preferences', icon: Settings, to: '/settings', accent: 'from-slate-400 to-slate-600' },
@@ -345,10 +375,10 @@ export default function InstructorPage() {
       {/* ── Invite Modal — two-column layout ── */}
       {showInviteModal && selectedExam && (
         <Modal onClose={closeInviteModal}>
-          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-3xl flex overflow-hidden" style={{ minHeight: '500px', maxHeight: '90vh' }}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-7xl h-[520px] flex overflow-hidden" style={{ maxHeight: '85vh' }}>
 
             {/* LEFT: Test details */}
-            <div className="w-64 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
+            <div className="w-80 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
               <div>
                 <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-1">Test</p>
                 <h4 className="font-bold text-sm text-[var(--color-text)] leading-snug">{selectedExam.title}</h4>
@@ -446,30 +476,84 @@ export default function InstructorPage() {
               </div>
 
               {/* Mode toggle */}
-              <div className="px-5 pt-4 shrink-0">
-                <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
-                  {[
-                    { id: 'email', label: 'By Email', icon: Mail },
-                    { id: 'group', label: 'By Batch', icon: Users },
-                  ].map(m => (
-                    <button
-                      key={m.id}
-                      onClick={() => setInviteMode(m.id)}
-                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-                        inviteMode === m.id
-                          ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
-                          : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-                      }`}
-                    >
-                      <m.icon size={14} /> {m.label}
-                    </button>
-                  ))}
+              {!isEnterpriseInstructor && (
+                <div className="px-5 pt-4 shrink-0">
+                  <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
+                    {[
+                      { id: 'email', label: 'By Email', icon: Mail },
+                      { id: 'group', label: 'By Batch', icon: Users },
+                    ].map(m => (
+                      <button
+                        key={m.id}
+                        onClick={() => setInviteMode(m.id)}
+                        className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                          inviteMode === m.id
+                            ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
+                            : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                        }`}
+                      >
+                        <m.icon size={14} /> {m.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Form content */}
               <div className="flex flex-col flex-1 px-5 pt-4 pb-5 min-h-0">
-                {inviteMode === 'email' ? (
+                {isEnterpriseInstructor ? (
+                  <div className="flex flex-col flex-1 min-h-0">
+                    <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Select Class(es)</label>
+                    {(schoolClassesData?.classes || []).length === 0 ? (
+                      <div className="flex-1 flex items-center justify-center">
+                        <div className="text-center py-6 px-4">
+                          <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
+                          <p className="text-sm text-[var(--color-text-muted)]">No classes yet.</p>
+                          <Link to="/school/classes/new" onClick={closeInviteModal} className="text-xs text-[var(--color-primary)] hover:underline mt-1 inline-block">
+                            Create a class first
+                          </Link>
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2 max-h-[220px] overflow-y-auto shrink-0">
+                          {(schoolClassesData?.classes || []).map(c => {
+                            const checked = inviteClassIds.includes(c._id);
+                            return (
+                              <label key={c._id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--color-surface)] cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => setInviteClassIds(prev => checked ? prev.filter(id => id !== c._id) : [...prev, c._id])}
+                                />
+                                <span className="text-sm text-[var(--color-text)]">
+                                  {c.name}{c.section ? ` · ${c.section}` : ''} <span className="text-xs text-[var(--color-text-muted)]">({c.studentCount || 0} students)</span>
+                                </span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                        <div className="min-h-5 mt-2 shrink-0">
+                          {inviteClassIds.length > 0 && (
+                            <p className="text-[11px] text-[var(--color-text-muted)]">
+                              Students in selected classes will receive a test invite for <strong className="text-[var(--color-text)]">{selectedExam.title}</strong>.
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+                    <div className="flex gap-3 mt-auto shrink-0 pt-3">
+                      <button onClick={closeInviteModal} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                      <button
+                        onClick={() => classInviteMut.mutate({ examId: selectedExam._id, classIds: inviteClassIds })}
+                        disabled={!inviteClassIds.length || classInviteMut.isPending}
+                        className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                      >
+                        <Users size={14} /> {classInviteMut.isPending ? 'Sending…' : 'Invite Class'}
+                      </button>
+                    </div>
+                  </div>
+                ) : inviteMode === 'email' ? (
                   <>
                     {/* Email sub-tabs */}
                     <div className="flex gap-3 mb-4 border-b border-[var(--color-border)] shrink-0">

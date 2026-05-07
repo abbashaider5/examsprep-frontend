@@ -32,7 +32,7 @@ const STRENGTH_CONFIG = [
   { label: 'Strong', color: 'bg-green-500' },
 ];
 
-function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '' }) {
+function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', enterpriseInviteToken = '' }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
   const [countdown, setCountdown] = useState(30);
@@ -64,6 +64,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '' })
       otp: code,
       purpose,
       ...(examInviteToken ? { examInviteToken } : {}),
+      ...(enterpriseInviteToken ? { enterpriseInviteToken } : {}),
     });
   };
 
@@ -135,6 +136,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '' })
 export default function SignupPage() {
   const [searchParams] = useSearchParams();
   const inviteTokenFromUrl = searchParams.get('invite') || '';
+  const enterpriseInviteFromUrl = searchParams.get('enterpriseInvite') || '';
   const emailFromUrl = searchParams.get('email') || '';
 
   const { signup, google, verifyOtp } = useAuth();
@@ -144,6 +146,7 @@ export default function SignupPage() {
   const [otpEmail, setOtpEmail] = useState(null);
   /** Preserved through OTP step (URL token + server echo when OTP is required). */
   const [examInviteForOtp, setExamInviteForOtp] = useState(() => inviteTokenFromUrl);
+  const [enterpriseInviteForOtp, setEnterpriseInviteForOtp] = useState(() => enterpriseInviteFromUrl);
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const { data: publicSettings } = useQuery({
@@ -171,6 +174,10 @@ export default function SignupPage() {
     if (inviteTokenFromUrl) setExamInviteForOtp(inviteTokenFromUrl);
   }, [inviteTokenFromUrl]);
 
+  useEffect(() => {
+    if (enterpriseInviteFromUrl) setEnterpriseInviteForOtp(enterpriseInviteFromUrl);
+  }, [enterpriseInviteFromUrl]);
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const result = schema.safeParse(form);
@@ -196,12 +203,14 @@ export default function SignupPage() {
         ...form,
         recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined,
         ...(inviteTokenFromUrl || examInviteForOtp ? { examInviteToken: inviteTokenFromUrl || examInviteForOtp } : {}),
+        ...(enterpriseInviteFromUrl || enterpriseInviteForOtp ? { enterpriseInviteToken: enterpriseInviteFromUrl || enterpriseInviteForOtp } : {}),
       },
       {
         onSuccess: (res) => {
           if (!res.data.requiresOTP) return;
           setOtpEmail(form.email);
           if (res.data.examInviteToken) setExamInviteForOtp(res.data.examInviteToken);
+          if (res.data.enterpriseInviteToken) setEnterpriseInviteForOtp(res.data.enterpriseInviteToken);
         },
       },
     );
@@ -216,6 +225,7 @@ export default function SignupPage() {
           email={otpEmail}
           purpose="signup"
           examInviteToken={examInviteForOtp}
+          enterpriseInviteToken={enterpriseInviteForOtp}
           onVerify={verifyOtp.mutate}
           verifyMut={verifyOtp}
         />
@@ -230,6 +240,9 @@ export default function SignupPage() {
     <div className="animate-fade-in w-full">
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-1">Create your account</h1>
       <p className="text-[var(--color-text-muted)] text-sm mb-4">Start AI-powered exam prep — free forever</p>
+      {enterpriseInviteFromUrl && (
+        <p className="text-xs text-[var(--color-primary)] font-medium mb-3 -mt-2">You’re joining an organization via invitation.</p>
+      )}
 
       <form onSubmit={handleSubmit} className="space-y-3" noValidate>
         <div>
@@ -331,9 +344,15 @@ export default function SignupPage() {
       <GoogleAuthButton
         disabled={google.isPending}
         onCredential={(payload) => {
-          const token = inviteTokenFromUrl || examInviteForOtp;
+          const examTok = inviteTokenFromUrl || examInviteForOtp;
+          const entTok = enterpriseInviteFromUrl || enterpriseInviteForOtp;
           google.mutate(
-            { ...payload, role: 'user', ...(token ? { examInviteToken: token } : {}) },
+            {
+              ...payload,
+              role: 'user',
+              ...(examTok ? { examInviteToken: examTok } : {}),
+              ...(entTok ? { enterpriseInviteToken: entTok } : {}),
+            },
             {
               onSuccess: (res) => {
                 if (res.data.requiresOTP) setOtpEmail(res.data.email);
@@ -351,7 +370,12 @@ export default function SignupPage() {
       </p>
       <p className="text-sm text-center text-[var(--color-text-muted)] mt-2.5">
         Already have an account?{' '}
-        <Link to="/login" className="text-[var(--color-primary)] font-semibold hover:underline">Sign in</Link>
+        <Link
+          to={enterpriseInviteFromUrl || enterpriseInviteForOtp ? `/login?enterpriseInvite=${encodeURIComponent(enterpriseInviteFromUrl || enterpriseInviteForOtp)}` : '/login'}
+          className="text-[var(--color-primary)] font-semibold hover:underline"
+        >
+          Sign in
+        </Link>
       </p>
     </div>
   );

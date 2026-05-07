@@ -1,8 +1,8 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   Award,
   BarChart2,
-  BookmarkCheck, BookOpen,
+  BookmarkCheck, BookOpen, Building2,
   ChevronDown,
   GraduationCap, HelpCircle, LayoutDashboard,
   LifeBuoy,
@@ -14,7 +14,8 @@ import {
   Sun,
   Trophy, User, Users, X, Zap,
 } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import toast from 'react-hot-toast';
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
@@ -23,31 +24,70 @@ import HelpSearch from '../components/HelpSearch.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
 import { useAuth } from '../hooks/useAuth.js';
-import { notificationApi } from '../services/api.js';
+import { authApi, enterpriseApi, notificationApi } from '../services/api.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 
-/** Instructor sidebar: top-level links plus collapsible groups for tests-related routes. */
-const INSTRUCTOR_SIDEBAR_NAV = [
-  { type: 'link', to: '/instructor-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-  {
-    type: 'group',
-    id: 'tests',
-    label: 'Tests',
-    icon: BookOpen,
-    children: [
-      { to: '/tests', icon: BookOpen, label: 'All tests' },
-      { to: '/create-exam', icon: Plus, label: 'Create test' },
-      { to: '/test-reports', icon: BookmarkCheck, label: 'Test reports' },
-    ],
-  },
-  { type: 'link', to: '/batches', icon: Users, label: 'Batches', badgeKey: 'batch' },
-  { type: 'link', to: '/instructor/performance', icon: BarChart2, label: 'Insights' },
-  { type: 'link', to: '/certificates', icon: Award, label: 'Certificates' },
-  { type: 'link', to: '/profile', icon: User, label: 'Profile' },
-  { type: 'link', to: '/plan', icon: Zap, label: 'Plan' },
-  { type: 'link', to: '/settings', icon: Settings, label: 'Settings' },
-];
+const INSTRUCTOR_TESTS_GROUP = {
+  type: 'group',
+  id: 'tests',
+  label: 'Tests',
+  icon: BookOpen,
+  children: [
+    { to: '/tests', icon: BookOpen, label: 'All tests' },
+    { to: '/create-exam', icon: Plus, label: 'Create test' },
+    { to: '/test-reports', icon: BookmarkCheck, label: 'Test reports' },
+  ],
+};
+
+const INSTRUCTOR_CLASSES_GROUP = {
+  type: 'group',
+  id: 'classes',
+  label: 'Classes',
+  icon: Building2,
+  children: [
+    { to: '/school/classes', icon: Building2, label: 'All classes' },
+    { to: '/school/classes/new', icon: Plus, label: 'Create class' },
+  ],
+};
+
+const INSTRUCTOR_STUDENTS_GROUP = {
+  type: 'group',
+  id: 'students',
+  label: 'Students',
+  icon: GraduationCap,
+  children: [
+    { to: '/school/students', icon: GraduationCap, label: 'All students' },
+    { to: '/school/students/new', icon: Plus, label: 'Create student' },
+  ],
+};
+
+function buildInstructorSidebarNav(enterprise) {
+  const isEnterpriseTeacher = Boolean(enterprise?.id || enterprise?._id);
+  const nav = [{ type: 'link', to: '/instructor-dashboard', icon: LayoutDashboard, label: 'Dashboard' }];
+  if (enterprise?.mode === 'school') {
+    nav.push(
+      INSTRUCTOR_CLASSES_GROUP,
+      INSTRUCTOR_STUDENTS_GROUP,
+      INSTRUCTOR_TESTS_GROUP,
+    );
+  } else {
+    nav.push(
+      INSTRUCTOR_TESTS_GROUP,
+      { type: 'link', to: '/batches', icon: Users, label: 'Batches', badgeKey: 'batch' },
+    );
+  }
+  nav.push(
+    { type: 'link', to: '/instructor/performance', icon: BarChart2, label: 'Insights' },
+    { type: 'link', to: '/certificates', icon: Award, label: 'Certificates' },
+    { type: 'link', to: '/profile', icon: User, label: 'Profile' },
+    { type: 'link', to: '/settings', icon: Settings, label: 'Settings' },
+  );
+  if (!isEnterpriseTeacher) {
+    nav.splice(nav.length - 1, 0, { type: 'link', to: '/plan', icon: Zap, label: 'Plan' });
+  }
+  return nav;
+}
 
 function pathMatchesInstructorChild(to, pathname) {
   if (to === '/test-reports') return pathname === '/test-reports' || pathname.startsWith('/instructor/report');
@@ -57,6 +97,15 @@ function pathMatchesInstructorChild(to, pathname) {
 function instructorGroupHasActiveChild(children, pathname) {
   return children.some(c => pathMatchesInstructorChild(c.to, pathname));
 }
+
+const PRINCIPAL_NAV = [
+  { to: '/enterprise-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/enterprise/teachers/new', icon: Plus, label: 'Add teacher' },
+  { to: '/enterprise/teachers', icon: Users, label: 'All teachers' },
+  { to: '/enterprise/logs', icon: BarChart2, label: 'Activity logs' },
+  { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
+];
 
 const STUDENT_NAV = [
   { to: '/dashboard', icon: LayoutDashboard, label: 'Dashboard' },
@@ -86,6 +135,7 @@ const ROLE_COLORS = {
   user: 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300',
   instructor: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
   admin: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  principal: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300',
 };
 
 // ── Flat sidebar link ─────────────────────────────────────────────────────────
@@ -193,7 +243,7 @@ function AdminNavLink({ tab, label, icon: Icon, collapsed, onClick }) {
 
 // ── Layout ────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
   const { dark, toggle } = useThemeStore();
   const { logout } = useAuth();
   const qc = useQueryClient();
@@ -203,20 +253,33 @@ export default function DashboardLayout() {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [showFeedback, setShowFeedback] = useState(false);
-  const [instructorOpenGroups, setInstructorOpenGroups] = useState(() => new Set(['tests']));
+  const [instructorOpenGroup, setInstructorOpenGroup] = useState('tests');
   const [userMenuOpen, setUserMenuOpen] = useState(false);
 
+  const instructorNav = useMemo(
+    () => buildInstructorSidebarNav(user?.enterprise),
+    [user?.enterprise?.mode],
+  );
+
   useEffect(() => {
-    setInstructorOpenGroups(prev => {
-      const next = new Set(prev);
-      INSTRUCTOR_SIDEBAR_NAV.forEach(entry => {
-        if (entry.type === 'group' && instructorGroupHasActiveChild(entry.children, pathname)) {
-          next.add(entry.id);
-        }
-      });
-      return next;
+    instructorNav.forEach(entry => {
+      if (entry.type === 'group' && instructorGroupHasActiveChild(entry.children, pathname)) {
+        setInstructorOpenGroup(entry.id);
+      }
     });
-  }, [pathname]);
+  }, [pathname, instructorNav]);
+
+  const stopImpersonationMut = useMutation({
+    mutationFn: () => enterpriseApi.stopImpersonation(),
+    onSuccess: async () => {
+      const me = await authApi.getMe();
+      setUser(me.data.user);
+      qc.invalidateQueries();
+      toast.success('View mode ended');
+      window.location.href = '/enterprise-dashboard';
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not exit view mode'),
+  });
 
   // Reuse the cached notifications query to compute batch badge
   const { data: notifData } = useQuery({
@@ -246,6 +309,11 @@ export default function DashboardLayout() {
       : pathname === '/create-exam' ? 'Create Test'
       : pathname === '/batches' ? 'Batches'
       : pathname === '/instructor-dashboard' ? 'Dashboard'
+      : pathname === '/enterprise-dashboard' ? 'Enterprise'
+      : pathname === '/enterprise/teachers' ? 'All teachers'
+      : pathname === '/enterprise/teachers/new' ? 'Add teacher'
+      : pathname === '/school/classes' ? 'Classes'
+      : pathname === '/school/students' ? 'Students'
       : pathname === '/tests' ? user?.role === 'instructor' ? 'All Tests' : 'My Tests'
       : pathname === '/tickets' ? 'Ticketing'
       : 'Dashboard');
@@ -254,8 +322,16 @@ export default function DashboardLayout() {
   const isStudent = user?.role === 'user';
   const remaining = user?.remaining ?? null;
   const isAdmin = user?.role === 'admin';
+  const isPrincipalUser = user?.role === 'principal';
   const isInstructorNav = user?.role === 'instructor';
+  const isEnterpriseTeacher = isInstructorNav && Boolean(user?.enterprise?.id || user?.enterprise?._id);
   const dashboardHome = getDashboardPath(user?.role);
+  const studentNavItems = useMemo(() => {
+    if (user?.enterprise?.mode === 'school') {
+      return STUDENT_NAV.filter((n) => n.to !== '/batches');
+    }
+    return STUDENT_NAV;
+  }, [user?.enterprise?.mode]);
 
   return (
     <div className="flex h-screen bg-[var(--color-bg)] overflow-hidden">
@@ -272,13 +348,18 @@ export default function DashboardLayout() {
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}
       `}>
         {/* Logo */}
-        <div className={`flex items-center gap-2.5 px-4 py-4 border-b border-slate-200/70 dark:border-slate-800 min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
+        <div className={`flex items-center gap-2 px-4 py-4 border-b border-slate-200/70 dark:border-slate-800 min-h-[64px] ${collapsed ? 'justify-center' : ''}`}>
           <Link
             to={dashboardHome}
             onClick={() => setMobileOpen(false)}
-            className={`flex items-center rounded-xl ring-1 ring-transparent hover:ring-[var(--color-primary)]/25 transition-all ${collapsed ? 'justify-center p-1' : ''}`}
+            className={`flex items-center gap-2 min-w-0 rounded-xl ring-1 ring-transparent hover:ring-[var(--color-primary)]/25 transition-all ${collapsed ? 'justify-center p-1' : ''}`}
           >
-            <img src={likhitaiLogo} alt="LikhitAI" className={collapsed ? 'h-8 w-8 object-contain' : 'h-8 w-auto'} />
+            <img src={likhitaiLogo} alt="LikhitAI" className={collapsed ? 'h-8 w-8 object-contain shrink-0' : 'h-8 w-auto shrink-0'} />
+            {!collapsed && user?.enterprise?.name && (
+              <span className="hidden sm:inline text-[11px] font-medium text-slate-500 dark:text-slate-400 truncate border-l border-slate-200 dark:border-slate-700 pl-2 leading-tight max-w-[7.5rem]">
+                {user.enterprise.name}
+              </span>
+            )}
           </Link>
         </div>
 
@@ -307,6 +388,18 @@ export default function DashboardLayout() {
               <SidebarLink to="/plan" icon={Zap} label="Plan" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
               <SidebarLink to="/settings" icon={Settings} label="Settings" collapsed={collapsed} onClick={() => setMobileOpen(false)} />
             </>
+          ) : isPrincipalUser ? (
+            <>
+              {!collapsed && (
+                <div className="px-2 pb-2 mb-1 border-b border-slate-200/60 dark:border-slate-800/80">
+                  <span className="text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">Enterprise</span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Teachers · settings</p>
+                </div>
+              )}
+              {PRINCIPAL_NAV.map((n) => (
+                <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} />
+              ))}
+            </>
           ) : isInstructorNav ? (
             <>
               {!collapsed && (
@@ -315,7 +408,7 @@ export default function DashboardLayout() {
                   <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Tests · batches · reports</p>
                 </div>
               )}
-              {INSTRUCTOR_SIDEBAR_NAV.map(entry => {
+              {instructorNav.map(entry => {
                 if (entry.type === 'link') {
                   const badge = entry.badgeKey === 'batch' ? batchBadge : 0;
                   return (
@@ -330,7 +423,7 @@ export default function DashboardLayout() {
                     />
                   );
                 }
-                const open = instructorOpenGroups.has(entry.id);
+                const open = instructorOpenGroup === entry.id;
                 return (
                   <div key={entry.id} className="space-y-0.5">
                     <InstructorNavGroupButton
@@ -340,12 +433,7 @@ export default function DashboardLayout() {
                       pathname={pathname}
                       onMobileClose={() => setMobileOpen(false)}
                       onToggle={() => {
-                        setInstructorOpenGroups(prev => {
-                          const n = new Set(prev);
-                          if (n.has(entry.id)) n.delete(entry.id);
-                          else n.add(entry.id);
-                          return n;
-                        });
+                        setInstructorOpenGroup((prev) => (prev === entry.id ? '' : entry.id));
                       }}
                     />
                     {!collapsed && open && (
@@ -382,7 +470,7 @@ export default function DashboardLayout() {
             </>
           ) : (
             <>
-              {STUDENT_NAV.map(n => (
+              {studentNavItems.map(n => (
                 <SidebarLink key={n.to} {...n} collapsed={collapsed} onClick={() => setMobileOpen(false)} badge={n.to === '/batches' ? batchBadge : 0} />
               ))}
             </>
@@ -431,7 +519,14 @@ export default function DashboardLayout() {
             <button className="hidden lg:flex p-2 rounded-lg hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]" onClick={() => setCollapsed(c => !c)}>
               <Menu size={18} />
             </button>
-            <h1 className="font-semibold text-[var(--color-text)] text-sm hidden sm:block truncate">{pageTitle}</h1>
+            <div className="hidden sm:block min-w-0">
+              <h1 className="font-semibold text-[var(--color-text)] text-sm truncate leading-tight">{pageTitle}</h1>
+              {user?.enterprise?.name && (
+                <p className="text-[10px] text-[var(--color-text-muted)] truncate leading-tight mt-0.5">
+                  LikhitAI · {user.enterprise.name}
+                </p>
+              )}
+            </div>
           </div>
 
           <div className="flex-1 flex justify-center min-w-0 px-1 sm:px-3">
@@ -439,12 +534,12 @@ export default function DashboardLayout() {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
-            {remaining !== null && remaining <= 1 && !isFreePlan && !isAdmin && !isStudent && (
+            {remaining !== null && remaining <= 1 && !isFreePlan && !isAdmin && !isStudent && !isPrincipalUser && !isEnterpriseTeacher && (
               <Link to="/plan" className="hidden sm:flex items-center gap-1.5 bg-amber-50 dark:bg-amber-900/20 border border-amber-300 text-amber-700 dark:text-amber-400 rounded-full px-3 py-1 text-xs font-medium hover:bg-amber-100 transition-colors">
                 <Zap size={11} /> {remaining} exam{remaining !== 1 ? 's' : ''} left
               </Link>
             )}
-            {!isFreePlan && !isAdmin && !isStudent && (
+            {!isFreePlan && !isAdmin && !isStudent && !isPrincipalUser && !isEnterpriseTeacher && (
               <Link
                 to="/plan"
                 className={`hidden sm:flex items-center gap-1 text-xs font-bold px-2.5 py-1 rounded-full transition-all ${
@@ -499,7 +594,7 @@ export default function DashboardLayout() {
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl z-50 py-1">
                   <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">View Profile</Link>
-                  {!isStudent && <Link to="/plan" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Plan</Link>}
+                  {!isStudent && !isPrincipalUser && !isEnterpriseTeacher && <Link to="/plan" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Plan</Link>}
                   <Link to="/settings" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Settings</Link>
                   <button
                     type="button"
@@ -516,6 +611,22 @@ export default function DashboardLayout() {
 
         {/* Announcement banners */}
         <AnnouncementBanner />
+
+        {user?.impersonation && (
+          <div className="shrink-0 flex flex-wrap items-center justify-center gap-3 px-4 py-2.5 text-sm bg-amber-50 dark:bg-amber-950/40 text-amber-950 dark:text-amber-100 border-b border-amber-200/80 dark:border-amber-800/60">
+            <span>
+              You are viewing as <strong className="font-semibold">{user.name}</strong>
+            </span>
+            <button
+              type="button"
+              disabled={stopImpersonationMut.isPending}
+              onClick={() => stopImpersonationMut.mutate()}
+              className="font-semibold px-3 py-1 rounded-lg bg-amber-800 text-white dark:bg-amber-600 text-xs hover:opacity-95 disabled:opacity-50"
+            >
+              Exit view
+            </button>
+          </div>
+        )}
 
         {/* Page content */}
         <main className="flex-1 overflow-y-auto">

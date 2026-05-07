@@ -1,4 +1,4 @@
-import { Check, Code2, Crown, GraduationCap, Loader2, Shield, Sparkles, Users, Zap } from 'lucide-react';
+import { Check, GraduationCap, Loader2, Shield, Sparkles, Users, Zap } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -8,30 +8,8 @@ import { getDashboardPath } from '../utils/dashboardPath.js';
 
 export const PLANS = [
   {
-    id: 'free',
-    name: 'Free',
-    price: 0,
-    originalPrice: null,
-    period: 'forever',
-    icon: Zap,
-    color: 'text-slate-600',
-    bgColor: 'bg-slate-100 dark:bg-slate-800',
-    borderColor: 'border-[var(--color-border)]',
-    testsPerMonth: 3,
-    maxQuestions: 20,
-    features: [
-      '3 AI-generated exams per month',
-      'Up to 20 questions per exam',
-      'Study mode with flashcards',
-      'Basic performance analytics',
-      'Community leaderboard',
-      'PDF certificate on passing score',
-    ],
-    limitations: ['No AI proctoring', 'No coding questions', 'No advanced analytics'],
-  },
-  {
     id: 'pro',
-    name: 'Pro',
+    name: 'Premium',
     price: 149,
     originalPrice: 999,
     period: 'month',
@@ -40,7 +18,6 @@ export const PLANS = [
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
     borderColor: 'border-[var(--color-primary)]',
     badge: 'Most Popular',
-    instructorBadge: 'Great for Instructors',
     testsPerMonth: 10,
     maxQuestions: 50,
     features: [
@@ -48,38 +25,10 @@ export const PLANS = [
       'Up to 50 questions per exam',
       'AI proctoring with face detection',
       'Screenshot capture during exams',
-      'Advanced analytics & insights',
+      'Advanced analytics and insights',
       'AI-powered study recommendations',
       'PDF certificates with verification',
       'Priority email support',
-    ],
-    limitations: ['No coding questions'],
-  },
-  {
-    id: 'enterprise',
-    name: 'Enterprise',
-    price: 349,
-    originalPrice: 2500,
-    period: 'month',
-    icon: Crown,
-    color: 'text-purple-600',
-    bgColor: 'bg-purple-100 dark:bg-purple-900/30',
-    borderColor: 'border-purple-400',
-    instructorBadge: 'Best for Instructors',
-    testsPerMonth: 30,
-    maxQuestions: 100,
-    codingBadge: true,
-    features: [
-      '30 AI-generated exams per month',
-      'Up to 100 questions per exam',
-      'AI proctoring with face detection',
-      'Screenshot capture during exams',
-      'Coding questions with AI evaluation',
-      'Full analytics suite',
-      'AI-powered study recommendations',
-      'Custom exam branding',
-      'Dedicated account support',
-      'Priority AI processing',
     ],
     limitations: [],
   },
@@ -176,7 +125,7 @@ export default function PricingPage() {
     return `Upgrade to ${plan.name}`;
   };
 
-  const instructorPlans = PLANS.filter(p => p.id !== 'free');
+  const instructorPlans = PLANS;
 
   return (
     <div className="relative py-16 px-4 sm:px-6 lg:px-8 bg-[var(--color-bg)] min-h-screen overflow-hidden">
@@ -191,13 +140,13 @@ export default function PricingPage() {
         {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-            <Sparkles size={13} /> Instructor Plans
+            <Sparkles size={13} /> Premium Plan
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] mb-4 tracking-tight">
             Create. Manage. <span className="text-[var(--color-primary)]">Analyze.</span>
           </h1>
           <p className="text-[var(--color-text-muted)] text-lg max-w-xl mx-auto">
-            Powerful exam management tools for instructors and trainers. Students always join for free.
+            One clear premium plan for instructors. Enterprise access is configured only by super admin.
           </p>
         </div>
 
@@ -228,17 +177,7 @@ export default function PricingPage() {
           </div>
         </div>
 
-        {/* Instructor plans divider */}
-        <div className="flex items-center gap-4 mb-8">
-          <div className="flex-1 border-t border-[var(--color-border)]" />
-          <div className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-muted)]">
-            <Users size={14} /> Instructor Plans
-          </div>
-          <div className="flex-1 border-t border-[var(--color-border)]" />
-        </div>
-
-        {/* Instructor plan grid */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mb-12 max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 gap-8 mb-12 max-w-3xl mx-auto">
           {instructorPlans.map((plan) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.id;

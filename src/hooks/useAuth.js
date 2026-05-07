@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { authApi } from '../services/api.js';
+import { authApi, enterpriseApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 
@@ -12,9 +12,24 @@ export const useAuth = () => {
 
   const loginMut = useMutation({
     mutationFn: authApi.login,
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.data.requiresOTP) return; // caller handles OTP step
       setUser(res.data.user);
+      const pending = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('enterpriseInvite')
+        : null;
+      if (pending) {
+        try {
+          const acc = await enterpriseApi.acceptInvite(pending);
+          const me = await authApi.getMe();
+          setUser(me.data.user);
+          navigate(acc.data?.redirectPath || getDashboardPath(me.data.user?.role));
+          toast.success('Welcome back — you joined the organization.');
+          return;
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Could not accept organization invite.');
+        }
+      }
       navigate(getDashboardPath(res.data.user?.role));
       toast.success('Welcome back!');
     },
@@ -51,9 +66,24 @@ export const useAuth = () => {
 
   const googleMut = useMutation({
     mutationFn: authApi.google,
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       if (res.data.requiresOTP) return;
       setUser(res.data.user);
+      const pending = typeof window !== 'undefined'
+        ? new URLSearchParams(window.location.search).get('enterpriseInvite')
+        : null;
+      if (pending) {
+        try {
+          const acc = await enterpriseApi.acceptInvite(pending);
+          const me = await authApi.getMe();
+          setUser(me.data.user);
+          navigate(acc.data?.redirectPath || res.data.redirectPath || getDashboardPath(me.data.user?.role));
+          toast.success('Signed in with Google — you joined the organization.');
+          return;
+        } catch (err) {
+          toast.error(err.response?.data?.message || 'Could not accept organization invite.');
+        }
+      }
       if (res.data.redirectPath) navigate(res.data.redirectPath);
       else navigate(getDashboardPath(res.data.user?.role));
       toast.success(res.data.message || 'Signed in with Google');

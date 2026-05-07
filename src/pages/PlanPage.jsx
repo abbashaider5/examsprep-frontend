@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { CreditCard, Loader2, Shield, Trophy, Zap } from 'lucide-react';
+import { CreditCard, Loader2, Shield, Zap } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { paymentApi, profileApi } from '../services/api.js';
@@ -7,13 +7,11 @@ import { useAuthStore } from '../store/index.js';
 
 const PLAN_INFO = {
   free: { label: 'Free', color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: Zap },
-  pro: { label: 'Pro', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', icon: Shield },
-  enterprise: { label: 'Enterprise', color: 'bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300', border: 'border-purple-200 dark:border-purple-800', icon: Trophy },
+  pro: { label: 'Premium', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', icon: Shield },
 };
 
 const SUBSCRIPTION_PLANS = [
-  { id: 'pro', name: 'Pro', price: 149, monthlyLimit: 10, maxQuestions: 50, desc: 'For active instructors and smaller teams.' },
-  { id: 'enterprise', name: 'Enterprise', price: 349, monthlyLimit: 30, maxQuestions: 100, desc: 'For institutes with higher assessment volume.' },
+  { id: 'pro', name: 'Premium', price: 149, monthlyLimit: 10, maxQuestions: 50, desc: 'For active instructors.' },
 ];
 
 const loadRazorpay = () =>

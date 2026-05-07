@@ -1,4 +1,4 @@
-import { Award, BarChart2, BookOpen, Brain, ExternalLink, Linkedin, ShieldCheck, Sparkles, Target, Users, Zap } from 'lucide-react';
+import { Award, BarChart2, BookOpen, Brain, ShieldCheck, Sparkles, Target, Users, Zap } from 'lucide-react';
 import { Link } from 'react-router-dom';
 
 export default function AboutPage() {
@@ -66,91 +66,7 @@ export default function AboutPage() {
             </div>
           </div>
 
-          {/* ── Creator section ── */}
-          <div className="max-w-3xl mx-auto">
-            <div className="rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-lg bg-[var(--color-surface)]">
-
-              {/* Header */}
-              <div className="bg-gradient-to-br from-teal-50 via-cyan-50 to-white dark:from-teal-950/40 dark:via-cyan-950/20 dark:to-[var(--color-surface)] px-8 py-10 border-b border-[var(--color-border)]">
-                <div className="flex flex-col sm:flex-row items-center gap-7">
-                  {/* Profile photo */}
-                  <div className="shrink-0 relative">
-                    <div className="w-24 h-24 rounded-2xl overflow-hidden ring-4 ring-white dark:ring-[var(--color-border)] shadow-lg">
-                      <img
-                        src="https://media.licdn.com/dms/image/v2/D5603AQFaxyPAi48gLQ/profile-displayphoto-crop_800_800/B56ZkizQFRI8AI-/0/1757225485770?e=1778112000&v=beta&t=EYVY5oRHurjaBmnANG4frMXqqidHeOF-OXsgFAReFZk"
-                        alt="Abbas Haider"
-                        className="w-full h-full object-cover"
-                        onError={(e) => {
-                          e.target.style.display = 'none';
-                          e.target.nextSibling.style.display = 'flex';
-                        }}
-                      />
-                      <div className="w-full h-full bg-[var(--color-primary)]/10 items-center justify-center text-3xl font-bold text-[var(--color-primary)] hidden">A</div>
-                    </div>
-                    <div className="absolute -bottom-1.5 -right-1.5 w-7 h-7 bg-[var(--color-primary)] rounded-full flex items-center justify-center shadow">
-                      <Sparkles size={13} className="text-white" />
-                    </div>
-                  </div>
-
-                  {/* Bio */}
-                  <div className="text-center sm:text-left flex-1">
-                    <div className="inline-flex items-center gap-1.5 bg-[var(--color-primary)]/10 text-[var(--color-primary)] text-xs font-semibold px-3 py-1 rounded-full mb-2">
-                      Creator & Developer
-                    </div>
-                    <h2 className="text-2xl font-bold text-[var(--color-text)] mb-0.5">Abbas Haider</h2>
-                    <p className="text-[var(--color-text-muted)] text-sm mb-4">Software Developer · Web Development · Cyber Security</p>
-                    <div className="flex flex-wrap gap-2 justify-center sm:justify-start">
-                      <a
-                        href="https://www.linkedin.com/in/abbashaider14/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 bg-[#0077B5] hover:bg-[#006399] text-white text-xs font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
-                      >
-                        <Linkedin size={13} /> LinkedIn <ExternalLink size={10} />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Story */}
-              <div className="px-8 py-8">
-                <h3 className="text-lg font-bold text-[var(--color-text)] mb-4">The Story Behind LikhitAI</h3>
-                <div className="space-y-3 text-sm text-[var(--color-text-muted)] leading-relaxed">
-                  <p>
-                    Abbas Haider is a software developer with <strong className="text-[var(--color-text)]">4 years of experience</strong> in full-stack web development. He is currently expanding his expertise into <strong className="text-[var(--color-text)]">Cyber Security</strong> at CRAW Security Institute.
-                  </p>
-                  <p>
-                    He built LikhitAI after seeing how fragmented and expensive assessment tools are for instructors and training organizations. His goal was to build a single platform where instructors can create AI-powered tests, manage their students, and actually understand how each one is performing — without paying enterprise pricing for basic functionality.
-                  </p>
-                  <p>
-                    LikhitAI is the result — a professional assessment platform where instructors manage tests, track student performance, ensure exam integrity with AI proctoring, and issue verified certificates. Students join and take tests for free.
-                  </p>
-                </div>
-
-                {/* Free Pro offer */}
-                <div className="mt-6 p-5 bg-gradient-to-r from-teal-50 to-cyan-50 dark:from-teal-900/20 dark:to-cyan-900/20 border border-teal-200 dark:border-teal-800 rounded-xl">
-                  <div className="flex items-start gap-3">
-                    <div className="text-xl shrink-0 mt-0.5">🎁</div>
-                    <div>
-                      <h4 className="font-bold text-[var(--color-text)] mb-1">Get 3 Months of Pro — Free</h4>
-                      <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
-                        Abbas personally offers a complimentary 3-month Pro plan to instructors and organizations who can't afford to upgrade. DM him on LinkedIn to activate it.
-                      </p>
-                      <a
-                        href="https://www.linkedin.com/in/abbashaider14/"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="inline-flex items-center gap-1.5 mt-3 text-[var(--color-primary)] text-sm font-semibold hover:underline"
-                      >
-                        <Linkedin size={13} /> DM on LinkedIn <ExternalLink size={10} />
-                      </a>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
+       
 
           {/* CTA */}
           <div className="text-center mt-16">

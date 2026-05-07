@@ -282,9 +282,14 @@ export default function CreateExamPage() {
   const qc = useQueryClient();
   const { user } = useAuthStore();
 
-  const planMaxQ = user?.plan === 'enterprise' ? 100 : user?.plan === 'pro' ? 50 : 20;
+  const isEnterpriseInstructor = user?.role === 'instructor' && Boolean(user?.enterprise);
+  const enterpriseQuestionsLimit = user?.enterprise?.questionsPerExamLimit;
+  const planMaxQ = isEnterpriseInstructor
+    ? (enterpriseQuestionsLimit || 100)
+    : (user?.plan === 'enterprise' ? 100 : user?.plan === 'pro' ? 50 : 20);
   const isFreePlan = !user?.plan || user.plan === 'free';
   const isEnterprise = user?.plan === 'enterprise';
+  const enterpriseProctoringDisabled = isEnterpriseInstructor && user?.enterprise?.aiProctoringEnabled === false;
   const isInstructor = user?.isInstructor || ['instructor', 'admin'].includes(user?.role);
   const remaining = user?.remaining ?? null;
 
@@ -378,7 +383,7 @@ export default function CreateExamPage() {
     }
     const numQ = Number(form.numQuestions);
     if (numQ > planMaxQ) {
-      setErrors({ numQuestions: `Your ${user?.plan || 'free'} plan allows up to ${planMaxQ} questions.` });
+      setErrors({ numQuestions: `${isEnterpriseInstructor ? 'Your enterprise configuration' : `Your ${user?.plan || 'free'} plan`} allows up to ${planMaxQ} questions.` });
       return;
     }
     const pp = Number(advanced.passingPercentage);
@@ -403,7 +408,7 @@ export default function CreateExamPage() {
       subject: form.subject,
       numQuestions: numQ,
       topics,
-      proctored: form.proctored,
+      proctored: enterpriseProctoringDisabled ? false : form.proctored,
       examType,
       timePerQuestion,
       ...((source === 'examprep' || source === 'myresources') && selectedResourceId ? { resourceId: selectedResourceId } : {}),
@@ -747,8 +752,12 @@ export default function CreateExamPage() {
 
             {/* AI Proctoring toggle */}
             <div className={`rounded-xl border ${form.proctored ? 'border-[var(--color-primary)] bg-blue-50/40 dark:bg-blue-900/10' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'} transition-all`}>
-              <div className={`flex items-center gap-3 p-4 ${isFreePlan ? 'opacity-60' : ''}`}>
-                <ToggleSwitch checked={form.proctored} disabled={isFreePlan} onChange={e => !isFreePlan && setF('proctored')(e.target.checked)} />
+              <div className={`flex items-center gap-3 p-4 ${isFreePlan || enterpriseProctoringDisabled ? 'opacity-60' : ''}`}>
+                <ToggleSwitch
+                  checked={enterpriseProctoringDisabled ? false : form.proctored}
+                  disabled={isFreePlan || enterpriseProctoringDisabled}
+                  onChange={e => !isFreePlan && !enterpriseProctoringDisabled && setF('proctored')(e.target.checked)}
+                />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-[var(--color-text)] flex items-center gap-2 flex-wrap">
                     <Shield size={14} className="text-[var(--color-primary)] shrink-0" />
@@ -756,15 +765,19 @@ export default function CreateExamPage() {
                     <FieldHint
                       placement="bottom"
                       text={
-                        isFreePlan
+                        enterpriseProctoringDisabled
+                          ? 'AI Proctoring is disabled by your enterprise administrator for this organization.'
+                          : isFreePlan
                           ? 'AI Proctoring is available on paid plans. It uses camera and microphone checks, detects tab and window changes, and requires fullscreen during the exam.'
                           : 'Monitors camera and microphone, detects tab switches and leaving fullscreen, and records violations. You can turn on occasional screenshots under Advanced Settings when proctoring is enabled.'
                       }
                     />
-                    {isFreePlan && <Lock size={13} className="text-[var(--color-text-muted)] shrink-0" />}
+                    {(isFreePlan || enterpriseProctoringDisabled) && <Lock size={13} className="text-[var(--color-text-muted)] shrink-0" />}
                   </div>
                   <div className="text-xs text-[var(--color-text-muted)]">
-                    {isFreePlan
+                    {enterpriseProctoringDisabled
+                      ? 'AI Proctoring is not enabled in your plan. Please contact your administrator.'
+                      : isFreePlan
                       ? <><Link to="/pricing" className="text-[var(--color-primary)] hover:underline font-medium">Upgrade to Pro</Link> to unlock AI Proctoring.</>
                       : 'Webcam monitoring, tab-switch detection, violation tracking.'
                     }

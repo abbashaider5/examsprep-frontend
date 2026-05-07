@@ -49,7 +49,7 @@ import HelpTopicsTab from '../components/admin/HelpTopicsTab.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import Modal from '../components/Modal.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
-import { adminApi, announcementApi, contactApi, feedbackApi, groupApi, logsApi, resourceApi, settingsApi } from '../services/api.js';
+import { adminApi, announcementApi, contactApi, enterpriseApi, feedbackApi, groupApi, logsApi, resourceApi, settingsApi } from '../services/api.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -69,6 +69,7 @@ const ADMIN_TAB_PAGE = {
   feedback: { title: 'User feedback', description: 'Read product feedback, triage issues, and follow up on quality.' },
   resources: { title: 'Resource library', description: 'Manage shared PDFs and files available for exam generation.' },
   help: { title: 'Help center content', description: 'Create and edit role-specific help articles shown in search and the Help center.' },
+  enterprises: { title: 'Enterprise organizations', description: 'Create schools and institutes, assign principals, and set teacher limits. Mode cannot be changed after creation.' },
 };
 
 const TAB_HEADER_GRADIENT = {
@@ -83,6 +84,7 @@ const TAB_HEADER_GRADIENT = {
   feedback: 'from-rose-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
   resources: 'from-indigo-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
   help: 'from-sky-500/[0.10] via-[var(--color-surface)] to-[var(--color-bg)]',
+  enterprises: 'from-teal-500/[0.12] via-[var(--color-surface)] to-[var(--color-bg)]',
 };
 
 function AdminTabPageHeader({ tabId, onBack }) {
@@ -122,7 +124,7 @@ function AdminTabPageHeader({ tabId, onBack }) {
 }
 
 const SEVERITY_COLORS = { info: 'bg-blue-100 text-blue-700', warning: 'bg-orange-100 text-orange-700', critical: 'bg-red-100 text-red-700' };
-const CATEGORY_COLORS = { auth: 'bg-purple-100 text-purple-700', exam: 'bg-green-100 text-green-700', admin: 'bg-yellow-100 text-yellow-700', proctoring: 'bg-red-100 text-red-700', certificate: 'bg-blue-100 text-blue-700', profile: 'bg-gray-100 text-gray-700' };
+const CATEGORY_COLORS = { auth: 'bg-purple-100 text-purple-700', exam: 'bg-green-100 text-green-700', admin: 'bg-yellow-100 text-yellow-700', proctoring: 'bg-red-100 text-red-700', certificate: 'bg-blue-100 text-blue-700', profile: 'bg-gray-100 text-gray-700', enterprise: 'bg-teal-100 text-teal-800 dark:bg-teal-900/30 dark:text-teal-300' };
 
 function StatBox({ label, value, icon, color, onClick }) {
   const Tag = onClick ? 'button' : 'div';
@@ -545,6 +547,91 @@ function LogsTab() {
   );
 }
 
+function EnterpriseLogsTab() {
+  const [enterpriseId, setEnterpriseId] = useState('');
+  const [userId, setUserId] = useState('');
+  const [action, setAction] = useState('');
+  const [from, setFrom] = useState('');
+  const [to, setTo] = useState('');
+  const [page, setPage] = useState(1);
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminEnterpriseLogs', enterpriseId, userId, action, from, to, page],
+    queryFn: () => enterpriseApi.adminAllLogs({
+      page,
+      enterpriseId: enterpriseId || undefined,
+      userId: userId || undefined,
+      action: action || undefined,
+      from: from || undefined,
+      to: to || undefined,
+    }).then((r) => r.data),
+  });
+
+  const logs = data?.logs || [];
+  const enterprises = data?.enterprises || [];
+  const userOptions = Array.from(new Map(logs.filter((l) => l.user?._id).map((l) => [l.user._id, l.user])).values());
+  const actions = Array.from(new Set(logs.map((l) => l.action).filter(Boolean)));
+
+  return (
+    <div className="space-y-4">
+      <div className="card grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-3">
+        <select className="input text-sm" value={enterpriseId} onChange={(e) => { setEnterpriseId(e.target.value); setPage(1); }}>
+          <option value="">All enterprises</option>
+          {enterprises.map((e) => <option key={e._id} value={e._id}>{e.name}</option>)}
+        </select>
+        <select className="input text-sm" value={userId} onChange={(e) => { setUserId(e.target.value); setPage(1); }}>
+          <option value="">All users</option>
+          {userOptions.map((u) => <option key={u._id} value={u._id}>{u.name || u.email}</option>)}
+        </select>
+        <select className="input text-sm" value={action} onChange={(e) => { setAction(e.target.value); setPage(1); }}>
+          <option value="">All actions</option>
+          {actions.map((a) => <option key={a} value={a}>{a}</option>)}
+        </select>
+        <input type="date" className="input text-sm" value={from} onChange={(e) => { setFrom(e.target.value); setPage(1); }} />
+        <input type="date" className="input text-sm" value={to} onChange={(e) => { setTo(e.target.value); setPage(1); }} />
+        <button type="button" className="btn-secondary text-sm" onClick={() => { setEnterpriseId(''); setUserId(''); setAction(''); setFrom(''); setTo(''); setPage(1); }}>
+          Clear
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
+        <table className="w-full text-sm">
+          <thead className="bg-[var(--color-bg-alt)] text-xs text-[var(--color-text-muted)] uppercase">
+            <tr>
+              <th className="px-3 py-2 text-left">Time</th>
+              <th className="px-3 py-2 text-left">Enterprise</th>
+              <th className="px-3 py-2 text-left">User</th>
+              <th className="px-3 py-2 text-left">Action</th>
+              <th className="px-3 py-2 text-left">Severity</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[var(--color-border)]">
+            {isLoading ? (
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-[var(--color-text-muted)]">Loading…</td></tr>
+            ) : logs.length === 0 ? (
+              <tr><td colSpan={5} className="px-3 py-8 text-center text-[var(--color-text-muted)]">No enterprise logs found.</td></tr>
+            ) : logs.map((l) => (
+              <tr key={l._id}>
+                <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">{new Date(l.createdAt).toLocaleString()}</td>
+                <td className="px-3 py-2 text-[var(--color-text)]">{l.enterprise?.name || '—'}</td>
+                <td className="px-3 py-2 text-[var(--color-text-muted)]">{l.user?.name || l.userEmail || '—'}</td>
+                <td className="px-3 py-2 font-medium text-[var(--color-text)]">{l.action}</td>
+                <td className="px-3 py-2 capitalize text-[var(--color-text-muted)]">{l.severity || 'info'}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="flex justify-center gap-2">
+        <button type="button" className="btn-secondary text-xs px-3 py-1.5" disabled={page <= 1} onClick={() => setPage((p) => Math.max(1, p - 1))}>Prev</button>
+        <span className="text-xs self-center text-[var(--color-text-muted)]">{page} / {data?.pages || 1}</span>
+        <button type="button" className="btn-secondary text-xs px-3 py-1.5" disabled={page >= (data?.pages || 1)} onClick={() => setPage((p) => p + 1)}>Next</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Settings ─────────────────────────────────────────────────────────────────
 function ToggleRow({ label, description, checked, onChange, disabled }) {
   return (
@@ -687,11 +774,11 @@ function SettingsTab() {
       </div>
 
       <div className="card">
-        <h3 className="font-semibold text-[var(--color-text)] mb-1">Plan Pricing</h3>
-        <p className="text-xs text-[var(--color-text-muted)] mb-4">Set prices for paid plans (in ₹). Changes reflect immediately on checkout.</p>
+        <h3 className="font-semibold text-[var(--color-text)] mb-1">Pricing Configuration</h3>
+        <p className="text-xs text-[var(--color-text-muted)] mb-4">Configure Premium plan and enterprise cost inputs. Values are in ₹.</p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <div>
-            <label className="label text-xs">Pro Plan Price (₹/month)</label>
+            <label className="label text-xs">Premium Plan Price (₹/month)</label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-[var(--color-text-muted)]">₹</span>
               <input
@@ -705,16 +792,58 @@ function SettingsTab() {
             </div>
           </div>
           <div>
-            <label className="label text-xs">Enterprise Plan Price (₹/month)</label>
+            <label className="label text-xs">Enterprise Cost / Teacher (₹)</label>
             <div className="flex items-center gap-2">
               <span className="text-sm text-[var(--color-text-muted)]">₹</span>
               <input
                 type="number"
-                min={1}
+                min={0}
                 className="input text-sm flex-1"
-                value={Math.round((local.planPriceEnterprise || 34900) / 100)}
-                onChange={e => setLocal(s => ({ ...s, planPriceEnterprise: Math.round(Number(e.target.value) * 100) }))}
-                placeholder="349"
+                value={Math.round((local.enterpriseCostPerTeacher || 2000) / 100)}
+                onChange={e => setLocal(s => ({ ...s, enterpriseCostPerTeacher: Math.round(Number(e.target.value) * 100) }))}
+                placeholder="20"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Enterprise Cost / Exam (₹)</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[var(--color-text-muted)]">₹</span>
+              <input
+                type="number"
+                min={0}
+                className="input text-sm flex-1"
+                value={Math.round((local.enterpriseCostPerExam || 300) / 100)}
+                onChange={e => setLocal(s => ({ ...s, enterpriseCostPerExam: Math.round(Number(e.target.value) * 100) }))}
+                placeholder="3"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Enterprise Cost / Question (₹)</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[var(--color-text-muted)]">₹</span>
+              <input
+                type="number"
+                min={0}
+                className="input text-sm flex-1"
+                value={Math.round((local.enterpriseCostPerQuestion || 20) / 100)}
+                onChange={e => setLocal(s => ({ ...s, enterpriseCostPerQuestion: Math.round(Number(e.target.value) * 100) }))}
+                placeholder="0.2"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Enterprise AI Proctoring Cost (₹)</label>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-[var(--color-text-muted)]">₹</span>
+              <input
+                type="number"
+                min={0}
+                className="input text-sm flex-1"
+                value={Math.round((local.enterpriseCostAiProctoring || 5000) / 100)}
+                onChange={e => setLocal(s => ({ ...s, enterpriseCostAiProctoring: Math.round(Number(e.target.value) * 100) }))}
+                placeholder="50"
               />
             </div>
           </div>
@@ -859,8 +988,7 @@ function PaymentsTab() {
                         <div className="flex items-center gap-1.5">
                           <select value={newPlan} onChange={e => setNewPlan(e.target.value)} className="input text-xs py-1 px-2 h-7">
                             <option value="free">Free</option>
-                            <option value="pro">Pro</option>
-                            <option value="enterprise">Enterprise</option>
+                            <option value="pro">Premium</option>
                           </select>
                           <button onClick={() => planMut.mutate({ id: sub.user._id, plan: newPlan })} disabled={planMut.isPending} className="btn-primary text-xs py-1 px-2">Save</button>
                           <button onClick={() => setChangingPlan(null)} className="btn-secondary text-xs py-1 px-2">Cancel</button>
@@ -929,8 +1057,7 @@ function PlansTab() {
         {[
           { label: 'Total Users', value: data?.total ?? '—', icon: <Users size={18} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-[var(--color-primary)]' },
           { label: 'Free Plan', value: planCounts.free ?? 0, icon: <Zap size={18} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600' },
-          { label: 'Pro Plan', value: planCounts.pro ?? 0, icon: <Shield size={18} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' },
-          { label: 'Enterprise Plan', value: planCounts.enterprise ?? 0, icon: <Layers size={18} />, color: 'bg-purple-50 dark:bg-purple-900/20 text-purple-600' },
+          { label: 'Premium Plan', value: planCounts.pro ?? 0, icon: <Shield size={18} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' },
         ].map(s => (
           <div key={s.label} className="card flex items-center gap-3 py-3">
             <div className={`${s.color} p-2.5 rounded-xl shrink-0`}>{s.icon}</div>
@@ -954,7 +1081,7 @@ function PlansTab() {
           />
         </div>
         <div className="flex gap-1.5">
-          {[{ v: '', l: 'All Plans' }, { v: 'free', l: 'Free' }, { v: 'pro', l: 'Pro' }, { v: 'enterprise', l: 'Enterprise' }].map(f => (
+          {[{ v: '', l: 'All Plans' }, { v: 'free', l: 'Free' }, { v: 'pro', l: 'Premium' }].map(f => (
             <button
               key={f.v}
               onClick={() => { setPlanFilter(f.v); setPage(1); }}
@@ -1007,7 +1134,7 @@ function PlansTab() {
                 </td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{fmtDate(u.planExpiresAt)}</td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
-                  {u.examsCreatedThisMonth ?? 0} / {u.plan === 'enterprise' ? 30 : u.plan === 'pro' ? 10 : 3}
+                  {u.examsCreatedThisMonth ?? 0} / {u.plan === 'pro' ? 10 : 3}
                 </td>
                 <td className="px-4 py-3">
                   {editingId === u._id ? (
@@ -1018,8 +1145,7 @@ function PlansTab() {
                         className="input text-xs py-1 px-2 h-7 w-28"
                       >
                         <option value="free">Free</option>
-                        <option value="pro">Pro</option>
-                        <option value="enterprise">Enterprise</option>
+                        <option value="pro">Premium</option>
                       </select>
                       {editForm.plan !== 'free' && (
                         <select
@@ -1068,7 +1194,7 @@ function PlansTab() {
       </div>
 
       <div className="card bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 p-4">
-        <strong>Note:</strong> Changing a user's plan sends an automatic email notification to the user. Duration only applies to paid plans (Pro / Enterprise).
+        <strong>Note:</strong> Changing a user's plan sends an automatic email notification to the user. Duration only applies to the paid Premium plan.
       </div>
     </div>
   );
@@ -2104,6 +2230,435 @@ function ResourcesTab() {
   );
 }
 
+function EnterprisesTab() {
+  const qc = useQueryClient();
+  const { data: pricingData } = useQuery({
+    queryKey: ['adminSettingsForEnterprisePricing'],
+    queryFn: () => settingsApi.get().then((r) => r.data),
+  });
+  const pricing = pricingData?.settings || {};
+  const { data, isLoading } = useQuery({
+    queryKey: ['adminEnterprises'],
+    queryFn: () => enterpriseApi.adminList().then((r) => r.data),
+  });
+  const [form, setForm] = useState({
+    name: '',
+    contactEmail: '',
+    phone: '',
+    country: '',
+    state: '',
+    city: '',
+    zipCode: '',
+    mode: 'institute',
+    teacherLimit: 5,
+    examsPerTeacherLimit: 30,
+    questionsPerExamLimit: 100,
+    aiProctoringEnabled: true,
+    principalName: '',
+    principalEmail: '',
+  });
+  const [logsFor, setLogsFor] = useState(null);
+  const [logsSearch, setLogsSearch] = useState('');
+  const [logsFilters, setLogsFilters] = useState({ userId: '', action: '', from: '', to: '' });
+  const [limitEdit, setLimitEdit] = useState({ id: '', value: 5 });
+  const [editEnterprise, setEditEnterprise] = useState(null);
+
+  const createMut = useMutation({
+    mutationFn: () => enterpriseApi.adminCreate({
+      name: form.name.trim(),
+      contactEmail: form.contactEmail.trim(),
+      phone: form.phone.trim(),
+      address: {
+        country: form.country.trim(),
+        state: form.state.trim(),
+        city: form.city.trim(),
+        zipCode: form.zipCode.trim(),
+      },
+      mode: form.mode,
+      teacherLimit: Number(form.teacherLimit) || 5,
+      examsPerTeacherLimit: Number(form.examsPerTeacherLimit) || 30,
+      questionsPerExamLimit: Number(form.questionsPerExamLimit) || 100,
+      aiProctoringEnabled: !!form.aiProctoringEnabled,
+      principalName: form.principalName.trim(),
+      principalEmail: form.principalEmail.trim(),
+    }),
+    onSuccess: () => {
+      toast.success('Enterprise created');
+      qc.invalidateQueries({ queryKey: ['adminEnterprises'] });
+      setForm((f) => ({
+        ...f,
+        name: '',
+        contactEmail: '',
+        phone: '',
+        country: '',
+        state: '',
+        city: '',
+        zipCode: '',
+        examsPerTeacherLimit: 30,
+        questionsPerExamLimit: 100,
+        aiProctoringEnabled: true,
+        principalName: '',
+        principalEmail: '',
+      }));
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const limitMut = useMutation({
+    mutationFn: ({ id, teacherLimit }) => enterpriseApi.adminPatchLimit(id, teacherLimit),
+    onSuccess: () => {
+      toast.success('Limit updated');
+      qc.invalidateQueries({ queryKey: ['adminEnterprises'] });
+      setLimitEdit({ id: '', value: 5 });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }) => enterpriseApi.adminUpdate(id, payload),
+    onSuccess: () => {
+      toast.success('Enterprise updated');
+      qc.invalidateQueries({ queryKey: ['adminEnterprises'] });
+      setEditEnterprise(null);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to update'),
+  });
+
+  const deleteMut = useMutation({
+    mutationFn: (id) => enterpriseApi.adminDelete(id),
+    onSuccess: () => {
+      toast.success('Enterprise deleted. Teachers moved to free plan.');
+      qc.invalidateQueries({ queryKey: ['adminEnterprises'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to delete'),
+  });
+
+  const { data: logsData } = useQuery({
+    queryKey: ['enterpriseLogs', logsFor?._id, logsSearch, logsFilters],
+    queryFn: () => enterpriseApi.adminLogs(logsFor?._id, {
+      page: 1,
+      search: logsSearch.trim() || undefined,
+      userId: logsFilters.userId || undefined,
+      action: logsFilters.action || undefined,
+      from: logsFilters.from || undefined,
+      to: logsFilters.to || undefined,
+    }).then((r) => r.data),
+    enabled: !!logsFor?._id,
+  });
+
+  const list = data?.enterprises || [];
+  const estimatedMonthlyCost = (() => {
+    const perTeacher = Number(pricing.enterpriseCostPerTeacher) || 0;
+    const perExam = Number(pricing.enterpriseCostPerExam) || 0;
+    const perQuestion = Number(pricing.enterpriseCostPerQuestion) || 0;
+    const aiCost = Number(pricing.enterpriseCostAiProctoring) || 0;
+    const teachers = Number(form.teacherLimit) || 0;
+    const exams = Number(form.examsPerTeacherLimit) || 0;
+    const questions = Number(form.questionsPerExamLimit) || 0;
+    const totalPaise = (teachers * perTeacher) + (teachers * exams * perExam) + (teachers * exams * questions * perQuestion) + (form.aiProctoringEnabled ? aiCost : 0);
+    return Math.max(0, totalPaise);
+  })();
+
+  return (
+    <div className="space-y-8">
+      <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 sm:p-6">
+        <h3 className="text-sm font-semibold text-[var(--color-text)] mb-4">Create enterprise</h3>
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Organization name</label>
+            <input className="input w-full mt-0.5" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="School / Institute" />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Contact email</label>
+            <input className="input w-full mt-0.5" type="email" value={form.contactEmail} onChange={(e) => setForm((f) => ({ ...f, contactEmail: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Phone</label>
+            <input className="input w-full mt-0.5" value={form.phone} onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Teacher limit</label>
+            <input className="input w-full mt-0.5" type="number" min={1} value={form.teacherLimit} onChange={(e) => setForm((f) => ({ ...f, teacherLimit: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Exams limit per teacher</label>
+            <input className="input w-full mt-0.5" type="number" min={1} value={form.examsPerTeacherLimit} onChange={(e) => setForm((f) => ({ ...f, examsPerTeacherLimit: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Questions limit per exam</label>
+            <input className="input w-full mt-0.5" type="number" min={5} value={form.questionsPerExamLimit} onChange={(e) => setForm((f) => ({ ...f, questionsPerExamLimit: e.target.value }))} />
+          </div>
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Principal name</label>
+            <input className="input w-full mt-0.5" value={form.principalName} onChange={(e) => setForm((f) => ({ ...f, principalName: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Principal email</label>
+            <input className="input w-full mt-0.5" type="email" value={form.principalEmail} onChange={(e) => setForm((f) => ({ ...f, principalEmail: e.target.value }))} />
+          </div>
+        </div>
+
+        <p className="text-xs font-bold text-[var(--color-text)] mb-1">Address</p>
+        <div className="grid sm:grid-cols-2 gap-3 mb-3">
+          <input className="input" placeholder="Country" value={form.country} onChange={(e) => setForm((f) => ({ ...f, country: e.target.value }))} />
+          <input className="input" placeholder="State" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
+          <input className="input" placeholder="City" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
+          <input className="input" placeholder="ZIP" value={form.zipCode} onChange={(e) => setForm((f) => ({ ...f, zipCode: e.target.value }))} />
+        </div>
+   
+        <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)] p-3">
+          <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
+            <input type="checkbox" checked={form.aiProctoringEnabled} onChange={(e) => setForm((f) => ({ ...f, aiProctoringEnabled: e.target.checked }))} />
+            AI Proctoring Enabled
+          </label>
+          <p className="text-xs text-[var(--color-text-muted)] mt-2">
+            Estimated Monthly Cost: <span className="font-semibold text-[var(--color-text)]">₹{Math.round(estimatedMonthlyCost / 100).toLocaleString('en-IN')}</span>
+          </p>
+        </div>
+        <div className="mb-3">
+          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Mode</label>
+          <select className="input w-full mt-0.5 max-w-xs" value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}>
+            <option value="school">School — classes &amp; students</option>
+            <option value="institute">Institute — batches (existing flow)</option>
+          </select>
+          <p className="text-xs text-amber-800 dark:text-amber-200 mt-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+            This cannot be changed later.
+          </p>
+        </div>
+        <button
+          type="button"
+          disabled={createMut.isPending}
+          onClick={() => createMut.mutate()}
+          className="btn-primary px-5 py-2 rounded-xl text-sm font-semibold"
+        >
+          {createMut.isPending ? 'Creating…' : 'Create enterprise'}
+        </button>
+      </div>
+
+      <div className="rounded-2xl border border-[var(--color-border)] overflow-hidden bg-[var(--color-surface)]">
+        <div className="px-4 py-3 border-b border-[var(--color-border)] font-semibold text-sm text-[var(--color-text)]">Organizations</div>
+        {isLoading ? <p className="p-4 text-sm text-[var(--color-text-muted)]">Loading…</p> : (
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-[var(--color-text-muted)] uppercase border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]">
+                <th className="px-3 py-2">Name</th>
+                <th className="px-3 py-2">Mode</th>
+                <th className="px-3 py-2">Principal</th>
+                <th className="px-3 py-2">Teachers</th>
+                <th className="px-3 py-2">Limits</th>
+                <th className="px-3 py-2">Monthly Cost</th>
+                <th className="px-3 py-2 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {list.map((e) => (
+                <tr key={e._id} className="border-b border-[var(--color-border)] last:border-0">
+                  <td className="px-3 py-2 font-medium text-[var(--color-text)]">{e.name}</td>
+                  <td className="px-3 py-2 capitalize">{e.mode}</td>
+                  <td className="px-3 py-2 text-[var(--color-text-muted)]">
+                    {e.principalUser?.name} <span className="text-xs block">{e.principalUser?.email}</span>
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">{e.teacherUsed ?? 0} / {e.teacherLimit}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--color-text-muted)]">
+                    {e.examsPerTeacherLimit || 30} exams/teacher · {e.questionsPerExamLimit || 100} q/exam · {e.aiProctoringEnabled === false ? 'No AI proctoring' : 'AI proctoring on'}
+                  </td>
+                  <td className="px-3 py-2 tabular-nums">₹{Math.round((e.estimatedMonthlyCost || 0) / 100).toLocaleString('en-IN')}</td>
+                  <td className="px-3 py-2 text-right space-x-2">
+                    <button type="button" className="text-xs font-semibold text-[var(--color-primary)] hover:underline" onClick={() => setLogsFor(e)}>View Logs</button>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-[var(--color-text-muted)] hover:underline"
+                      onClick={() => setEditEnterprise({
+                        id: e._id,
+                        name: e.name || '',
+                        contactEmail: e.contactEmail || '',
+                        phone: e.phone || '',
+                        country: e.address?.country || '',
+                        state: e.address?.state || '',
+                        city: e.address?.city || '',
+                        zipCode: e.address?.zipCode || '',
+                        mode: e.mode,
+                        teacherLimit: e.teacherLimit || 5,
+                        examsPerTeacherLimit: e.examsPerTeacherLimit || 30,
+                        questionsPerExamLimit: e.questionsPerExamLimit || 100,
+                        aiProctoringEnabled: e.aiProctoringEnabled !== false,
+                      })}
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-[var(--color-text-muted)] hover:underline"
+                      onClick={() => setLimitEdit({ id: e._id, value: e.teacherLimit })}
+                    >
+                      Set limit
+                    </button>
+                    <button
+                      type="button"
+                      className="text-xs font-semibold text-red-600 hover:underline"
+                      onClick={() => {
+                        if (window.confirm(`Delete enterprise "${e.name}"? Teacher accounts will be retained and moved to free plan.`)) {
+                          deleteMut.mutate(e._id);
+                        }
+                      }}
+                    >
+                      Delete
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </div>
+
+      {limitEdit.id && (
+        <Modal onClose={() => setLimitEdit({ id: '', value: 5 })}>
+          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-5 max-w-sm w-full shadow-xl">
+            <h4 className="font-semibold text-[var(--color-text)] mb-3">Teacher limit</h4>
+            <p className="text-xs text-[var(--color-text-muted)] mb-3">Set the maximum number of teachers this enterprise can use.</p>
+            <input
+              type="number"
+              min={1}
+              className="input w-full mb-3"
+              value={limitEdit.value}
+              onChange={(ev) => setLimitEdit((le) => ({ ...le, value: ev.target.value }))}
+            />
+            <div className="flex gap-2">
+              <button type="button" className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm" onClick={() => setLimitEdit({ id: '', value: 5 })}>Cancel</button>
+              <button
+                type="button"
+                className="flex-1 btn-primary py-2 rounded-xl text-sm font-semibold"
+                onClick={() => limitMut.mutate({ id: limitEdit.id, teacherLimit: Number(limitEdit.value) })}
+              >
+                Save
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {editEnterprise && (
+        <Modal onClose={() => setEditEnterprise(null)}>
+          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-5 max-w-2xl w-full shadow-xl">
+            <h4 className="font-semibold text-[var(--color-text)] mb-3">Edit enterprise</h4>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <input className="input" placeholder="Organization name" value={editEnterprise.name} onChange={(e) => setEditEnterprise((x) => ({ ...x, name: e.target.value }))} />
+              <input className="input" type="email" placeholder="Contact email" value={editEnterprise.contactEmail} onChange={(e) => setEditEnterprise((x) => ({ ...x, contactEmail: e.target.value }))} />
+              <input className="input" placeholder="Phone" value={editEnterprise.phone} onChange={(e) => setEditEnterprise((x) => ({ ...x, phone: e.target.value }))} />
+              <input className="input" type="number" min={1} placeholder="Teacher limit" value={editEnterprise.teacherLimit} onChange={(e) => setEditEnterprise((x) => ({ ...x, teacherLimit: e.target.value }))} />
+              <input className="input" type="number" min={1} placeholder="Exams/teacher" value={editEnterprise.examsPerTeacherLimit} onChange={(e) => setEditEnterprise((x) => ({ ...x, examsPerTeacherLimit: e.target.value }))} />
+              <input className="input" type="number" min={5} placeholder="Questions/exam" value={editEnterprise.questionsPerExamLimit} onChange={(e) => setEditEnterprise((x) => ({ ...x, questionsPerExamLimit: e.target.value }))} />
+              <input className="input" placeholder="Country" value={editEnterprise.country} onChange={(e) => setEditEnterprise((x) => ({ ...x, country: e.target.value }))} />
+              <input className="input" placeholder="State" value={editEnterprise.state} onChange={(e) => setEditEnterprise((x) => ({ ...x, state: e.target.value }))} />
+              <input className="input" placeholder="City" value={editEnterprise.city} onChange={(e) => setEditEnterprise((x) => ({ ...x, city: e.target.value }))} />
+              <input className="input" placeholder="ZIP" value={editEnterprise.zipCode} onChange={(e) => setEditEnterprise((x) => ({ ...x, zipCode: e.target.value }))} />
+            </div>
+            <div className="mt-3 text-xs text-[var(--color-text-muted)]">Mode: <span className="font-semibold capitalize text-[var(--color-text)]">{editEnterprise.mode}</span> (cannot be changed)</div>
+            <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-3">
+              <input type="checkbox" checked={!!editEnterprise.aiProctoringEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiProctoringEnabled: e.target.checked }))} />
+              AI Proctoring Enabled
+            </label>
+            <div className="flex gap-2 mt-4">
+              <button type="button" className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm" onClick={() => setEditEnterprise(null)}>Cancel</button>
+              <button
+                type="button"
+                className="flex-1 btn-primary py-2 rounded-xl text-sm font-semibold"
+                disabled={updateMut.isPending}
+                onClick={() => updateMut.mutate({
+                  id: editEnterprise.id,
+                  payload: {
+                    name: editEnterprise.name,
+                    contactEmail: editEnterprise.contactEmail,
+                    phone: editEnterprise.phone,
+                    teacherLimit: Number(editEnterprise.teacherLimit) || 5,
+                    examsPerTeacherLimit: Number(editEnterprise.examsPerTeacherLimit) || 30,
+                    questionsPerExamLimit: Number(editEnterprise.questionsPerExamLimit) || 100,
+                    aiProctoringEnabled: !!editEnterprise.aiProctoringEnabled,
+                    address: {
+                      country: editEnterprise.country,
+                      state: editEnterprise.state,
+                      city: editEnterprise.city,
+                      zipCode: editEnterprise.zipCode,
+                    },
+                  },
+                })}
+              >
+                Save changes
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {logsFor && (
+        <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3 mb-4">
+            <div>
+              <h4 className="font-semibold text-[var(--color-text)]">Enterprise logs</h4>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                {logsFor.name} · {logsFor.mode}
+              </p>
+            </div>
+            <button type="button" className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)]" onClick={() => setLogsFor(null)}>Back to enterprises</button>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-5 gap-1 mb-3">
+            <input
+              className="input w-full text-xs lg:col-span-"
+              placeholder="Search action/category/severity"
+              value={logsSearch}
+              onChange={(e) => setLogsSearch(e.target.value)}
+            />
+            <select className="input w-full text-xs" value={logsFilters.userId} onChange={(e) => setLogsFilters((f) => ({ ...f, userId: e.target.value }))}>
+              <option value="">All users</option>
+              {(logsData?.users || []).map((u) => (
+                <option key={u._id} value={u._id}>{u.name || u.email}</option>
+              ))}
+            </select>
+            <select className="input w-full text-xs" value={logsFilters.action} onChange={(e) => setLogsFilters((f) => ({ ...f, action: e.target.value }))}>
+              <option value="">All actions</option>
+              {Array.from(new Set((logsData?.logs || []).map((log) => log.action))).map((action) => (
+                <option key={action} value={action}>{action}</option>
+              ))}
+            </select>
+            <div className="flex items-center gap-2">
+              <input className="input w-full text-xs" type="date" value={logsFilters.from} onChange={(e) => setLogsFilters((f) => ({ ...f, from: e.target.value }))} />
+              <input className="input w-full text-xs" type="date" value={logsFilters.to} onChange={(e) => setLogsFilters((f) => ({ ...f, to: e.target.value }))} />
+            </div>
+          </div>
+          <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-[var(--color-bg-alt)] text-left text-[var(--color-text-muted)] uppercase tracking-wide border-b border-[var(--color-border)]">
+                  <th className="px-3 py-2">Time</th>
+                  <th className="px-3 py-2">Action</th>
+                  <th className="px-3 py-2">Category</th>
+                  <th className="px-3 py-2">User</th>
+                  <th className="px-3 py-2">Severity</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(logsData?.logs || []).map((log) => (
+                  <tr key={log._id} className="border-b border-[var(--color-border)] last:border-0 align-top">
+                    <td className="px-3 py-2 text-[var(--color-text-muted)] whitespace-nowrap">{new Date(log.createdAt).toLocaleString()}</td>
+                    <td className="px-3 py-2 font-medium text-[var(--color-text)]">{log.action}</td>
+                    <td className="px-3 py-2 capitalize text-[var(--color-text-muted)]">{log.category || '-'}</td>
+                    <td className="px-3 py-2 text-[var(--color-text-muted)]">{log.userEmail || log.userName || '—'}</td>
+                    <td className="px-3 py-2 capitalize text-[var(--color-text-muted)]">{log.severity || 'info'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {logsData?.logs?.length === 0 && <p className="text-[var(--color-text-muted)] py-4 px-3 text-sm">No logs yet.</p>}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main ─────────────────────────────────────────────────────────────────────
 export default function AdminPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -2195,6 +2750,7 @@ export default function AdminPage() {
           {activeTab === 'feedback' && <FeedbackTab />}
           {activeTab === 'resources' && <ResourcesTab />}
           {activeTab === 'help' && <HelpTopicsTab />}
+          {activeTab === 'enterprises' && <EnterprisesTab />}
         </div>
       )}
     </div>

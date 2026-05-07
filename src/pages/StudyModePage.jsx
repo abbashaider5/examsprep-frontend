@@ -15,7 +15,7 @@ import * as XLSX from 'xlsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import Modal from '../components/Modal.jsx';
-import { examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
+import { enterpriseApi, examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 function diffBadgeClass(d) {
@@ -27,12 +27,14 @@ function diffBadgeClass(d) {
 // ── Invite modal — two-column layout ─────────────────────────────────────────
 function InviteModal({ exam, onClose }) {
   const { user } = useAuthStore();
-  const [inviteMode, setInviteMode] = useState('email');
+  const isEnterpriseInstructor = user?.role === 'instructor' && Boolean(user?.enterprise);
+  const [inviteMode, setInviteMode] = useState(isEnterpriseInstructor ? 'class' : 'email');
   const [inviteEmailTab, setInviteEmailTab] = useState('single');
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteParsedEmails, setInviteParsedEmails] = useState([]);
   const [inviteFileName, setInviteFileName] = useState('');
   const [inviteGroupId, setInviteGroupId] = useState('');
+  const [inviteClassIds, setInviteClassIds] = useState([]);
   const [sending, setSending] = useState(false);
   const fileRef = useRef(null);
 
@@ -43,6 +45,12 @@ function InviteModal({ exam, onClose }) {
   const myGroups = (groupsData?.groups || []).filter(
     g => g.instructor?._id === user?._id || g.instructor === user?._id
   );
+
+  const { data: schoolClassesData } = useQuery({
+    queryKey: ['schoolClasses'],
+    queryFn: () => enterpriseApi.schoolClasses().then((r) => r.data),
+    enabled: isEnterpriseInstructor,
+  });
 
   const handleFile = (e) => {
     const file = e.target.files?.[0];
@@ -114,12 +122,24 @@ function InviteModal({ exam, onClose }) {
     } finally { setSending(false); }
   };
 
+  const sendClassInvite = async () => {
+    if (!inviteClassIds.length) return;
+    setSending(true);
+    try {
+      const res = await instructorApi.sendClassInvite(exam._id, inviteClassIds);
+      toast.success(res.data.message || 'Class invite sent');
+      onClose();
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Failed to invite class');
+    } finally { setSending(false); }
+  };
+
   return (
     <Modal onClose={onClose}>
-      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-3xl flex overflow-hidden" style={{ minHeight: '480px', maxHeight: '90vh' }}>
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-7xl h-[520px] flex overflow-hidden" style={{ maxHeight: '85vh' }}>
 
         {/* LEFT: Test details panel */}
-        <div className="w-60 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
+        <div className="w-80 shrink-0 border-r border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-5 flex flex-col gap-4 overflow-y-auto">
           <div>
             <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] mb-1">Test</p>
             <h4 className="font-bold text-sm text-[var(--color-text)] leading-snug">{exam.title}</h4>
@@ -210,30 +230,84 @@ function InviteModal({ exam, onClose }) {
           </div>
 
           {/* Mode toggle */}
-          <div className="px-5 pt-4 shrink-0">
-            <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
-              {[
-                { id: 'email', label: 'By Email', icon: Mail },
-                { id: 'group', label: 'By Batch', icon: Users },
-              ].map(m => (
-                <button
-                  key={m.id}
-                  onClick={() => setInviteMode(m.id)}
-                  className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
-                    inviteMode === m.id
-                      ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
-                      : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-                  }`}
-                >
-                  <m.icon size={14} /> {m.label}
-                </button>
-              ))}
+          {!isEnterpriseInstructor && (
+            <div className="px-5 pt-4 shrink-0">
+              <div className="flex gap-1 p-1 bg-[var(--color-bg-alt)] rounded-xl">
+                {[
+                  { id: 'email', label: 'By Email', icon: Mail },
+                  { id: 'group', label: 'By Batch', icon: Users },
+                ].map(m => (
+                  <button
+                    key={m.id}
+                    onClick={() => setInviteMode(m.id)}
+                    className={`flex-1 flex items-center justify-center gap-1.5 py-2 text-sm font-medium rounded-lg transition-colors ${
+                      inviteMode === m.id
+                        ? 'bg-[var(--color-surface)] text-[var(--color-text)] shadow-sm'
+                        : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                    }`}
+                  >
+                    <m.icon size={14} /> {m.label}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Form content */}
           <div className="flex flex-col flex-1 px-5 pt-4 pb-5 min-h-0">
-            {inviteMode === 'email' ? (
+            {isEnterpriseInstructor ? (
+              <div className="flex flex-col flex-1 min-h-0">
+                <label className="text-xs font-medium text-[var(--color-text-muted)] mb-1.5 shrink-0">Select Class(es)</label>
+                {(schoolClassesData?.classes || []).length === 0 ? (
+                  <div className="flex-1 flex items-center justify-center">
+                    <div className="text-center py-6 px-4">
+                      <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
+                      <p className="text-sm text-[var(--color-text-muted)]">No classes yet.</p>
+                      <Link to="/school/classes/new" onClick={onClose} className="text-xs text-[var(--color-primary)] hover:underline mt-1 inline-block">
+                        Create a class first
+                      </Link>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-2 max-h-[220px] overflow-y-auto shrink-0">
+                      {(schoolClassesData?.classes || []).map(c => {
+                        const checked = inviteClassIds.includes(c._id);
+                        return (
+                          <label key={c._id} className="flex items-center gap-2 px-2 py-1.5 rounded-lg hover:bg-[var(--color-surface)] cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => setInviteClassIds(prev => checked ? prev.filter(id => id !== c._id) : [...prev, c._id])}
+                            />
+                            <span className="text-sm text-[var(--color-text)]">
+                              {c.name}{c.section ? ` · ${c.section}` : ''} <span className="text-xs text-[var(--color-text-muted)]">({c.studentCount || 0} students)</span>
+                            </span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div className="min-h-5 mt-2 shrink-0">
+                      {inviteClassIds.length > 0 && (
+                        <p className="text-[11px] text-[var(--color-text-muted)]">
+                          Students in selected classes will receive a test invite for <strong className="text-[var(--color-text)]">{exam.title}</strong>.
+                        </p>
+                      )}
+                    </div>
+                  </>
+                )}
+                <div className="flex gap-3 mt-auto shrink-0 pt-3">
+                  <button onClick={onClose} className="btn-secondary flex-1 py-2.5 text-sm">Cancel</button>
+                  <button
+                    onClick={sendClassInvite}
+                    disabled={!inviteClassIds.length || sending}
+                    className="btn-primary flex-1 py-2.5 text-sm flex items-center justify-center gap-1.5 disabled:opacity-50"
+                  >
+                    <Users size={14} /> {sending ? 'Sending…' : 'Invite Class'}
+                  </button>
+                </div>
+              </div>
+            ) : inviteMode === 'email' ? (
               <>
                 {/* Email sub-tabs */}
                 <div className="flex gap-3 mb-4 border-b border-[var(--color-border)] shrink-0">

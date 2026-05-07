@@ -25,6 +25,7 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
   const { user } = useAuthStore();
   const navigate = useNavigate();
   const isEnterprise = user?.plan === 'enterprise';
+  const enterpriseProctoringDisabled = user?.role === 'instructor' && Boolean(user?.enterprise) && user?.enterprise?.aiProctoringEnabled === false;
 
   const [form, setForm] = useState({
     title: exam.title || '',
@@ -73,8 +74,8 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
     { key: 'showFlashcards', icon: FlipHorizontal, label: 'Show Flashcards', iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
     { key: 'showReview', icon: Eye, label: 'Show Answer Review (Study)', iconCls: 'text-green-600 dark:text-green-400', bgCls: 'bg-green-100 dark:bg-green-900/30' },
     { key: 'certificateEnabled', icon: Award, label: 'Generate Certificate', iconCls: 'text-amber-600 dark:text-amber-400', bgCls: 'bg-amber-100 dark:bg-amber-900/30' },
-    { key: 'proctored', icon: Shield, label: 'AI Proctoring', iconCls: 'text-blue-600 dark:text-blue-400', bgCls: 'bg-blue-100 dark:bg-blue-900/30' },
-    { key: 'screenshotEnabled', icon: Camera, label: 'Screenshot Capture', disabled: !form.proctored, iconCls: 'text-rose-600 dark:text-rose-400', bgCls: 'bg-rose-100 dark:bg-rose-900/30' },
+    { key: 'proctored', icon: Shield, label: 'AI Proctoring', disabled: enterpriseProctoringDisabled, iconCls: 'text-blue-600 dark:text-blue-400', bgCls: 'bg-blue-100 dark:bg-blue-900/30' },
+    { key: 'screenshotEnabled', icon: Camera, label: 'Screenshot Capture', disabled: !form.proctored || enterpriseProctoringDisabled, iconCls: 'text-rose-600 dark:text-rose-400', bgCls: 'bg-rose-100 dark:bg-rose-900/30' },
     { key: 'enableCoding', icon: Code2, label: 'Coding Questions', disabled: !isEnterprise, iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
     { key: 'allowCodeExecution', icon: Zap, label: 'Code Execution', disabled: !isEnterprise || !form.enableCoding, iconCls: 'text-slate-600 dark:text-slate-400', bgCls: 'bg-slate-100 dark:bg-slate-800' },
     { key: 'showResultToUser', icon: Eye, label: 'Show Result to Candidate', iconCls: 'text-indigo-600 dark:text-indigo-400', bgCls: 'bg-indigo-100 dark:bg-indigo-900/30' },
@@ -193,6 +194,11 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
           {/* Right column — toggles */}
           <div className="flex-1 overflow-y-auto p-5">
             <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Settings</p>
+            {enterpriseProctoringDisabled && (
+              <div className="mb-3 rounded-lg border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-800 dark:text-amber-200">
+                AI Proctoring is not enabled in your plan. Please contact your administrator.
+              </div>
+            )}
             <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
               {toggleRows.map(({ key, icon: Icon, label, disabled, iconCls, bgCls }, idx) => (
                 <div

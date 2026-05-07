@@ -1,6 +1,7 @@
 import {
   Activity,
   BarChart2,
+  Building2,
   CreditCard,
   FileText,
   HelpCircle,
@@ -16,6 +17,7 @@ import {
 /** Single source of truth for admin panel sections (sidebar + AdminPage tabs). */
 export const ADMIN_PANEL_TABS = [
   { id: 'overview', label: 'Overview', icon: BarChart2 },
+  { id: 'enterprises', label: 'Enterprise', icon: Building2 },
   { id: 'users', label: 'Users', icon: Users },
   { id: 'plans', label: 'Plan management', icon: Layers },
   { id: 'announcements', label: 'Announcements', icon: Megaphone },

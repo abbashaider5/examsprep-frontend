@@ -159,6 +159,7 @@ export const instructorApi = {
   getMyExams: () => api.get('/instructor/exams'),
   sendInvite: (examId, email) => api.post(`/instructor/exams/${examId}/invite`, { email }),
   sendGroupInvite: (examId, groupId) => api.post(`/instructor/exams/${examId}/invite-group`, { groupId }),
+  sendClassInvite: (examId, classIds) => api.post(`/instructor/exams/${examId}/invite-class`, { classIds }),
   getExamInvites: (examId) => api.get(`/instructor/exams/${examId}/invites`),
   getExamReport: (examId) => api.get(`/instructor/exams/${examId}/report`),
   getExamScreenshots: (examId) => api.get(`/instructor/exams/${examId}/screenshots`),
@@ -291,6 +292,33 @@ export const announcementApi = {
   adminUpdate: (id, data) => api.put(`/announcements/admin/${id}`, data),
   adminDelete: (id)       => api.delete(`/announcements/admin/${id}`),
   adminToggle: (id)       => api.patch(`/announcements/admin/${id}/toggle`),
+};
+
+export const enterpriseApi = {
+  adminList: () => api.get('/enterprise/admin/list'),
+  adminCreate: (data) => api.post('/enterprise/admin/create', data),
+  adminAllLogs: (params = {}) => api.get('/enterprise/admin/logs', { params }),
+  adminPatchLimit: (id, teacherLimit) => api.patch(`/enterprise/admin/${id}/teacher-limit`, { teacherLimit }),
+  adminUpdate: (id, data) => api.patch(`/enterprise/admin/${id}`, data),
+  adminDelete: (id) => api.delete(`/enterprise/admin/${id}`),
+  adminLogs: (id, params = {}) => api.get(`/enterprise/admin/${id}/logs`, { params }),
+  principalContext: () => api.get('/enterprise/principal/context'),
+  principalInvite: (data) => api.post('/enterprise/principal/teachers/invite', data),
+  principalTeachers: () => api.get('/enterprise/principal/teachers'),
+  principalUpdateTeacher: (id, data) => api.patch(`/enterprise/principal/teachers/${id}`, data),
+  principalToggleTeacherBlock: (id) => api.patch(`/enterprise/principal/teachers/${id}/block`),
+  principalRemoveTeacher: (id) => api.delete(`/enterprise/principal/teachers/${id}`),
+  principalCancelInvite: (id) => api.delete(`/enterprise/principal/invites/${id}`),
+  principalImpersonate: (id) => api.post(`/enterprise/principal/impersonate/${id}`),
+  principalLogs: (params = {}) => api.get('/enterprise/principal/logs', { params }),
+  principalLogStats: () => api.get('/enterprise/principal/logs/stats'),
+  stopImpersonation: () => api.post('/enterprise/principal/stop-impersonation'),
+  acceptInvite: (token) => api.post(`/enterprise/invites/${encodeURIComponent(token)}/accept`),
+  schoolClasses: () => api.get('/enterprise/school/classes'),
+  schoolCreateClass: (data) => api.post('/enterprise/school/classes', data),
+  schoolStudents: (classId) => api.get('/enterprise/school/students', { params: classId ? { classId } : {} }),
+  schoolInviteStudent: (data) => api.post('/enterprise/school/students', data),
+  schoolBulkInviteStudents: (students) => api.post('/enterprise/school/students/bulk', { students }),
 };
 
 export default api;
