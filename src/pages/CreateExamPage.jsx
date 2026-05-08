@@ -11,6 +11,7 @@ import Modal from '../components/Modal.jsx';
 import { examApi, instructorApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
+import { playWarningAudio } from '../utils/warningAudio.js';
 
 const schema = z.object({
   title: z.string().min(3, 'Title too short'),
@@ -341,6 +342,7 @@ export default function CreateExamPage() {
       qc.invalidateQueries({ queryKey: ['subscription'] });
       qc.invalidateQueries({ queryKey: ['me'] });
       toast.success('Exam created!');
+      playWarningAudio('examCreationCompleted');
       trackFeedbackInteraction();
       if (isInstructor) {
         setCreatedExam(res.data.exam);

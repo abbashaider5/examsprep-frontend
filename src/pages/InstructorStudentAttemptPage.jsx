@@ -60,6 +60,20 @@ export default function InstructorStudentAttemptPage() {
     });
   }, [studentData?.latestResult?.answers, answerOverrides]);
 
+  const proctoringSummary = useMemo(() => {
+    const events = studentData?.latestResult?.proctoringEvents || [];
+    const byType = events.reduce((acc, ev) => {
+      const key = ev?.type || 'other';
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    const warningCount = events.filter((e) => e?.severity === 'warning').length;
+    const criticalCount = events.filter((e) => e?.severity === 'critical').length;
+    const score = (criticalCount * 3) + warningCount + (byType.fullscreen_exit || 0) + (byType.tab_switch || 0) + (byType.multiple_faces || 0) + (byType.audio_voice || 0) + (byType.audio_noise || 0);
+    const riskLevel = score >= 12 ? 'High Risk' : score >= 6 ? 'Medium Risk' : 'Low Risk';
+    return { byType, warningCount, criticalCount, riskLevel };
+  }, [studentData?.latestResult?.proctoringEvents]);
+
   const goBack = () => {
     if (returnTo) {
       try {
@@ -297,6 +311,24 @@ export default function InstructorStudentAttemptPage() {
           <h3 className="font-semibold text-sm text-[var(--color-text)] mb-3 flex items-center gap-2">
             <Shield size={14} className="text-[var(--color-primary)]" /> Proctoring logs
           </h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mb-3">
+            <div className="rounded-lg border border-[var(--color-border)] p-2 bg-[var(--color-bg-alt)]">
+              <p className="text-[10px] text-[var(--color-text-muted)]">Risk level</p>
+              <p className="text-xs font-semibold text-[var(--color-text)]">{proctoringSummary.riskLevel}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--color-border)] p-2 bg-[var(--color-bg-alt)]">
+              <p className="text-[10px] text-[var(--color-text-muted)]">Warnings</p>
+              <p className="text-xs font-semibold text-[var(--color-text)]">{proctoringSummary.warningCount}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--color-border)] p-2 bg-[var(--color-bg-alt)]">
+              <p className="text-[10px] text-[var(--color-text-muted)]">Critical</p>
+              <p className="text-xs font-semibold text-[var(--color-text)]">{proctoringSummary.criticalCount}</p>
+            </div>
+            <div className="rounded-lg border border-[var(--color-border)] p-2 bg-[var(--color-bg-alt)]">
+              <p className="text-[10px] text-[var(--color-text-muted)]">Total Events</p>
+              <p className="text-xs font-semibold text-[var(--color-text)]">{(studentData?.latestResult?.proctoringEvents || []).length}</p>
+            </div>
+          </div>
           <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
             {studentData.latestResult.proctoringEvents.slice(-120).reverse().map((ev, idx) => (
               <div key={`${ev.timestamp || idx}-${idx}`} className="border border-[var(--color-border)] rounded-xl p-2.5 bg-[var(--color-bg-alt)]">
@@ -334,9 +366,17 @@ export default function InstructorStudentAttemptPage() {
                   <img src={ss.imageUrl || ss.imageData} alt="screenshot" className="w-full h-full object-cover" />
                 </div>
                 <div className="p-2">
+                  {ss.eventType && (
+                    <p className="text-[10px] font-semibold text-[var(--color-text)] mb-0.5">
+                      {ss.eventType.replace(/_/g, ' ')}
+                    </p>
+                  )}
                   <p className="text-[10px] text-[var(--color-text-muted)]">
                     {new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                   </p>
+                  {ss.eventMessage && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{ss.eventMessage}</p>
+                  )}
                 </div>
               </div>
             ))}

@@ -565,72 +565,112 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* ── AI Insights Section ── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
-              <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
-                <Brain size={13} /> AI-Powered Insights
-              </div>
-              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">AI analyzes your students' performance and recommends what's next</h2>
-              <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
-                After every test, our AI reviews each student's answers and identifies patterns. You see who is strong, who is struggling, and exactly which topics need attention.
-              </p>
-              <ul className="space-y-3 mb-8">
-                {[
-                  ['Topic-wise accuracy per student', BarChart2],
-                  ['Weak area detection and flagging', Target],
-                  ['Suggested practice topics shown to students', Brain],
-                  ['Score trends over multiple tests', TrendingUp],
-                ].map(([text, Icon]) => (
-                  <li key={text} className="flex items-center gap-2.5 text-sm text-[var(--color-text-muted)]">
-                    <Icon size={15} className="text-indigo-500 shrink-0" />
-                    {text}
-                  </li>
-                ))}
-              </ul>
-              <Link to={isAuthenticated ? '/instructor/analytics' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
-                <BarChart2 size={16} /> {isAuthenticated ? 'View Analytics' : 'Explore Analytics Features'}
-              </Link>
-            </div>
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
-              <div className="flex items-center gap-2 mb-5">
-                <Brain size={16} className="text-indigo-500" />
-                <span className="font-semibold text-sm text-[var(--color-text)]">Student Insight — React Fundamentals Test</span>
-              </div>
-              <div className="space-y-3">
-                {[
-                  { topic: 'React Hooks', accuracy: 92, status: 'Strong', color: 'bg-green-500' },
-                  { topic: 'Component Lifecycle', accuracy: 78, status: 'Good', color: 'bg-blue-500' },
-                  { topic: 'State Management', accuracy: 54, status: 'Needs Work', color: 'bg-amber-500' },
-                  { topic: 'Redux / Context API', accuracy: 38, status: 'Weak', color: 'bg-red-500' },
-                ].map(item => (
-                  <div key={item.topic}>
-                    <div className="flex items-center justify-between mb-1">
-                      <span className="text-xs text-[var(--color-text)]">{item.topic}</span>
-                      <span className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
-                        item.status === 'Strong' ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400' :
-                        item.status === 'Good' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400' :
-                        item.status === 'Needs Work' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' :
-                        'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
-                      }`}>{item.status}</span>
-                    </div>
-                    <div className="w-full h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
-                      <div className={`h-full ${item.color} rounded-full`} style={{ width: `${item.accuracy}%` }} />
-                    </div>
-                    <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{item.accuracy}% accuracy</div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-5 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
-                <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1">AI Recommendation</p>
-                <p className="text-xs text-[var(--color-text-muted)]">Focus next session on Redux / Context API and State Management. Schedule a follow-up test in 1 week.</p>
-              </div>
-            </div>
-          </div>
+ {/* ── AI Insights Section (School Version) ── */}
+<section className="py-20 px-4 sm:px-6 lg:px-8">
+  <div className="max-w-7xl mx-auto">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <div>
+        <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
+          <Brain size={13} /> Smart School Insights
         </div>
-      </section>
+
+        <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">
+          Track class performance and identify students who need attention
+        </h2>
+
+        <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
+          After every exam, LikhitAI automatically analyzes student performance across subjects and topics. Teachers and schools can quickly identify weak areas, monitor progress, and improve learning outcomes.
+        </p>
+
+        <ul className="space-y-3 mb-8">
+          {[
+            ['Class-wise student performance tracking', BarChart2],
+            ['Weak students and weak topics detection', Target],
+            ['Subject-wise progress analysis', Brain],
+            ['Performance trends across multiple exams', TrendingUp],
+          ].map(([text, Icon]) => (
+            <li
+              key={text}
+              className="flex items-center gap-2.5 text-sm text-[var(--color-text-muted)]"
+            >
+              <Icon size={15} className="text-indigo-500 shrink-0" />
+              {text}
+            </li>
+          ))}
+        </ul>
+
+        <Link
+          to={isAuthenticated ? '/instructor/analytics' : '/signup?role=instructor'}
+          className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl"
+        >
+          <BarChart2 size={16} />
+          {isAuthenticated ? 'View Analytics' : 'Explore School Analytics'}
+        </Link>
+      </div>
+
+      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
+        <div className="flex items-center gap-2 mb-5">
+          <Brain size={16} className="text-indigo-500" />
+          <span className="font-semibold text-sm text-[var(--color-text)]">
+            Class 10-A — Mathematics Performance
+          </span>
+        </div>
+
+        <div className="space-y-3">
+          {[
+            { topic: 'Algebra', accuracy: 88, status: 'Strong', color: 'bg-green-500' },
+            { topic: 'Geometry', accuracy: 74, status: 'Good', color: 'bg-blue-500' },
+            { topic: 'Trigonometry', accuracy: 52, status: 'Needs Work', color: 'bg-amber-500' },
+            { topic: 'Mensuration', accuracy: 35, status: 'Weak', color: 'bg-red-500' },
+          ].map(item => (
+            <div key={item.topic}>
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-[var(--color-text)]">
+                  {item.topic}
+                </span>
+
+                <span
+                  className={`text-[10px] font-semibold px-2 py-0.5 rounded-full ${
+                    item.status === 'Strong'
+                      ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400'
+                      : item.status === 'Good'
+                      ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                      : item.status === 'Needs Work'
+                      ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'
+                      : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'
+                  }`}
+                >
+                  {item.status}
+                </span>
+              </div>
+
+              <div className="w-full h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
+                <div
+                  className={`h-full ${item.color} rounded-full`}
+                  style={{ width: `${item.accuracy}%` }}
+                />
+              </div>
+
+              <div className="text-[10px] text-[var(--color-text-muted)] mt-0.5">
+                {item.accuracy}% class accuracy
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="mt-5 p-3 bg-indigo-50 dark:bg-indigo-900/20 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+          <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400 mb-1">
+            Recommended Focus
+          </p>
+
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Students are struggling in Mensuration and Trigonometry. Schedule revision classes and conduct a follow-up assessment next week.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
       {/* ── Who It's For ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden bg-[var(--color-surface)]">

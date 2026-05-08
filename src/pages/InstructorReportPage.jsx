@@ -419,15 +419,29 @@ export default function InstructorReportPage() {
                   {row.latestResult?.resultId && row.userId && (
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between mb-3">
                       <div className="text-xs text-[var(--color-text-muted)]">
-                        Detailed report includes question-level feedback and student screenshots (if enabled).
+                        Open answer review or dedicated AI proctoring monitoring report.
                       </div>
-                      <button
-                        type="button"
-                        onClick={() => openStudentAttempt(row.userId)}
-                        className="btn-secondary text-xs py-2 px-3 inline-flex items-center justify-center gap-1.5"
-                      >
-                        <FileText size={12} /> View answers
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => openStudentAttempt(row.userId)}
+                          className="btn-secondary text-xs py-2 px-3 inline-flex items-center justify-center gap-1.5"
+                        >
+                          <FileText size={12} /> View Answers
+                        </button>
+                        {row.latestResult?.proctored && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const ret = encodeURIComponent(`/instructor/report/${examId}?view=candidates`);
+                              navigate(`/instructor/report/${examId}/student/${row.userId}/proctoring?returnTo=${ret}`);
+                            }}
+                            className="btn-primary text-xs py-2 px-3 inline-flex items-center justify-center gap-1.5"
+                          >
+                            <Shield size={12} /> View AI Proctoring
+                          </button>
+                        )}
+                      </div>
                     </div>
                   )}
                   {row.allAttempts.length === 0 ? (
@@ -494,6 +508,11 @@ export default function InstructorReportPage() {
                       className="w-full h-full object-cover hover:opacity-90 transition-opacity" />
                   </div>
                   <div className="p-3">
+                    {ss.eventType && (
+                      <p className="text-[10px] font-semibold text-[var(--color-text)] truncate">
+                        {ss.eventType.replace(/_/g, ' ')}
+                      </p>
+                    )}
                     <p className="text-xs font-semibold text-[var(--color-text)] truncate">
                       {ss.user?.name || ss.user?.email || 'Unknown'}
                     </p>
@@ -502,6 +521,9 @@ export default function InstructorReportPage() {
                         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                       })}
                     </p>
+                    {ss.eventMessage && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{ss.eventMessage}</p>
+                    )}
                     {ss.result && (
                       <span className={`mt-1.5 inline-block text-[10px] font-semibold px-2 py-0.5 rounded-full ${
                         ss.result.passed

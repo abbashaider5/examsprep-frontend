@@ -23,15 +23,13 @@ import {
   X,
 } from 'lucide-react';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import * as faceapi from 'face-api.js';
-import * as cocoSsd from '@tensorflow-models/coco-ssd';
-import * as tf from '@tensorflow/tfjs';
+import { FaceDetector, FaceLandmarker, FilesetResolver, ObjectDetector } from '@mediapipe/tasks-vision';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import Webcam from 'react-webcam';
 import { examApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
+import { playWarningAudio } from '../utils/warningAudio.js';
 
 // ─── Phases ───────────────────────────────────────────────
 // LOADING → (invite ? INVITE_ACCEPT) → (proctored ? PREFLIGHT : INSTRUCTIONS) → INSTRUCTIONS → EXAM
@@ -54,6 +52,8 @@ export default function ExamPage() {
   const [totalTime, setTotalTime] = useState(0);
   const [violations, setViolations] = useState(0);
   const [warning, setWarning] = useState(null);
+  const [liveReminder, setLiveReminder] = useState('');
+  const [seriousAlert, setSeriousAlert] = useState('');
   const [proctoringEvents, setProctoringEvents] = useState([]);
   const [codeAnswers, setCodeAnswers] = useState({});
   const [textAnswers, setTextAnswers] = useState({});
@@ -70,6 +70,13 @@ export default function ExamPage() {
   const [micError, setMicError] = useState(null);
   const [networkOk, setNetworkOk] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true);
   const [fullscreenOk, setFullscreenOk] = useState(false);
+  const [faceVisibleReady, setFaceVisibleReady] = useState(false);
+  const [faceVisibilityMsg, setFaceVisibilityMsg] = useState('Waiting for camera preview...');
+  const [adBlockDetected, setAdBlockDetected] = useState(false);
+  const [cameraBlockedDuringExam, setCameraBlockedDuringExam] = useState(false);
+  const [faceBlockedDuringExam, setFaceBlockedDuringExam] = useState(false);
+  // Bumped whenever a new stream is acquired — causes display <video> elements to remount & rebind
+  const [streamVersion, setStreamVersion] = useState(0);
 
   // Live network status (used in preflight)
   useEffect(() => {
@@ -83,6 +90,74 @@ export default function ExamPage() {
     };
   }, []);
 
+  // Ad blocker detection on preflight screen
+  useEffect(() => {
+    if (phase !== 'preflight') return;
+    let mounted = true;
+
+    // Bait-element probe: ad blockers often hide/remove elements with ad-like class names.
+    // We insert a styled bait div, wait a short frame for the blocker to act, then inspect it.
+    const runBaitProbe = () => new Promise((resolve) => {
+      const id = `__likhit_ad_bait_${Date.now()}`;
+      const bait = document.createElement('div');
+      bait.id = id;
+      bait.className = 'ad ads adsbox doubleclick ad-placement carbon-ads textads';
+      // Explicit height so we can detect if a blocker collapses it to 0
+      bait.style.cssText = 'position:fixed;top:-200px;left:-200px;width:10px;height:10px;pointer-events:none;';
+      document.body.appendChild(bait);
+      setTimeout(() => {
+        const el = document.getElementById(id);
+        const blocked =
+          !el ||
+          !document.body.contains(el) ||
+          el.clientHeight === 0 ||
+          el.offsetHeight === 0 ||
+          window.getComputedStyle(el).display === 'none' ||
+          window.getComputedStyle(el).visibility === 'hidden';
+        if (el?.parentNode) el.parentNode.removeChild(el);
+        resolve(blocked);
+      }, 200);
+    });
+
+    // Script-load probe: fires onerror when an ad network script is blocked.
+    // Run once on mount; script element is cleaned up on effect teardown.
+    let scriptEl = null;
+    const scriptProbeResult = { resolved: false, blocked: false };
+    const runScriptProbe = () => new Promise((resolve) => {
+      scriptEl = document.createElement('script');
+      scriptEl.async = true;
+      scriptEl.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?paused=1';
+      scriptEl.onload = () => { scriptProbeResult.blocked = false; scriptProbeResult.resolved = true; resolve(false); };
+      scriptEl.onerror = () => { scriptProbeResult.blocked = true; scriptProbeResult.resolved = true; resolve(true); };
+      document.body.appendChild(scriptEl);
+      // Timeout fallback: if neither event fires, assume blocked
+      setTimeout(() => { if (!scriptProbeResult.resolved) { scriptProbeResult.blocked = true; scriptProbeResult.resolved = true; resolve(true); } }, 2500);
+    });
+
+    let firstRun = true;
+    const doCheck = async () => {
+      const baitBlocked = await runBaitProbe();
+      let blocked = baitBlocked;
+      // On first run, also wait for the script probe result
+      if (firstRun) {
+        firstRun = false;
+        const scriptBlocked = await runScriptProbe();
+        blocked = baitBlocked || scriptBlocked;
+      } else if (scriptProbeResult.resolved) {
+        blocked = baitBlocked || scriptProbeResult.blocked;
+      }
+      if (mounted) setAdBlockDetected(Boolean(blocked));
+    };
+
+    doCheck();
+    const interval = setInterval(doCheck, 3000);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      if (scriptEl?.parentNode) scriptEl.parentNode.removeChild(scriptEl);
+    };
+  }, [phase]);
+
   // Refs — stale-closure-safe
   const answersRef = useRef({});
   const flaggedRef = useRef(new Set());
@@ -91,8 +166,12 @@ export default function ExamPage() {
   const lastViolationByTypeRef = useRef({});
   const startedAt = useRef(null);
   const timerRef = useRef(null);
-  const webcamRef = useRef(null);
-  const faceDetectorRef = useRef(null);
+  // Raw camera refs — persists across all phases (preflight → instructions → exam)
+  const proctorVideoRef = useRef(null);   // raw HTMLVideoElement used for MediaPipe
+  const proctorStreamRef = useRef(null);  // raw MediaStream from getUserMedia
+  const mediaPipeFaceDetectorRef = useRef(null);
+  const mediaPipeFaceLandmarkerRef = useRef(null);
+  const mediaPipeObjectDetectorRef = useRef(null);
   const faceCheckInterval = useRef(null);
   const codeAnswersRef = useRef({});
   const textAnswersRef = useRef({});
@@ -107,12 +186,164 @@ export default function ExamPage() {
   const audioStreamRef = useRef(null);
   const audioContextRef = useRef(null);
   const analyserRef = useRef(null);
-  const faceApiReadyRef = useRef(false);
-  const cocoModelRef = useRef(null);
-  const objectCheckIntervalRef = useRef(null);
+  const lastNoseXRef = useRef(null);
+  const lookAwayMsRef = useRef(0);
+  const headMotionMsRef = useRef(0);
+  const horizontalAwayMsRef = useRef(0);
+  const verticalAwayMsRef = useRef(0);
+  const notCenteredMsRef = useRef(0);
+  const lastActivityAtRef = useRef(Date.now());
+  const inactivityIntervalRef = useRef(null);
+  const liveReminderTimerRef = useRef(null);
+  const liveReminderLastSeenAtRef = useRef(0);
+  const liveReminderTextRef = useRef('');
+  const seriousAlertTimerRef = useRef(null);
+  const mediaPipeInitInFlightRef = useRef(false);
+  const mediaPipeInitPromiseRef = useRef(null);
+  const raiseViolationRef = useRef(null);
+  const pushProctoringEventRef = useRef(null);
+  const submitPendingRef = useRef(false);
+  const submitSuccessRef = useRef(false);
+  const lastMediaPipeTickAtRef = useRef(0);
+  const noFaceDurationRef = useRef(0);
+  const analysisCanvasRef = useRef(null);
+  const frozenFrameMsRef = useRef(0);
+  const darkFrameMsRef = useRef(0);
+  const lastFrameSignatureRef = useRef('');
   const fullscreenRestoreTimerRef = useRef(null);
   const examShellRef = useRef(null);
   const [needsFullscreenReturn, setNeedsFullscreenReturn] = useState(false);
+
+  // ── Persistent proctoring camera setup ────────────────────
+  // Returns true on success. Stops any existing stream first.
+  // NOTE: no longer creates an off-DOM video — the DOM-rendered hidden <video> is used instead.
+  const setupProctoringStream = useCallback(async () => {
+    try {
+      proctorStreamRef.current?.getTracks().forEach((t) => t.stop());
+      proctorStreamRef.current = null;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'user', width: { ideal: 640 }, height: { ideal: 480 } },
+        audio: false,
+      });
+      proctorStreamRef.current = stream;
+
+      // If the hidden DOM video is already mounted, bind immediately (no need to wait for re-render)
+      const vid = proctorVideoRef.current;
+      if (vid) {
+        vid.srcObject = stream;
+        vid.play().catch(() => {});
+      }
+
+      setStreamVersion((v) => v + 1); // causes display <video>s and hidden video to rebind
+      return true;
+    } catch {
+      return false;
+    }
+  }, []);
+
+  // Stop stream on unmount
+  useEffect(() => {
+    return () => {
+      proctorStreamRef.current?.getTracks().forEach((t) => t.stop());
+      proctorStreamRef.current = null;
+      if (liveReminderTimerRef.current) clearInterval(liveReminderTimerRef.current);
+      if (seriousAlertTimerRef.current) clearTimeout(seriousAlertTimerRef.current);
+    };
+  }, []);
+
+  // Auto-hide non-serious reminder only after behavior stops for a few seconds.
+  useEffect(() => {
+    if (liveReminderTimerRef.current) clearInterval(liveReminderTimerRef.current);
+    liveReminderTimerRef.current = setInterval(() => {
+      if (!liveReminderTextRef.current) return;
+      if (Date.now() - liveReminderLastSeenAtRef.current > 3200) {
+        liveReminderTextRef.current = '';
+        setLiveReminder('');
+      }
+    }, 500);
+    return () => {
+      if (liveReminderTimerRef.current) clearInterval(liveReminderTimerRef.current);
+    };
+  }, []);
+
+  // Stable ref callback for the hidden proctoring <video> element.
+  // Called by React on mount (el = DOM node) and unmount (el = null).
+  const proctorVideoRefCb = useCallback((el) => {
+    proctorVideoRef.current = el;
+    if (el && proctorStreamRef.current) {
+      el.srcObject = proctorStreamRef.current;
+      el.play().catch(() => {});
+    }
+  }, []);
+
+  // Stable callback for preview videos (preflight/exam side widgets) to avoid
+  // ref churn and black blinking caused by inline ref functions re-running each render.
+  const previewVideoRefCb = useCallback((el) => {
+    if (!el || !proctorStreamRef.current) return;
+    if (el.srcObject !== proctorStreamRef.current) {
+      el.srcObject = proctorStreamRef.current;
+    }
+    el.play().catch(() => {});
+  }, []);
+
+  // When streamVersion bumps (Retry Camera / new stream), rebind to DOM video if already mounted
+  useEffect(() => {
+    const vid = proctorVideoRef.current;
+    const stream = proctorStreamRef.current;
+    if (!vid || !stream) return;
+    if (vid.srcObject !== stream) {
+      vid.srcObject = stream;
+      vid.play().catch(() => {});
+    }
+  }, [streamVersion]);
+
+  // Helper: returns the video element only when BOTH the DOM element AND the stream are live.
+  // Checks stream.active + track.readyState so a frozen last-frame doesn't fool detection.
+  const getProctoringVideo = useCallback(() => {
+    const vid = proctorVideoRef.current;
+    if (!vid || vid.readyState < 2 || vid.videoWidth === 0) return null;
+    const stream = proctorStreamRef.current;
+    if (!stream || !stream.active) return null;
+    const track = stream.getVideoTracks?.()?.[0];
+    if (!track || track.readyState !== 'live' || !track.enabled) return null;
+    return vid;
+  }, []);
+
+  // Detect frozen / black camera feed even when track is technically "live".
+  // Some laptop shutters / virtual cams keep a live track but output static dark frames.
+  const getFrameHealth = useCallback((video) => {
+    if (!video) return { dark: false, frozen: false, signature: '' };
+    let canvas = analysisCanvasRef.current;
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      analysisCanvasRef.current = canvas;
+    }
+    const w = 80;
+    const h = 45;
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return { dark: false, frozen: false, signature: '' };
+    ctx.drawImage(video, 0, 0, w, h);
+    const { data } = ctx.getImageData(0, 0, w, h);
+    let sum = 0;
+    let varianceAcc = 0;
+    // Sample every 8th pixel channel chunk to keep it lightweight.
+    for (let i = 0; i < data.length; i += 32) {
+      const y = (data[i] * 0.2126) + (data[i + 1] * 0.7152) + (data[i + 2] * 0.0722);
+      sum += y;
+      varianceAcc += y * y;
+    }
+    const n = Math.max(1, Math.floor(data.length / 32));
+    const mean = sum / n;
+    const variance = Math.max(0, (varianceAcc / n) - (mean * mean));
+    const signature = `${Math.round(mean)}:${Math.round(variance)}`;
+    const dark = mean < 10 && variance < 6;
+    const frozen = signature === lastFrameSignatureRef.current;
+    lastFrameSignatureRef.current = signature;
+    return { dark, frozen, signature };
+  }, []);
 
   // When an invite token is present, validate it first (public endpoint — no auth required)
   const { data: inviteValidation, isLoading: inviteLoading, error: inviteError } = useQuery({
@@ -135,6 +366,17 @@ export default function ExamPage() {
   });
 
   const exam = examQueryEnabled ? data?.exam : inviteValidation?.invite?.exam;
+  const isProctoredExam = !!exam?.proctored;
+  const autoSubmitOnSeriousViolations = (exam?.autoSubmitOnSeriousViolations ?? true) !== false;
+
+  // If invite is already accepted, skip accept popup and continue flow.
+  useEffect(() => {
+    if (!inviteToken || !inviteValidation?.invite) return;
+    if (inviteValidation.invite.status === 'accepted') {
+      setExamQueryEnabled(true);
+      setPhase('loading');
+    }
+  }, [inviteToken, inviteValidation]);
 
   // Once exam data is loaded (post-invite-acceptance or normal flow), set the phase
   useEffect(() => {
@@ -239,42 +481,120 @@ export default function ExamPage() {
     setProctoringEvents(prev => [...prev.slice(-499), payload]);
   }, []);
 
+  const captureSuspiciousEvidence = useCallback(async (eventPayload = {}) => {
+    if (!exam?.proctored || !exam?.screenshotEnabled) return;
+    const video = getProctoringVideo();
+    if (!video) return;
+    try {
+      const MAX_W = 640;
+      const MAX_H = 480;
+      const ratio = Math.min(MAX_W / video.videoWidth, MAX_H / video.videoHeight, 1);
+      const w = Math.round(video.videoWidth * ratio);
+      const h = Math.round(video.videoHeight * ratio);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      canvas.getContext('2d').drawImage(video, 0, 0, w, h);
+      const imageData = canvas.toDataURL('image/jpeg', 0.45);
+      if (imageData.length > 560000) return;
+      await examApi.saveScreenshot(id, imageData, {
+        eventType: eventPayload.type || 'violation',
+        eventSource: eventPayload.source || 'runtime',
+        eventMessage: eventPayload.message || 'Suspicious activity detected',
+        metadata: {
+          studentName: user?.name || 'Unknown',
+          examTitle: exam?.title || 'Exam',
+          severity: eventPayload.severity || 'warning',
+        },
+      });
+    } catch {
+      // best-effort evidence capture
+    }
+  }, [exam?.proctored, exam?.screenshotEnabled, exam?.title, id, user?.name, getProctoringVideo]);
+
   const raiseViolation = useCallback((reason, meta = {}) => {
     const now = Date.now();
     const typeKey = meta.type || 'violation';
+    if (meta.nonCriticalHint) {
+      // Keep latest active non-serious hint visible while issue continues.
+      liveReminderLastSeenAtRef.current = now;
+      if (liveReminderTextRef.current !== meta.nonCriticalHint) {
+        setLiveReminder(meta.nonCriticalHint);
+        liveReminderTextRef.current = meta.nonCriticalHint;
+        playWarningAudio('nonSeriousWarning');
+      } else if (!liveReminder) {
+        setLiveReminder(meta.nonCriticalHint);
+      }
+    }
+
     const cooldown = meta.cooldownMs ?? 1200;
     const lastByType = lastViolationByTypeRef.current[typeKey] || 0;
     if (now - lastByType < cooldown) return;
     lastViolationByTypeRef.current[typeKey] = now;
 
-    const shouldCount = meta.count !== false;
+    const criticalTypes = new Set([
+      'face_missing',
+      'camera_turned_off',
+      'camera_blocked_dark_frame',
+      'camera_frozen_feed',
+      'multiple_faces',
+      'phone_detected',
+      'book_detected',
+      'secondary_screen_detected',
+    ]);
+    const isCritical = meta.critical === true || criticalTypes.has(typeKey);
+    const shouldCount = meta.count !== false && isCritical;
+
     if (shouldCount) {
       violationsRef.current += 1;
       setViolations(violationsRef.current);
+      setSeriousAlert(reason);
+      if (seriousAlertTimerRef.current) clearTimeout(seriousAlertTimerRef.current);
+      seriousAlertTimerRef.current = setTimeout(() => setSeriousAlert(''), 4200);
+      playWarningAudio('seriousWarning');
     }
     pushProctoringEvent({
       type: meta.type || 'violation',
       source: meta.source || 'runtime',
       severity: shouldCount
-        ? (violationsRef.current >= 3 ? 'critical' : violationsRef.current === 2 ? 'warning' : 'info')
-        : (meta.severity || 'info'),
+        ? (violationsRef.current >= 3 ? 'critical' : 'warning')
+        : (meta.severity || (isCritical ? 'warning' : 'info')),
       message: reason,
     });
+    if (meta.captureEvidence !== false) {
+      captureSuspiciousEvidence({
+        type: meta.type || 'violation',
+        source: meta.source || 'runtime',
+        severity: shouldCount ? 'warning' : (meta.severity || (isCritical ? 'warning' : 'info')),
+        message: reason,
+      });
+    }
 
     if (shouldCount && violationsRef.current >= 3) {
-      setWarning(`${reason} — 3 violations reached. Auto-submitting…`);
-      setTimeout(() => doSubmit(true), 1200);
+      setWarning(`${reason} Serious violation limit reached.`);
+      if (autoSubmitOnSeriousViolations && !submitMut.isPending && !submitMut.isSuccess) {
+        setTimeout(() => doSubmit(true), 900);
+      }
+      setTimeout(() => setWarning(null), 5500);
     } else if (shouldCount && violationsRef.current === 2) {
-      setWarning(`${reason} FINAL WARNING — next violation will auto-submit.`);
+      setWarning(`${reason} Serious warning recorded (2/3).`);
       setTimeout(() => setWarning(null), 5000);
     } else if (shouldCount) {
-      setWarning(`${reason} Violation 1/3 — 2 more will auto-submit.`);
+      setWarning(`${reason} Serious warning recorded (1/3).`);
       setTimeout(() => setWarning(null), 3500);
     } else {
-      setWarning(reason);
-      setTimeout(() => setWarning(null), 2500);
+      if (!meta.nonCriticalHint) {
+        setWarning(reason);
+        setTimeout(() => setWarning(null), 2500);
+      }
     }
-  }, [doSubmit, pushProctoringEvent]);
+  }, [autoSubmitOnSeriousViolations, captureSuspiciousEvidence, doSubmit, liveReminder, pushProctoringEvent, submitMut.isPending, submitMut.isSuccess]);
+
+  // Keep stable refs so the monitoring effect doesn't restart on each callback/state change.
+  useEffect(() => { raiseViolationRef.current = raiseViolation; }, [raiseViolation]);
+  useEffect(() => { pushProctoringEventRef.current = pushProctoringEvent; }, [pushProctoringEvent]);
+  useEffect(() => { submitPendingRef.current = submitMut.isPending; }, [submitMut.isPending]);
+  useEffect(() => { submitSuccessRef.current = submitMut.isSuccess; }, [submitMut.isSuccess]);
 
   // ── Proctoring effects ────────────────────────────────────
   useEffect(() => {
@@ -282,11 +602,11 @@ export default function ExamPage() {
 
     // Visibility / tab switch
     const onVisChange = () => {
-      if (document.hidden) raiseViolation('Tab switch detected!', { type: 'tab_switch', source: 'visibility' });
+      if (document.hidden) raiseViolation('Tab switch detected!', { type: 'tab_switch', source: 'visibility', count: false });
     };
 
     // Window blur (alt-tab, switching apps)
-    const onBlur = () => raiseViolation('Window focus lost!', { type: 'window_blur', source: 'window' });
+    const onBlur = () => raiseViolation('Window focus lost!', { type: 'window_blur', source: 'window', count: false });
 
     const onFSChange = () => {
       if (!exam?.proctored) return;
@@ -315,6 +635,7 @@ export default function ExamPage() {
 
     // Block keyboard shortcuts
     const onKeyDown = (e) => {
+      lastActivityAtRef.current = Date.now();
       const blocked = [
         e.key === 'PrintScreen',
         e.key === 'F12',
@@ -322,22 +643,45 @@ export default function ExamPage() {
         e.altKey && e.key === 'Tab',
       ];
       if (blocked.some(Boolean)) {
+        if ((e.ctrlKey || e.metaKey) && ['c', 'v', 'x'].includes(e.key.toLowerCase())) {
+          raiseViolation('Copy/paste/cut attempt detected.', { type: 'copy_paste_attempt', source: 'keyboard', count: false, cooldownMs: 1500 });
+        }
         e.preventDefault();
         e.stopPropagation();
       }
     };
 
-    const preventDefault = (e) => e.preventDefault();
+    const onMouseMove = () => { lastActivityAtRef.current = Date.now(); };
+    const onClick = () => { lastActivityAtRef.current = Date.now(); };
+    const onContextMenu = (e) => {
+      raiseViolation('Right-click attempt detected.', { type: 'right_click_attempt', source: 'mouse', count: false, cooldownMs: 1800 });
+      e.preventDefault();
+    };
+    const onCopy = (e) => {
+      raiseViolation('Copy attempt detected.', { type: 'copy_paste_attempt', source: 'clipboard', count: false, cooldownMs: 1800 });
+      e.preventDefault();
+    };
+    const onCut = (e) => {
+      raiseViolation('Cut attempt detected.', { type: 'copy_paste_attempt', source: 'clipboard', count: false, cooldownMs: 1800 });
+      e.preventDefault();
+    };
+    const onPaste = (e) => {
+      raiseViolation('Paste attempt detected.', { type: 'copy_paste_attempt', source: 'clipboard', count: false, cooldownMs: 1800 });
+      e.preventDefault();
+    };
+    const preventSelect = (e) => e.preventDefault();
 
     document.addEventListener('visibilitychange', onVisChange);
     window.addEventListener('blur', onBlur);
     document.addEventListener('fullscreenchange', onFSChange);
     document.addEventListener('keydown', onKeyDown, true);
-    document.addEventListener('contextmenu', preventDefault);
-    document.addEventListener('copy', preventDefault);
-    document.addEventListener('cut', preventDefault);
-    document.addEventListener('paste', preventDefault);
-    document.addEventListener('selectstart', preventDefault);
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('click', onClick);
+    document.addEventListener('contextmenu', onContextMenu);
+    document.addEventListener('copy', onCopy);
+    document.addEventListener('cut', onCut);
+    document.addEventListener('paste', onPaste);
+    document.addEventListener('selectstart', preventSelect);
 
     return () => {
       if (fullscreenRestoreTimerRef.current) {
@@ -348,11 +692,13 @@ export default function ExamPage() {
       window.removeEventListener('blur', onBlur);
       document.removeEventListener('fullscreenchange', onFSChange);
       document.removeEventListener('keydown', onKeyDown, true);
-      document.removeEventListener('contextmenu', preventDefault);
-      document.removeEventListener('copy', preventDefault);
-      document.removeEventListener('cut', preventDefault);
-      document.removeEventListener('paste', preventDefault);
-      document.removeEventListener('selectstart', preventDefault);
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('click', onClick);
+      document.removeEventListener('contextmenu', onContextMenu);
+      document.removeEventListener('copy', onCopy);
+      document.removeEventListener('cut', onCut);
+      document.removeEventListener('paste', onPaste);
+      document.removeEventListener('selectstart', preventSelect);
     };
   }, [phase, isPractice, exam?.proctored, raiseViolation, pushProctoringEvent]);
 
@@ -375,293 +721,459 @@ export default function ExamPage() {
     };
   }, [phase, isPractice]);
 
-  // ── Camera / Face Monitoring ──────────────────────────────
+  // Camera health watchdog (every 2s) — uses the raw proctorStreamRef so it works
+  // regardless of which Webcam component is currently mounted in the UI.
   useEffect(() => {
     if (phase !== 'exam' || isPractice || !exam?.proctored) return;
-
-    let trackRef = null;
-    let onEndedRef = null;
-    // Faster cadence so warnings feel immediate.
-    const tickMs = 300;
-    const graceMs = 900;
-    const graceUntil = Date.now() + graceMs;
-
-    let noFaceMs = 0;
-    let multiFaceMs = 0;
-    let darkMs = 0;
-    let noVideoMs = 0;
     let mounted = true;
+    let attachedTrack = null;
 
-    // Helper: sample average brightness of the center 40×40 pixels of the video frame
-    const getFrameBrightness = (video) => {
-      try {
-        const c = document.createElement('canvas');
-        c.width = 40; c.height = 40;
-        const ctx = c.getContext('2d');
-        const sx = Math.max(0, (video.videoWidth / 2) - 20);
-        const sy = Math.max(0, (video.videoHeight / 2) - 20);
-        ctx.drawImage(video, sx, sy, 40, 40, 0, 0, 40, 40);
-        const d = ctx.getImageData(0, 0, 40, 40).data;
-        let sum = 0;
-        for (let i = 0; i < d.length; i += 4) sum += (d[i] + d[i + 1] + d[i + 2]) / 3;
-        return sum / (d.length / 4); // 0–255
-      } catch { return 128; }
+    const raiseCameraOff = () => {
+      if (!mounted) return;
+      setCameraBlockedDuringExam(true);
+      raiseViolation('Camera is inactive or blocked. Please enable your camera.', {
+        type: 'camera_turned_off',
+        source: 'camera-watchdog',
+        cooldownMs: 3000,
+      });
     };
 
-    // ── 1. Stream track monitoring: detect camera closed / revoked ──
-    const attachTrackListener = () => {
-      const stream = webcamRef.current?.stream || webcamRef.current?.video?.srcObject;
-      const track = stream?.getVideoTracks()?.[0];
-      if (!track) return false;
-      onEndedRef = () => raiseViolation('Camera was closed!', { type: 'camera_closed', source: 'camera', cooldownMs: 800 });
-      track.addEventListener('ended', onEndedRef);
-      trackRef = track;
-      return true;
+    const bindTrackEvents = () => {
+      const track = proctorStreamRef.current?.getVideoTracks?.()?.[0];
+      if (!track || track === attachedTrack) return;
+      if (attachedTrack) {
+        attachedTrack.removeEventListener('ended', raiseCameraOff);
+        attachedTrack.removeEventListener('mute', raiseCameraOff);
+      }
+      attachedTrack = track;
+      track.addEventListener('ended', raiseCameraOff);
+      track.addEventListener('mute', raiseCameraOff);
     };
 
-    if (!attachTrackListener()) {
-      let retries = 0;
-      const retryId = setInterval(() => {
-        if (attachTrackListener() || retries++ > 10) clearInterval(retryId);
-      }, 500);
-    }
+    bindTrackEvents();
+    const watchdogId = setInterval(() => {
+      if (!mounted) return;
+      bindTrackEvents();
+      const stream = proctorStreamRef.current;
+      const track = stream?.getVideoTracks?.()?.[0];
+      const bad =
+        !stream ||
+        !stream.active ||          // stream.active = false when all tracks have ended
+        !track ||
+        track.readyState !== 'live' ||
+        track.muted === true ||
+        track.enabled === false;
+      if (bad) raiseCameraOff();
+      else setCameraBlockedDuringExam(false);
+    }, 1500);
 
-    // ── 2. Initialize face-api.js (TinyFaceDetector) ──
-    const initFaceApi = async () => {
+    return () => {
+      mounted = false;
+      clearInterval(watchdogId);
+      if (attachedTrack) {
+        attachedTrack.removeEventListener('ended', raiseCameraOff);
+        attachedTrack.removeEventListener('mute', raiseCameraOff);
+      }
+      setCameraBlockedDuringExam(false);
+    };
+  }, [phase, isPractice, exam?.proctored, raiseViolation]);
+
+  // Preflight face visibility gate (must see a clear single face before exam starts)
+  useEffect(() => {
+    if (phase !== 'preflight' || isPractice || !exam?.proctored || !cameraReady) return;
+    let mounted = true;
+    let stableFaceMs = 0;
+    const tickMs = 500;
+
+    const ensureMediaPipe = async () => {
+      if (mediaPipeFaceDetectorRef.current || mediaPipeInitInFlightRef.current) return;
+      mediaPipeInitInFlightRef.current = true;
       try {
-        // Warm up TF backend (helps reduce first-detect lag)
-        await tf.ready();
-        await tf.setBackend('webgl').catch(() => {});
-        await tf.ready();
-
-        const modelUrl = '/models/face-api';
-        await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
-        faceApiReadyRef.current = true;
+        const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
+        mediaPipeFaceDetectorRef.current = await FaceDetector.createFromOptions(vision, {
+          baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite' },
+          runningMode: 'VIDEO',
+          minDetectionConfidence: 0.5,
+        });
       } catch {
-        faceApiReadyRef.current = false;
+        setFaceVisibilityMsg('Unable to start face detection. Please refresh and allow camera.');
+      } finally {
+        mediaPipeInitInFlightRef.current = false;
       }
     };
 
-    // Fallback: FaceDetector (Chrome only) if face-api fails
-    if ('FaceDetector' in window) {
-      try { faceDetectorRef.current = new window.FaceDetector({ fastMode: true, maxDetectedFaces: 5 }); }
-      catch { faceDetectorRef.current = null; }
-    }
-
-    initFaceApi();
-
-    // ── 3. Face checks with stability + tolerance ──
-    faceCheckInterval.current = setInterval(async () => {
+    ensureMediaPipe();
+    const interval = setInterval(async () => {
       if (!mounted) return;
-      if (submitMut.isPending || submitMut.isSuccess) return;
-      if (Date.now() < graceUntil) return;
 
-      // Track state check
-      const video = webcamRef.current?.video;
-      const stream = webcamRef.current?.stream || video?.srcObject;
+      // Check the raw stream/track health
+      const stream = proctorStreamRef.current;
       const track = stream?.getVideoTracks?.()?.[0];
-      const streamActive = !!stream && (stream.active !== false);
-      const trackEnded = !!track && track.readyState === 'ended';
-      const trackMuted = !!track && track.muted === true;
-      const trackDisabled = !!track && track.enabled === false;
-
-      if (!stream || !track || !streamActive || trackEnded || trackMuted || trackDisabled) {
-        noVideoMs += tickMs;
-        // Soft prompt quickly so user knows camera is not active
-        if (noVideoMs >= 600) {
-          raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
-        }
-        // Count as violation if it stays off
-        if (noVideoMs >= 1500) {
-          raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
-          noVideoMs = 0;
-        }
+      if (!stream || !track || track.readyState === 'ended' || track.muted || !track.enabled) {
+        setFaceVisibleReady(false);
+        stableFaceMs = 0;
+        setFaceVisibilityMsg('Camera is not active. Please click Allow to enable camera.');
         return;
       }
 
-      // Ensure we have actual frames (some browsers keep a stream but stop delivering frames)
-      if (!video || video.readyState < 2 || video.videoWidth === 0) {
-        noVideoMs += tickMs;
-        if (noVideoMs >= 600) {
-          raiseViolation('Camera feed not active. Please turn on the camera.', { type: 'camera_inactive_warn', source: 'camera', count: false, cooldownMs: 2000 });
+      const video = getProctoringVideo();
+      if (!video) {
+        setFaceVisibleReady(false);
+        stableFaceMs = 0;
+        setFaceVisibilityMsg('Camera is starting up, please wait...');
+        return;
+      }
+
+      const detector = mediaPipeFaceDetectorRef.current;
+      if (!detector) {
+        setFaceVisibleReady(false);
+        setFaceVisibilityMsg('Loading face detection model...');
+        ensureMediaPipe();
+        return;
+      }
+      try {
+        const result = detector.detectForVideo(video, performance.now());
+        const count = result?.detections?.length || 0;
+        if (count === 1) {
+          stableFaceMs += tickMs;
+          if (stableFaceMs >= 1000) {
+            setFaceVisibilityMsg('Face detected. Ready to continue.');
+            setFaceVisibleReady(true);
+          } else {
+            setFaceVisibilityMsg('Hold still while face is verified...');
+          }
+        } else if (count > 1) {
+          stableFaceMs = 0;
+          setFaceVisibleReady(false);
+          setFaceVisibilityMsg('Multiple faces detected. Only one person should be visible.');
+        } else {
+          stableFaceMs = 0;
+          setFaceVisibleReady(false);
+          setFaceVisibilityMsg('You are not visible. Please sit directly in front of the camera.');
         }
-        if (noVideoMs >= 1500) {
-          raiseViolation('Camera was closed or blocked.', { type: 'camera_closed', source: 'camera', cooldownMs: 2500 });
+      } catch {
+        setFaceVisibleReady(false);
+        setFaceVisibilityMsg('Face detection error. Please keep camera active.');
+      }
+    }, tickMs);
+
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+      setFaceVisibleReady(false);
+    };
+  }, [phase, isPractice, exam?.proctored, cameraReady, getProctoringVideo]);
+
+  // ── MediaPipe Face + Presence Monitoring ──────────────────────────────
+  useEffect(() => {
+    if (phase !== 'exam' || isPractice || !exam?.proctored) return;
+    let mounted = true;
+    const tickMs = 1000;        // 1 s tick — fast enough to catch camera-off within ~1 s
+    const graceUntil = Date.now() + 2000;  // 2 s grace on exam start
+    let noFaceMs = 0;
+    let multiFaceMs = 0;
+    let noVideoMs = 0;
+
+    const initMediaPipe = async () => {
+      if (
+        mediaPipeFaceDetectorRef.current
+        && mediaPipeFaceLandmarkerRef.current
+        && mediaPipeObjectDetectorRef.current
+      ) return true;
+      if (mediaPipeInitPromiseRef.current) return mediaPipeInitPromiseRef.current;
+
+      mediaPipeInitInFlightRef.current = true;
+      mediaPipeInitPromiseRef.current = (async () => {
+        try {
+          const vision = await FilesetResolver.forVisionTasks('https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@latest/wasm');
+          if (!mediaPipeFaceDetectorRef.current) {
+            mediaPipeFaceDetectorRef.current = await FaceDetector.createFromOptions(vision, {
+              baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_detector/blaze_face_short_range/float16/latest/blaze_face_short_range.tflite' },
+              runningMode: 'VIDEO',
+              minDetectionConfidence: 0.5,
+            });
+          }
+          if (!mediaPipeFaceLandmarkerRef.current) {
+            mediaPipeFaceLandmarkerRef.current = await FaceLandmarker.createFromOptions(vision, {
+              baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/latest/face_landmarker.task' },
+              runningMode: 'VIDEO',
+              numFaces: 1,
+              minFaceDetectionConfidence: 0.5,
+              minTrackingConfidence: 0.5,
+            });
+          }
+          if (!mediaPipeObjectDetectorRef.current) {
+            mediaPipeObjectDetectorRef.current = await ObjectDetector.createFromOptions(vision, {
+              baseOptions: { modelAssetPath: 'https://storage.googleapis.com/mediapipe-models/object_detector/efficientdet_lite0/int8/1/efficientdet_lite0.tflite' },
+              runningMode: 'VIDEO',
+              scoreThreshold: 0.3,
+              maxResults: 12,
+            });
+          }
+          return true;
+        } catch {
+          pushProctoringEventRef.current?.({
+            type: 'mediapipe_unavailable',
+            severity: 'warning',
+            source: 'mediapipe',
+            message: 'MediaPipe models could not be loaded. Proctoring may be limited.',
+          });
+          return false;
+        } finally {
+          mediaPipeInitInFlightRef.current = false;
+          mediaPipeInitPromiseRef.current = null;
+        }
+      })();
+      return mediaPipeInitPromiseRef.current;
+    };
+    initMediaPipe();
+
+    faceCheckInterval.current = setInterval(async () => {
+      if (!mounted || submitPendingRef.current || submitSuccessRef.current || Date.now() < graceUntil) return;
+      lastMediaPipeTickAtRef.current = Date.now();
+
+      // Camera / stream health (cross-checked with watchdog above, but we also update here)
+      const video = getProctoringVideo();
+
+      if (!video) {
+        // stream/track not live (or DOM video not ready yet)
+        noVideoMs += tickMs;
+        if (noVideoMs >= 1000) {
+          setCameraBlockedDuringExam(true);
+          raiseViolationRef.current?.('Camera is inactive or blocked. Please enable your camera.', {
+            type: 'camera_turned_off',
+            source: 'mediapipe',
+            cooldownMs: 2500,
+          });
           noVideoMs = 0;
         }
         return;
       }
       noVideoMs = 0;
+      setCameraBlockedDuringExam(false);
 
-      // Camera blocked check (very dark frame)
-      const brightness = getFrameBrightness(video);
-      if (brightness < 5) darkMs += tickMs;
-      else darkMs = 0;
-      if (darkMs >= 900) {
-        // warn first, then count if persists much longer
-        raiseViolation('Camera appears very dark/covered. Improve lighting or uncover the camera.', { type: 'camera_blocked_warn', source: 'camera', count: false, cooldownMs: 3000 });
+      // Frame-level camera health: catches shutter-closed / blocked / frozen feed.
+      const frameHealth = getFrameHealth(video);
+      if (frameHealth.dark) darkFrameMsRef.current += tickMs;
+      else darkFrameMsRef.current = 0;
+      if (frameHealth.frozen) frozenFrameMsRef.current += tickMs;
+      else frozenFrameMsRef.current = 0;
+
+      if (darkFrameMsRef.current >= 3000) {
+        setCameraBlockedDuringExam(true);
+        raiseViolationRef.current?.('Camera feed appears blocked or too dark. Please ensure your camera is unobstructed.', {
+          type: 'camera_blocked_dark_frame',
+          source: 'camera-frame-health',
+          cooldownMs: 3500,
+        });
       }
-      if (darkMs >= 2400) {
-        raiseViolation('Camera appears to be covered for a long duration.', { type: 'camera_blocked', source: 'camera', cooldownMs: 4500 });
-        darkMs = 0;
+      if (frozenFrameMsRef.current >= 5000) {
+        setCameraBlockedDuringExam(true);
+        raiseViolationRef.current?.('Camera feed appears frozen. Please re-enable your camera.', {
+          type: 'camera_frozen_feed',
+          source: 'camera-frame-health',
+          cooldownMs: 3500,
+        });
+      }
+
+      const detector = mediaPipeFaceDetectorRef.current;
+      if (!detector) {
+        await initMediaPipe();
         return;
       }
+      try {
+        const now = performance.now();
+        lastMediaPipeTickAtRef.current = Date.now();
+        const detectionResult = detector.detectForVideo(video, now);
+        const detections = detectionResult?.detections || [];
 
-      // Primary: face-api.js TinyFaceDetector
-      if (faceApiReadyRef.current) {
-        try {
-          // More stable settings to reduce false negatives in Chrome
-          const opts = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
-          const faces = await faceapi.detectAllFaces(video, opts);
-          if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
-
-          if (!faces || faces.length === 0) {
-            noFaceMs += tickMs;
-            multiFaceMs = 0;
-
-            // Soft warning after short continuous miss
-            if (noFaceMs >= 600) {
-              raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face-api', count: false, cooldownMs: 2500 });
-            }
-            // Count only if it persists longer (prevents false positives terminating exams)
-            if (noFaceMs >= 1500) {
-              raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face-api', cooldownMs: 4500 });
-              noFaceMs = 0;
-            }
-          } else if (faces.length > 1) {
+        if (detections.length === 0) {
+          noFaceMs += tickMs;
+          noFaceDurationRef.current += tickMs;
+          multiFaceMs = 0;
+          if (noFaceMs >= 2000) {   // 2 ticks of no face → warn
+            raiseViolationRef.current?.('Face not visible. Keep your face in the camera frame.', { type: 'face_missing', source: 'mediapipe', cooldownMs: 4000 });
             noFaceMs = 0;
-            multiFaceMs += tickMs;
-            if (multiFaceMs >= 600) {
-              raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face-api', count: false, cooldownMs: 2500 });
-            }
-            if (multiFaceMs >= 1200) {
-              raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face-api', cooldownMs: 4500 });
-              multiFaceMs = 0;
-            }
-          } else {
-            noFaceMs = 0;
-            multiFaceMs = 0;
+          }
+          if (noFaceDurationRef.current >= 3000) {   // 3 s continuous → blocking overlay
+            setFaceBlockedDuringExam(true);
           }
           return;
-        } catch {
-          // fall through to FaceDetector
         }
-      }
+        noFaceMs = 0;
+        noFaceDurationRef.current = 0;
+        setFaceBlockedDuringExam(false);
 
-      // Fallback: Chrome FaceDetector
-      if (faceDetectorRef.current) {
-        faceDetectorRef.current.detect(video).then((faces) => {
-          if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
-          if (!faces || faces.length === 0) {
-            noFaceMs += tickMs;
-            multiFaceMs = 0;
-            if (noFaceMs >= 600) {
-              raiseViolation('Face not detected. Please keep your face clearly visible.', { type: 'no_face_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
-            }
-            if (noFaceMs >= 1500) {
-              raiseViolation('Face missing for too long. Keep your face visible at all times.', { type: 'no_face', source: 'face_detector', cooldownMs: 4500 });
-              noFaceMs = 0;
-            }
-          } else if (faces.length > 1) {
-            noFaceMs = 0;
-            multiFaceMs += tickMs;
-            if (multiFaceMs >= 600) {
-              raiseViolation(`Multiple faces detected (${faces.length}). Ensure only you are in frame.`, { type: 'multiple_faces_warn', source: 'face_detector', count: false, cooldownMs: 2500 });
-            }
-            if (multiFaceMs >= 1200) {
-              raiseViolation(`Multiple faces detected (${faces.length}). Only the candidate must be visible.`, { type: 'multiple_faces', source: 'face_detector', cooldownMs: 4500 });
-              multiFaceMs = 0;
-            }
-          } else {
-            noFaceMs = 0;
+        if (detections.length > 1) {
+          multiFaceMs += tickMs;
+          if (multiFaceMs >= 2000) {
+            raiseViolationRef.current?.(`Multiple faces detected (${detections.length}). Only the candidate should be visible.`, { type: 'multiple_faces', source: 'mediapipe', cooldownMs: 4000 });
             multiFaceMs = 0;
           }
-        }).catch(() => {});
+          if (multiFaceMs >= 1000) setFaceBlockedDuringExam(true);
+          return;
+        }
+        multiFaceMs = 0;
+        setFaceBlockedDuringExam(false);
+
+        const bbox = detections[0]?.boundingBox;
+        if (bbox) {
+          const faceCenterX = bbox.originX + (bbox.width / 2);
+          const faceCenterY = bbox.originY + (bbox.height / 2);
+          const frameCenterX = video.videoWidth / 2;
+          const frameCenterY = video.videoHeight / 2;
+          const offsetXRatio = (faceCenterX - frameCenterX) / frameCenterX;
+          const offsetYRatio = (faceCenterY - frameCenterY) / frameCenterY;
+          const absOffsetX = Math.abs(offsetXRatio);
+          const absOffsetY = Math.abs(offsetYRatio);
+
+          if (absOffsetX > 0.28 || absOffsetY > 0.24) {
+            notCenteredMsRef.current += tickMs;
+            if (notCenteredMsRef.current >= 2000) {
+              raiseViolationRef.current?.('Face is not centered in camera.', {
+                type: 'face_not_centered',
+                source: 'mediapipe',
+                cooldownMs: 2500,
+                count: false,
+                nonCriticalHint: 'Please keep your face centered',
+              });
+            }
+          } else {
+            notCenteredMsRef.current = 0;
+          }
+
+          if (absOffsetX > 0.38) {
+            horizontalAwayMsRef.current += tickMs;
+            if (horizontalAwayMsRef.current >= 2000) {
+              const dir = offsetXRatio > 0 ? 'right' : 'left';
+              raiseViolationRef.current?.(`Looking ${dir} for too long.`, {
+                type: 'looking_away_horizontal',
+                source: 'mediapipe',
+                cooldownMs: 2800,
+                count: false,
+                nonCriticalHint: 'Looking away detected',
+              });
+            }
+          } else {
+            horizontalAwayMsRef.current = 0;
+          }
+
+          if (absOffsetY > 0.34) {
+            verticalAwayMsRef.current += tickMs;
+            if (verticalAwayMsRef.current >= 2000) {
+              const dir = offsetYRatio > 0 ? 'down' : 'up';
+              raiseViolationRef.current?.(`Looking ${dir} repeatedly detected.`, {
+                type: 'looking_away_vertical',
+                source: 'mediapipe',
+                cooldownMs: 2800,
+                count: false,
+                nonCriticalHint: 'Please focus on screen',
+              });
+            }
+          } else {
+            verticalAwayMsRef.current = 0;
+          }
+
+          const combined = Math.max(absOffsetX, absOffsetY);
+          if (combined > 0.42) {
+            lookAwayMsRef.current += tickMs;
+            if (lookAwayMsRef.current >= 2500) {
+              raiseViolationRef.current?.('Looking away for too long. Please focus on screen.', {
+                type: 'looking_away',
+                source: 'mediapipe',
+                cooldownMs: 5000,
+                count: false,
+                nonCriticalHint: 'Please focus on screen',
+              });
+            }
+          } else {
+            lookAwayMsRef.current = 0;
+          }
+        }
+
+        const landmarker = mediaPipeFaceLandmarkerRef.current;
+        if (landmarker) {
+          const landmarkResult = landmarker.detectForVideo(video, now);
+          const lm = landmarkResult?.faceLandmarks?.[0];
+          if (lm && lm[1]) {
+            const noseX = lm[1].x;
+            if (typeof lastNoseXRef.current === 'number' && Math.abs(noseX - lastNoseXRef.current) > 0.12) {
+              headMotionMsRef.current += tickMs;
+              if (headMotionMsRef.current >= 1600) {
+                raiseViolationRef.current?.('Suspicious head movement detected.', {
+                  type: 'head_movement',
+                  source: 'mediapipe',
+                  cooldownMs: 5000,
+                  count: false,
+                  nonCriticalHint: 'Eyes not focused on screen',
+                });
+                headMotionMsRef.current = 0;
+              }
+            } else {
+              headMotionMsRef.current = 0;
+            }
+            lastNoseXRef.current = noseX;
+          }
+        }
+
+        const objectDetector = mediaPipeObjectDetectorRef.current;
+        if (objectDetector) {
+          const objectResult = objectDetector.detectForVideo(video, now);
+          const categories = (objectResult?.detections || [])
+            .flatMap((d) => d.categories || [])
+            .map((c) => ({
+              label: String(c.categoryName || '').toLowerCase(),
+              score: Number(c.score || 0),
+            }));
+          const isPhone = categories.some((c) =>
+            c.score >= 0.25
+            && (c.label.includes('phone') || c.label.includes('cell') || c.label.includes('mobile') || c.label.includes('smartphone')),
+          );
+          const isBookOrPaper = categories.some((c) =>
+            c.score >= 0.25
+            && (c.label.includes('book') || c.label.includes('notebook') || c.label.includes('paper') || c.label.includes('document')),
+          );
+          const isSecondaryScreen = categories.some((c) =>
+            c.score >= 0.35
+            && (c.label.includes('laptop') || c.label.includes('monitor') || c.label.includes('tv') || c.label.includes('screen')),
+          );
+          if (isPhone) {
+            raiseViolationRef.current?.('Mobile phone detected.', { type: 'phone_detected', source: 'mediapipe_object', cooldownMs: 3500 });
+          }
+          if (isBookOrPaper) {
+            raiseViolationRef.current?.('Book/paper detected in camera view.', { type: 'book_detected', source: 'mediapipe_object', cooldownMs: 3500 });
+          }
+          if (isSecondaryScreen) {
+            raiseViolationRef.current?.('Additional screen/device detected in camera view.', { type: 'secondary_screen_detected', source: 'mediapipe_object', cooldownMs: 4000 });
+          }
+        }
+      } catch {
+        // Do not recreate graph continuously on transient runtime warnings.
+        // Keep current detectors and continue next tick.
       }
     }, tickMs);
 
-    // ── 4. Object detection (coco-ssd) every ~1.2s ──
-    const initCoco = async () => {
-      try {
-        await tf.ready();
-        await tf.setBackend('webgl').catch(() => {});
-        await tf.ready();
-        cocoModelRef.current = await cocoSsd.load({ base: 'lite_mobilenet_v2' });
-      } catch {
-        cocoModelRef.current = null;
+    inactivityIntervalRef.current = setInterval(() => {
+      if (Date.now() - lastActivityAtRef.current > 90000) {
+        raiseViolationRef.current?.('Long inactivity detected. Please continue your exam.', { type: 'long_inactivity', source: 'activity', cooldownMs: 12000, count: false });
+        lastActivityAtRef.current = Date.now();
       }
-    };
-    initCoco();
-
-    let phoneStreak = 0;
-    let laptopStreak = 0;
-    let bookStreak = 0;
-    let objNoVideoMs = 0;
-
-    objectCheckIntervalRef.current = setInterval(async () => {
-      if (!mounted) return;
-      if (submitMut.isPending || submitMut.isSuccess) return;
-      const model = cocoModelRef.current;
-      const video = webcamRef.current?.video;
-      const stream = webcamRef.current?.stream || video?.srcObject;
-      const track = stream?.getVideoTracks?.()?.[0];
-
-      if (!model) return;
-      if (!stream || !track || track.readyState === 'ended' || track.muted === true || track.enabled === false || !video || video.readyState < 2 || video.videoWidth === 0) {
-        objNoVideoMs += 1200;
-        if (objNoVideoMs >= 2400) {
-          raiseViolation('Camera feed not active, object detection paused.', { type: 'object_detection_paused', source: 'coco-ssd', count: false, cooldownMs: 3000 });
-          objNoVideoMs = 0;
-        }
-        return;
-      }
-      objNoVideoMs = 0;
-
-      try {
-        const preds = await model.detect(video);
-        if (!mounted || submitMut.isPending || submitMut.isSuccess) return;
-        const top = (cls) => preds.find(p => p.class === cls && (p.score || 0) >= 0.5);
-
-        const hasPhone = !!top('cell phone');
-        const hasLaptop = !!(top('laptop') || top('tv') || top('monitor'));
-        const hasBook = !!top('book');
-
-        phoneStreak = hasPhone ? phoneStreak + 1 : 0;
-        laptopStreak = hasLaptop ? laptopStreak + 1 : 0;
-        bookStreak = hasBook ? bookStreak + 1 : 0;
-
-        if (phoneStreak === 1) {
-          raiseViolation('Possible mobile phone detected. Ensure no phone is in frame.', { type: 'phone_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
-        } else if (phoneStreak >= 2) {
-          raiseViolation('Mobile phone detected in frame. Please remove it immediately.', { type: 'phone', source: 'coco-ssd', cooldownMs: 4500 });
-          phoneStreak = 0;
-        }
-
-        if (laptopStreak === 1) {
-          raiseViolation('Possible laptop/secondary screen detected. Ensure only the exam screen is visible.', { type: 'laptop_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
-        } else if (laptopStreak >= 2) {
-          raiseViolation('Laptop/secondary screen detected. Only the exam screen is allowed.', { type: 'laptop', source: 'coco-ssd', cooldownMs: 4500 });
-          laptopStreak = 0;
-        }
-
-        if (bookStreak === 1) {
-          raiseViolation('Possible book/study material detected. Ensure your desk is clear.', { type: 'study_material_warn', source: 'coco-ssd', count: false, cooldownMs: 2500 });
-        } else if (bookStreak >= 2) {
-          raiseViolation('Book/study material detected. Remove it from your desk area.', { type: 'study_material', source: 'coco-ssd', cooldownMs: 4500 });
-          bookStreak = 0;
-        }
-      } catch {
-        // ignore per tick
-      }
-    }, 1200);
+    }, 5000);
 
     return () => {
       mounted = false;
       clearInterval(faceCheckInterval.current);
-      clearInterval(objectCheckIntervalRef.current);
-      if (trackRef && onEndedRef) trackRef.removeEventListener('ended', onEndedRef);
+      clearInterval(inactivityIntervalRef.current);
+      frozenFrameMsRef.current = 0;
+      darkFrameMsRef.current = 0;
+      horizontalAwayMsRef.current = 0;
+      verticalAwayMsRef.current = 0;
+      notCenteredMsRef.current = 0;
+      lastFrameSignatureRef.current = '';
+      setCameraBlockedDuringExam(false);
+      setFaceBlockedDuringExam(false);
     };
-  }, [phase, isPractice, exam?.proctored, raiseViolation, submitMut.isPending, submitMut.isSuccess]); // eslint-disable-line
+  }, [phase, isPractice, exam?._id, exam?.proctored, getProctoringVideo, getFrameHealth]); // eslint-disable-line
 
   // ── Audio Monitoring (real-time) ───────────────────────────
   useEffect(() => {
@@ -715,10 +1227,22 @@ export default function ExamPage() {
           if (rms > 0.18) {
             noiseStreak += 1;
             if (noiseStreak === 2) {
-              raiseViolation('High background noise detected. Please move to a quieter place.', { type: 'audio_noise_warn', source: 'microphone', count: false, cooldownMs: 3000 });
+              raiseViolation('High background noise detected. Please move to a quieter place.', {
+                type: 'audio_noise_warn',
+                source: 'microphone',
+                count: false,
+                cooldownMs: 3000,
+                nonCriticalHint: 'Background noise is high',
+              });
             }
             if (noiseStreak >= 4) {
-              raiseViolation('Excessive background noise detected on microphone.', { type: 'audio_noise', source: 'microphone', cooldownMs: 4500 });
+              raiseViolation('Excessive background noise detected on microphone.', {
+                type: 'audio_noise',
+                source: 'microphone',
+                count: false,
+                cooldownMs: 4500,
+                nonCriticalHint: 'Please keep your environment quiet',
+              });
               noiseStreak = 0;
             }
           } else {
@@ -729,10 +1253,22 @@ export default function ExamPage() {
           if (rms > 0.12 && zcr > 0.18) {
             speechLikeStreak += 1;
             if (speechLikeStreak === 2) {
-              raiseViolation('Possible nearby conversation detected. Please ensure a quiet environment.', { type: 'audio_voice_warn', source: 'microphone', count: false, cooldownMs: 3000 });
+              raiseViolation('Possible nearby conversation detected. Please ensure a quiet environment.', {
+                type: 'audio_voice_warn',
+                source: 'microphone',
+                count: false,
+                cooldownMs: 3000,
+                nonCriticalHint: 'Conversation detected near you',
+              });
             }
             if (speechLikeStreak >= 4) {
-              raiseViolation('Suspicious human voice activity detected near candidate.', { type: 'audio_voice', source: 'microphone', cooldownMs: 4500 });
+              raiseViolation('Suspicious human voice activity detected near candidate.', {
+                type: 'audio_voice',
+                source: 'microphone',
+                count: false,
+                cooldownMs: 4500,
+                nonCriticalHint: 'Please avoid talking during the exam',
+              });
               speechLikeStreak = 0;
             }
           } else {
@@ -804,8 +1340,8 @@ export default function ExamPage() {
     const MAX_H = 480;
 
     const captureAndSend = async () => {
-      const video = webcamRef.current?.video;
-      if (!video || video.readyState < 2 || video.videoWidth === 0) return;
+      const video = getProctoringVideo();
+      if (!video) return;
       try {
         // Scale down to max 640×480 to keep payload under 450 KB
         const ratio = Math.min(MAX_W / video.videoWidth, MAX_H / video.videoHeight, 1);
@@ -818,7 +1354,15 @@ export default function ExamPage() {
         const imageData = canvas.toDataURL('image/jpeg', 0.45);
         // Guard: skip if still too large (very unlikely)
         if (imageData.length > 560000) return;
-        await examApi.saveScreenshot(id, imageData);
+        await examApi.saveScreenshot(id, imageData, {
+          eventType: 'periodic_capture',
+          eventSource: 'timer',
+          eventMessage: 'Periodic proctoring capture',
+          metadata: {
+            studentName: user?.name || 'Unknown',
+            examTitle: exam?.title || 'Exam',
+          },
+        });
         screenshotCountRef.current += 1;
       } catch {
         // best-effort — don't disrupt exam on failure
@@ -841,7 +1385,7 @@ export default function ExamPage() {
 
     scheduleNext();
     return () => clearTimeout(screenshotIntervalRef.current);
-  }, [phase, isPractice]); // eslint-disable-line
+  }, [phase, isPractice, getProctoringVideo]); // eslint-disable-line
 
   // ── Helpers ───────────────────────────────────────────────
   const requestExamFullscreen = useCallback(() => {
@@ -904,6 +1448,16 @@ export default function ExamPage() {
 
   // ── Phase: INVITE_ACCEPT ──────────────────────────────────
   if (phase === 'invite_accept') {
+    if (inviteValidation?.invite?.status === 'accepted') {
+      return (
+        <div className="min-h-screen flex items-center justify-center bg-[var(--color-bg)]">
+          <div className="text-center">
+            <div className="w-10 h-10 border-4 border-[var(--color-primary)] border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-[var(--color-text-muted)]">Loading your accepted exam...</p>
+          </div>
+        </div>
+      );
+    }
     // Show spinner while exam is loading after acceptance
     if (examQueryEnabled && examLoading) {
       return (
@@ -956,7 +1510,7 @@ export default function ExamPage() {
                 <span className="bg-[var(--color-surface)] border border-[var(--color-border)] px-2.5 py-1 rounded-full text-[var(--color-text-muted)]">
                   {exam.questions?.length} questions
                 </span>
-                {exam.proctored && (
+                {isProctoredExam && (
                   <span className="bg-red-100 dark:bg-red-900/20 text-red-700 dark:text-red-400 px-2.5 py-1 rounded-full font-medium flex items-center gap-1">
                     <Shield size={11} /> AI Proctored
                   </span>
@@ -964,7 +1518,7 @@ export default function ExamPage() {
               </div>
             </div>
 
-            {exam.proctored && (
+            {isProctoredExam && (
               <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-3 mb-5 text-left">
                 <p className="text-xs text-amber-800 dark:text-amber-300">
                   <strong>AI Proctoring required:</strong> This exam uses webcam monitoring. Ensure good lighting and keep your face visible.
@@ -999,25 +1553,36 @@ export default function ExamPage() {
 
 
   if (phase === 'preflight') {
-    const allReady = cameraReady && micReady && fullscreenOk && networkOk;
+    const allReady = cameraReady && micReady && fullscreenOk && networkOk && faceVisibleReady;
     return (
-      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center px-4 py-8">
+      <div className="min-h-screen bg-[var(--color-bg)] flex items-center justify-center px-4 py-6">
+        {/* Hidden proctoring video — must be in DOM so browser pumps live frames into it */}
+        {cameraReady && (
+          <video
+            key={`proctor-preflight-${streamVersion}`}
+            ref={proctorVideoRefCb}
+            style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px', pointerEvents: 'none' }}
+            muted
+            playsInline
+            autoPlay
+          />
+        )}
         <div className="w-full max-w-4xl">
           {/* Header */}
-          <div className="text-center mb-8">
-            <div className="w-14 h-14 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-4">
-              <Shield size={28} className="text-[var(--color-primary)]" />
+          <div className="text-center mb-5">
+            <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <Shield size={24} className="text-[var(--color-primary)]" />
             </div>
-            <h2 className="text-2xl font-bold text-[var(--color-text)]">Pre-Exam System Check</h2>
-            <p className="text-[var(--color-text-muted)] text-sm mt-1.5">This is a proctored exam. Please complete all checks before proceeding.</p>
-            <div className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-alt)] text-xs text-[var(--color-text-muted)]">
+            <h2 className="text-xl font-bold text-[var(--color-text)]">Pre-Exam System Check</h2>
+            <p className="text-[var(--color-text-muted)] text-xs mt-1">This is a proctored exam. Complete checks to continue.</p>
+            <div className="mt-2 inline-flex items-center gap-2 px-3 py-1 rounded-full border border-[var(--color-border)] bg-[var(--color-bg-alt)] text-xs text-[var(--color-text-muted)]">
               <Chrome size={14} className="text-[var(--color-primary)]" />
               Recommended browser: <span className="font-semibold text-[var(--color-text)]">Google Chrome</span>
             </div>
           </div>
 
           {/* Layout */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-[0.9fr_1.1fr] gap-4">
             {/* Left: System checks (compact like previous UI) */}
             <div className="card space-y-2.5">
               <h3 className="text-xs font-semibold text-[var(--color-text)] mb-2 flex items-center gap-2">
@@ -1025,40 +1590,55 @@ export default function ExamPage() {
                 System Requirements
               </h3>
 
-              {/* Camera check */}
-              <div className={`flex items-center gap-2.5 p-3 rounded-xl border transition-all ${
-                cameraReady ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
+              {/* Camera + face visibility combined */}
+              <div className={`p-3 rounded-xl border transition-all ${
+                cameraReady && faceVisibleReady ? 'border-green-300 bg-green-50 dark:bg-green-900/20'
                 : cameraError ? 'border-red-300 bg-red-50 dark:bg-red-900/20'
+                : cameraReady ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20'
                 : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'
               }`}>
-                {cameraReady
-                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
-                  : cameraError
-                  ? <CameraOff size={16} className="text-red-500 shrink-0" />
-                  : <Camera size={16} className="text-[var(--color-text-muted)] shrink-0" />}
-                <div className="flex-1 min-w-0">
-                  <div className="text-xs font-semibold text-[var(--color-text)]">Camera</div>
-                  <div className={`text-[11px] mt-0.5 leading-snug ${
-                    cameraReady ? 'text-green-600' : cameraError ? 'text-red-500' : 'text-[var(--color-text-muted)]'
-                  }`}>
-                    {cameraReady ? 'Allowed (face monitoring enabled)' : cameraError ? cameraError : 'Allow for face monitoring'}
+                <div className="flex items-center gap-2.5">
+                  {cameraReady && faceVisibleReady
+                    ? <CheckCircle size={16} className="text-green-500 shrink-0" />
+                    : cameraError
+                    ? <CameraOff size={16} className="text-red-500 shrink-0" />
+                    : cameraReady
+                    ? <Camera size={16} className="text-amber-500 shrink-0" />
+                    : <Camera size={16} className="text-[var(--color-text-muted)] shrink-0" />}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-semibold text-[var(--color-text)]">Camera &amp; Face Detection</div>
+                    <div className={`text-[11px] mt-0.5 leading-snug ${
+                      cameraReady && faceVisibleReady ? 'text-green-600'
+                      : cameraError ? 'text-red-500'
+                      : cameraReady ? 'text-amber-700 dark:text-amber-300'
+                      : 'text-[var(--color-text-muted)]'
+                    }`}>
+                      {!cameraReady && !cameraError && 'Allow camera for face monitoring'}
+                      {cameraError && cameraError}
+                      {cameraReady && faceVisibilityMsg}
+                    </div>
                   </div>
+                  {!cameraReady && !cameraError && (
+                    <button
+                      onClick={async () => {
+                        const ok = await setupProctoringStream();
+                        if (ok) {
+                          setCameraReady(true);
+                          setCameraError(null);
+                        } else {
+                          try {
+                            await navigator.mediaDevices.getUserMedia({ video: true });
+                          } catch (e) {
+                            setCameraError(e.name === 'NotAllowedError' ? 'Camera access denied' : 'Camera not found');
+                          }
+                        }
+                      }}
+                      className="text-[11px] btn-primary py-1.5 px-3 shrink-0"
+                    >
+                      Allow
+                    </button>
+                  )}
                 </div>
-                {!cameraReady && !cameraError && (
-                  <button
-                    onClick={async () => {
-                      try {
-                        await navigator.mediaDevices.getUserMedia({ video: true });
-                        setCameraReady(true);
-                      } catch (e) {
-                        setCameraError(e.name === 'NotAllowedError' ? 'Camera access denied' : 'Camera not found');
-                      }
-                    }}
-                    className="text-[11px] btn-primary py-1.5 px-3 shrink-0"
-                  >
-                    Allow
-                  </button>
-                )}
               </div>
 
               {/* Microphone check */}
@@ -1140,6 +1720,21 @@ export default function ExamPage() {
                 </div>
               </div>
 
+              {/* Ad blocker check */}
+              <div className={`flex items-center gap-2.5 p-3 rounded-xl border ${
+                adBlockDetected ? 'border-amber-300 bg-amber-50 dark:bg-amber-900/20' : 'border-green-300 bg-green-50 dark:bg-green-900/20'
+              }`}>
+                {!adBlockDetected
+                  ? <CheckCircle size={16} className="text-green-500 shrink-0" />
+                  : <AlertTriangle size={16} className="text-amber-600 shrink-0" />}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-semibold text-[var(--color-text)]">Ad blocker</div>
+                  <div className={`text-[11px] mt-0.5 leading-snug ${adBlockDetected ? 'text-amber-700 dark:text-amber-300' : 'text-green-600'}`}>
+                    {adBlockDetected ? 'Detected — disable it for a smooth exam experience' : 'Not detected'}
+                  </div>
+                </div>
+              </div>
+
               {(cameraError || micError) && (
                 <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 rounded-xl text-[11px] text-red-700 dark:text-red-400 flex items-start gap-2">
                   <AlertTriangle size={14} className="shrink-0 mt-0.5" />
@@ -1173,14 +1768,21 @@ export default function ExamPage() {
 
               {cameraReady ? (
                 <div className="flex-1 flex flex-col">
-                  <div className="rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black flex-1 min-h-52">
-                    <Webcam ref={webcamRef} className="w-full h-full object-cover" mirrored muted />
+                  <div className="rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black min-h-40 max-h-48">
+                    {/* Display-only preview: bind srcObject to the persistent proctoring stream */}
+                    <video
+                      ref={previewVideoRefCb}
+                      className="w-full h-full object-cover scale-x-[-1]"
+                      autoPlay
+                      playsInline
+                      muted
+                    />
                   </div>
-                  <div className="mt-3 flex items-center gap-2 text-xs text-green-600 dark:text-green-400 font-medium">
+                  <div className="mt-2 flex items-center gap-2 text-xs text-green-600 dark:text-green-400 font-medium">
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     Live camera feed — ensure your face is clearly visible
                   </div>
-                  <div className="mt-3 space-y-1.5 text-xs text-[var(--color-text-muted)]">
+                  <div className="mt-2 space-y-1 text-[11px] text-[var(--color-text-muted)]">
                     <div className="flex items-center gap-2"><CheckCircle size={12} className="text-green-500" /> Sit in a well-lit area</div>
                     <div className="flex items-center gap-2"><CheckCircle size={12} className="text-green-500" /> Keep your face centered in frame</div>
                     <div className="flex items-center gap-2"><CheckCircle size={12} className="text-green-500" /> No other people should be in view</div>
@@ -1212,9 +1814,9 @@ export default function ExamPage() {
 
   // ── Phase: INSTRUCTIONS ───────────────────────────────────
   if (phase === 'instructions') {
-    const ModeIcon = isPractice ? BookOpen : exam.proctored ? Shield : Monitor;
-    const modeColor = isPractice ? 'text-green-600' : exam.proctored ? 'text-red-600' : 'text-[var(--color-primary)]';
-    const modeBg = isPractice ? 'bg-green-100 dark:bg-green-900/30' : exam.proctored ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/20';
+    const ModeIcon = isPractice ? BookOpen : isProctoredExam ? Shield : Monitor;
+    const modeColor = isPractice ? 'text-green-600' : isProctoredExam ? 'text-red-600' : 'text-[var(--color-primary)]';
+    const modeBg = isPractice ? 'bg-green-100 dark:bg-green-900/30' : isProctoredExam ? 'bg-red-100 dark:bg-red-900/30' : 'bg-blue-100 dark:bg-blue-900/20';
 
     const examRules = isPractice ? [
       { icon: Clock, text: 'No timer — study at your own pace' },
@@ -1226,11 +1828,11 @@ export default function ExamPage() {
       { icon: Monitor, text: 'Do not switch tabs, minimize, or leave the window' },
       { icon: Clock, text: `${exam.timePerQuestion}s per question · ${totalMins} min total` },
       { icon: CheckCircle, text: 'Flag questions and revisit before submitting' },
-      ...(exam.proctored ? [
+      ...(isProctoredExam ? [
         { icon: Shield, text: 'Camera active — keep your face visible at all times' },
-        { icon: Shield, text: '3 violations = automatic exam termination' },
+        { icon: Shield, text: 'Suspicious events are logged for instructor review' },
       ] : [
-        { icon: Shield, text: '3 violations will auto-submit the exam' },
+        { icon: Shield, text: 'Suspicious events are logged and reviewed' },
       ]),
     ];
 
@@ -1246,7 +1848,7 @@ export default function ExamPage() {
               <h1 className="text-lg font-bold text-[var(--color-text)] truncate">{exam.title}</h1>
               <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
                 {isPractice && <span className="badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 text-xs">Practice Mode</span>}
-                {exam.proctored && !isPractice && <span className="badge bg-red-100 text-red-700 text-xs">Proctored</span>}
+                {isProctoredExam && !isPractice && <span className="badge bg-red-100 text-red-700 text-xs">Proctored</span>}
                 <span className="badge bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] capitalize text-xs">{exam.difficulty}</span>
                 <span className="badge bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] text-xs">{exam.subject}</span>
               </div>
@@ -1278,7 +1880,7 @@ export default function ExamPage() {
                 <Monitor size={14} className="text-[var(--color-primary)]" />
                 {isPractice ? 'Study Mode Guidelines' : 'Exam Rules'}
               </h3>
-              {exam.proctored && !isPractice && (
+              {isProctoredExam && !isPractice && (
                 <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 px-2.5 py-1 rounded-full">
                   <Shield size={11} /> AI Proctored
                 </span>
@@ -1294,11 +1896,11 @@ export default function ExamPage() {
               ))}
             </div>
 
-            {exam.proctored && !isPractice && (
+            {isProctoredExam && !isPractice && (
               <div className="mb-4 p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 rounded-xl flex items-start gap-2">
                 <Shield size={14} className="text-amber-600 shrink-0 mt-0.5" />
                 <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                  <strong>AI Proctoring Active:</strong> Camera monitors face detection. Tab switching and fullscreen exit are tracked. Violations cause automatic termination.
+                  <strong>AI Proctoring Active:</strong> Camera, tab and activity signals are monitored. Suspicious activity is logged for instructor review.
                 </p>
               </div>
             )}
@@ -1349,7 +1951,19 @@ export default function ExamPage() {
 
   return (
     <div ref={examShellRef} className="min-h-screen flex flex-col select-none bg-[var(--color-bg)]">
-      {needsFullscreenReturn && exam.proctored && !isPractice && !document.fullscreenElement && (
+      {/* Hidden proctoring video — always in DOM during exam so MediaPipe gets live frames */}
+      {isProctoredExam && !isPractice && (
+        <video
+          key={`proctor-exam-${streamVersion}`}
+          ref={proctorVideoRefCb}
+          style={{ position: 'fixed', top: '-9999px', left: '-9999px', width: '1px', height: '1px', pointerEvents: 'none' }}
+          muted
+          playsInline
+          autoPlay
+        />
+      )}
+
+      {needsFullscreenReturn && isProctoredExam && !isPractice && !document.fullscreenElement && (
         <div className="shrink-0 z-40 flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-amber-50 dark:bg-amber-900/25 border-b border-amber-200 dark:border-amber-800">
           <p className="text-xs text-amber-900 dark:text-amber-100 font-medium">Fullscreen is required for this proctored exam.</p>
           <button
@@ -1370,7 +1984,7 @@ export default function ExamPage() {
           {/* Left: title + mode badge */}
           <div className="flex items-center gap-2 min-w-0">
             {isPractice && <span className="badge bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 shrink-0">Practice</span>}
-            {exam.proctored && !isPractice && (
+            {isProctoredExam && !isPractice && (
               <span className="hidden sm:flex items-center gap-1 badge bg-red-100 text-red-700 shrink-0">
                 <Shield size={10} /> Proctored
               </span>
@@ -1430,11 +2044,44 @@ export default function ExamPage() {
         }`}>
           <AlertTriangle size={16} />
           <span>{warning}</span>
-          {violations >= 3 && (
-            <span className="text-xs ml-1 opacity-90 flex items-center gap-1">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping inline-block" /> Auto-submitting…
-            </span>
-          )}
+        </div>
+      )}
+
+      {cameraBlockedDuringExam && !isPractice && isProctoredExam && (
+        <div className="fixed inset-0 z-[60] bg-black/55 backdrop-blur-[2px] flex items-center justify-center px-4">
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 max-w-md w-full text-center">
+            <h3 className="text-base font-bold text-[var(--color-text)] mb-1">Camera is inactive or blocked</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Please enable your camera to continue the exam.</p>
+            <button
+              type="button"
+              onClick={async () => {
+                const ok = await setupProctoringStream();
+                if (ok) {
+                  setCameraBlockedDuringExam(false);
+                  setWarning(null);
+                }
+              }}
+              className="btn-primary px-4 py-2 text-sm"
+            >
+              Retry Camera
+            </button>
+          </div>
+        </div>
+      )}
+
+      {faceBlockedDuringExam && !isPractice && isProctoredExam && !cameraBlockedDuringExam && (
+        <div className="fixed inset-0 z-[60] bg-black/45 backdrop-blur-[2px] flex items-center justify-center px-4">
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5 max-w-md w-full text-center">
+            <h3 className="text-base font-bold text-[var(--color-text)] mb-1">You are not visible in the camera</h3>
+            <p className="text-sm text-[var(--color-text-muted)] mb-4">Please sit in front of the camera to continue.</p>
+            <button
+              type="button"
+              onClick={() => setFaceBlockedDuringExam(false)}
+              className="btn-primary px-4 py-2 text-sm"
+            >
+              I am back in frame
+            </button>
+          </div>
         </div>
       )}
 
@@ -1697,16 +2344,40 @@ export default function ExamPage() {
           </div>
 
           {/* Live proctoring camera (requested placement: below "Not attempted") */}
-          {!isPractice && exam.proctored && (
+          {!isPractice && isProctoredExam && (
             <div className="mb-4">
               <div className="relative rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black" style={{ aspectRatio: '4/3' }}>
-                <Webcam ref={webcamRef} className="w-full h-full object-cover" mirrored muted />
+                <video
+                  ref={previewVideoRefCb}
+                  className="w-full h-full object-cover scale-x-[-1]"
+                  autoPlay
+                  playsInline
+                  muted
+                />
                 <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/60 rounded px-1.5 py-0.5">
                   <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />
                   <span className="text-white text-[9px] font-medium">REC</span>
                 </div>
               </div>
               <p className="text-[9px] text-[var(--color-text-muted)] text-center mt-1">AI Proctoring Active</p>
+              {seriousAlert && (
+                <div className="mt-2 rounded-lg border border-red-300 bg-red-50 dark:bg-red-900/20 px-2.5 py-2 animate-fade-in">
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle size={12} className="text-red-600 shrink-0" />
+                    <p className="text-[10px] font-semibold text-red-700 dark:text-red-300">Serious warning ({violations}/3)</p>
+                  </div>
+                  <p className="text-[10px] text-red-700 dark:text-red-300 mt-1 leading-tight">{seriousAlert}</p>
+                </div>
+              )}
+              {liveReminder && (
+                <div className="mt-2 rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 px-2.5 py-2 animate-fade-in">
+                  <div className="flex items-center gap-1.5">
+                    <AlertTriangle size={11} className="text-amber-600 shrink-0" />
+                    <p className="text-[10px] font-semibold text-amber-700 dark:text-amber-300">Live reminder</p>
+                  </div>
+                  <p className="text-[10px] text-amber-700 dark:text-amber-300 mt-1 leading-tight">{liveReminder}</p>
+                </div>
+              )}
             </div>
           )}
 
@@ -1735,12 +2406,18 @@ export default function ExamPage() {
         </div>
       </div>
 
-      {/* Always-mounted proctoring camera (mobile + fallback, keeps video available for detection) */}
-      {!isPractice && exam.proctored && (
+      {/* Mobile proctoring camera overlay */}
+      {!isPractice && isProctoredExam && (
         <div className="fixed bottom-4 right-4 z-40 w-36 sm:w-40 lg:hidden">
           <div className="relative rounded-xl overflow-hidden border-2 border-[var(--color-primary)] bg-black shadow-lg">
             <div className="aspect-[4/3]">
-              <Webcam ref={webcamRef} className="w-full h-full object-cover" mirrored muted />
+              <video
+                ref={previewVideoRefCb}
+                className="w-full h-full object-cover scale-x-[-1]"
+                autoPlay
+                playsInline
+                muted
+              />
             </div>
             <div className="absolute top-1.5 left-1.5 flex items-center gap-1 bg-black/60 rounded px-1.5 py-0.5">
               <div className="w-1.5 h-1.5 bg-red-500 rounded-full animate-ping" />

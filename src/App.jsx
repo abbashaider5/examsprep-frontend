@@ -31,6 +31,7 @@ import InstructorPage from './pages/InstructorPage.jsx';
 import InstructorPerformancePage from './pages/InstructorPerformancePage.jsx';
 import InstructorReportPage from './pages/InstructorReportPage.jsx';
 import InstructorStudentAttemptPage from './pages/InstructorStudentAttemptPage.jsx';
+import InstructorProctoringReviewPage from './pages/InstructorProctoringReviewPage.jsx';
 import LeaderboardPage from './pages/LeaderboardPage.jsx';
 import LoginPage from './pages/LoginPage.jsx';
 import MaintenancePage from './pages/MaintenancePage.jsx';
@@ -154,6 +155,7 @@ export default function App() {
           <Route path="instructor/analytics" element={<Navigate to="/test-reports" replace />} />
           <Route path="instructor/performance" element={<Guard instructorOnly><InstructorPerformancePage /></Guard>} />
           <Route path="instructor/report/:examId/student/:userId" element={<Guard instructorOnly><InstructorStudentAttemptPage /></Guard>} />
+          <Route path="instructor/report/:examId/student/:userId/proctoring" element={<Guard instructorOnly><InstructorProctoringReviewPage /></Guard>} />
           <Route path="instructor/report/:examId" element={<Guard instructorOnly><InstructorReportPage /></Guard>} />
           <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />
           <Route path="groups" element={<GroupsPage />} />

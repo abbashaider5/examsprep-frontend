@@ -85,7 +85,7 @@ export const examApi = {
     form.append('file', file);
     return api.post('/exams/parse-pdf', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
-  saveScreenshot: (id, imageData) => api.post(`/exams/${id}/screenshot`, { imageData }),
+  saveScreenshot: (id, imageData, meta = {}) => api.post(`/exams/${id}/screenshot`, { imageData, ...meta }),
   executeCode: (data) => api.post('/exams/execute-code', data),
   analyzeProctoring: (data) => api.post('/exams/analyze-proctoring', data),
 };

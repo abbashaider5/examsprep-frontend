@@ -1,4 +1,4 @@
-import { Check, GraduationCap, Loader2, Shield, Sparkles, Users, Zap } from 'lucide-react';
+import { Check, GraduationCap, Loader2, Shield, Sparkles } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
@@ -33,6 +33,28 @@ export const PLANS = [
     limitations: [],
   },
 ];
+
+const ENTERPRISE_PLAN = {
+  id: 'enterprise-custom',
+  name: 'Enterprise',
+  subtitle: 'Custom pricing for schools and institutes',
+  icon: GraduationCap,
+  color: 'text-indigo-600 dark:text-indigo-400',
+  bgColor: 'bg-indigo-100 dark:bg-indigo-900/30',
+  borderColor: 'border-indigo-200 dark:border-indigo-800',
+  badge: 'Custom',
+  features: [
+    'Dedicated school/institute onboarding',
+    'Principal and teacher role management',
+    'Teacher-level limits and enterprise governance',
+    'Class and student workflows for school mode',
+    'Batch workflows for institute mode',
+    'Enterprise activity logs and audit tracking',
+    'Centralized AI proctoring policy controls',
+    'Custom pricing based on usage and requirements',
+    'Priority implementation and support',
+  ],
+};
 
 const loadRazorpay = () =>
   new Promise((resolve) => {
@@ -126,6 +148,20 @@ export default function PricingPage() {
   };
 
   const instructorPlans = PLANS;
+  const enterpriseMailTo =
+    'mailto:sales@likhitai.com?subject=' +
+    encodeURIComponent('Enterprise Plan Inquiry - LikhitAI') +
+    '&body=' +
+    encodeURIComponent(
+      'Hi LikhitAI Sales Team,%0D%0A%0D%0A' +
+      'We are interested in the Enterprise plan.%0D%0A' +
+      'Organization Name:%0D%0A' +
+      'Mode (School/Institute):%0D%0A' +
+      'Expected Teachers:%0D%0A' +
+      'Expected Exams per Month:%0D%0A' +
+      'Expected Questions per Exam:%0D%0A%0D%0A' +
+      'Please share pricing and onboarding details.%0D%0A'
+    );
 
   return (
     <div className="relative py-16 px-4 sm:px-6 lg:px-8 bg-[var(--color-bg)] min-h-screen overflow-hidden">
@@ -135,18 +171,18 @@ export default function PricingPage() {
         <div className="absolute top-32 right-0 w-56 h-56 bg-violet-100/30 dark:bg-violet-900/10 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative max-w-5xl mx-auto">
+      <div className="relative max-w-6xl mx-auto">
 
         {/* Header */}
         <div className="text-center mb-12">
           <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-            <Sparkles size={13} /> Premium Plan
+            <Sparkles size={13} /> Plans & Pricing
           </div>
           <h1 className="text-4xl sm:text-5xl font-bold text-[var(--color-text)] mb-4 tracking-tight">
             Create. Manage. <span className="text-[var(--color-primary)]">Analyze.</span>
           </h1>
           <p className="text-[var(--color-text-muted)] text-lg max-w-xl mx-auto">
-            One clear premium plan for instructors. Enterprise access is configured only by super admin.
+            Choose the right plan for your workflow. Upgrade instantly for individual use or contact sales for enterprise deployment.
           </p>
         </div>
 
@@ -177,7 +213,7 @@ export default function PricingPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 gap-8 mb-12 max-w-3xl mx-auto">
+        <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-12 items-stretch">
           {instructorPlans.map((plan) => {
             const Icon = plan.icon;
             const isCurrent = currentPlan === plan.id;
@@ -269,6 +305,53 @@ export default function PricingPage() {
               </div>
             );
           })}
+
+          <div
+            className={`relative flex flex-col rounded-2xl border p-8 transition-all shadow-sm hover:shadow-md bg-[var(--color-surface)] ${ENTERPRISE_PLAN.borderColor}`}
+          >
+            <div className="absolute -top-3.5 left-6">
+              <span className="bg-indigo-600 text-white text-xs font-bold px-3 py-1 rounded-full shadow">
+                {ENTERPRISE_PLAN.badge}
+              </span>
+            </div>
+
+            <div className="flex items-center gap-3 mb-5">
+              <div className={`w-10 h-10 rounded-xl ${ENTERPRISE_PLAN.bgColor} flex items-center justify-center`}>
+                <ENTERPRISE_PLAN.icon size={20} className={ENTERPRISE_PLAN.color} />
+              </div>
+              <div>
+                <h3 className="font-bold text-[var(--color-text)] text-lg">{ENTERPRISE_PLAN.name}</h3>
+                <p className="text-xs text-[var(--color-text-muted)]">{ENTERPRISE_PLAN.subtitle}</p>
+              </div>
+            </div>
+
+            <div className="mb-6">
+              <div className="flex items-end gap-1">
+                <span className="text-4xl font-bold text-[var(--color-text)]">Custom</span>
+              </div>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">
+                Tailored onboarding, controls, and pricing for organizations.
+              </p>
+            </div>
+
+            <a
+              href={enterpriseMailTo}
+              className="w-full py-3 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-2 mb-6 border border-indigo-300 dark:border-indigo-700 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-50 dark:hover:bg-indigo-900/20"
+            >
+              Contact Sales
+            </a>
+
+            <div className="border-t border-[var(--color-border)] mb-5" />
+
+            <ul className="space-y-2.5 flex-1">
+              {ENTERPRISE_PLAN.features.map((f) => (
+                <li key={f} className="flex items-start gap-2.5 text-sm">
+                  <Check size={15} className="text-green-500 mt-0.5 shrink-0" />
+                  <span className="text-[var(--color-text)]">{f}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         </div>
 
         {/* FAQ row */}
@@ -276,6 +359,7 @@ export default function PricingPage() {
           {[
             { q: 'Do students need to pay?', a: 'No. Students can take exams they\'ve been invited to, earn certificates, and track their progress — all for free.' },
             { q: 'What do instructor plans unlock?', a: 'Instructor plans let you create AI-generated exams, invite candidates, manage batches, run analytics, and enable AI proctoring.' },
+            { q: 'How does Enterprise pricing work?', a: 'Enterprise pricing is customized based on your setup, expected usage, and feature needs. Use Contact Sales to get a tailored quote.' },
             { q: 'Can I cancel any time?', a: 'Yes. All plans are monthly with no lock-in. You can cancel or change your plan at any time from your profile.' },
           ].map(({ q, a }) => (
             <div key={q} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-5">
