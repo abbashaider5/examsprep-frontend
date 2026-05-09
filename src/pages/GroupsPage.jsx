@@ -627,6 +627,7 @@ function ChatPanel({ group, isOwner }) {
   const [editText,      setEditText]      = useState('');
   const [mentionSearch, setMentionSearch] = useState('');
   const [showMentions,  setShowMentions]  = useState(false);
+  const [warningBanner, setWarningBanner] = useState('');
   const mentionStart = useRef(-1);
 
   const bottomRef    = useRef(null);
@@ -642,6 +643,8 @@ function ChatPanel({ group, isOwner }) {
     refetchInterval: 8000,
   });
   const messages = data?.messages || [];
+  const moderationState = data?.moderation || { warningCount: 0, isBlocked: false };
+  const isChatBlocked = !!moderationState.isBlocked;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -680,8 +683,19 @@ function ChatPanel({ group, isOwner }) {
       if (ctx?.prev) qc.setQueryData(['groupMessages', group._id], ctx.prev);
       toast.error(err.response?.data?.message || 'Failed to send');
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
+      const mod = res?.data?.moderation;
+      if (mod?.isBlocked && mod?.blockedMessage) {
+        setWarningBanner('');
+        toast.error(mod.blockedMessage);
+      } else if (mod?.warningMessage) {
+        setWarningBanner(mod.warningMessage);
+        toast(mod.warningMessage, { icon: '⚠️' });
+      } else {
+        setWarningBanner('');
+      }
       qc.invalidateQueries({ queryKey: ['groupMessages', group._id] });
+      qc.invalidateQueries({ queryKey: ['groupModeration', group._id] });
     },
   });
 
@@ -743,6 +757,7 @@ function ChatPanel({ group, isOwner }) {
     const hasFile = !!pendingFile;
     if (!hasText && !hasFile) return;
     if (sendMut.isPending) return;
+    if (isChatBlocked) return;
     sendMut.mutate({
       text:   text.trim() || null,
       replyTo: replyTo?._id || null,
@@ -827,6 +842,8 @@ function ChatPanel({ group, isOwner }) {
           const isSystem = msg.type === 'system';
           const isExam   = msg.type === 'exam_share';
           const isMedia  = msg.type === 'media';
+          const isModerationWarning = msg.type === 'text'
+            && msg.text?.trim?.() === '⚠ Message removed due to inappropriate language.';
           const isInstruct = msg.sender?.role === 'instructor' || msg.sender?.role === 'admin';
           const canEdit   = isMine && msg.type === 'text' && !isSystem && !msg._pending;
           const canDelete = isMine && !isSystem && !msg._pending; // only own messages
@@ -877,7 +894,9 @@ function ChatPanel({ group, isOwner }) {
                 {/* Bubble */}
                 <div
                   className={`rounded-2xl px-3 py-1.5 text-sm shadow-sm
-                    ${isMine
+                    ${isModerationWarning
+                      ? 'bg-amber-100 text-amber-800 border border-amber-300'
+                      : isMine
                       ? 'bg-[var(--color-primary)] text-white rounded-br-none'
                       : 'bg-[var(--color-surface)] text-[var(--color-text)] border border-[var(--color-border)] rounded-bl-none'
                     }`}
@@ -963,12 +982,12 @@ function ChatPanel({ group, isOwner }) {
                   {/* Timestamp + edited + pending */}
                   <div className={`flex items-center justify-end gap-1.5 mt-0.5 ${isMine ? 'opacity-60' : ''}`}>
                     {msg.edited && (
-                      <span className={`text-[9px] italic ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>edited</span>
+                      <span className={`text-[9px] italic ${isModerationWarning ? 'text-amber-700' : isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>edited</span>
                     )}
                     {msg._pending ? (
-                      <span className={`text-[9px] italic ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>Sending…</span>
+                      <span className={`text-[9px] italic ${isModerationWarning ? 'text-amber-700' : isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>Sending…</span>
                     ) : (
-                      <span className={`text-[9px] ${isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>
+                      <span className={`text-[9px] ${isModerationWarning ? 'text-amber-700' : isMine ? 'text-white' : 'text-[var(--color-text-muted)]'}`}>
                         {fmtMsgTime(msg.createdAt)}
                       </span>
                     )}
@@ -1036,8 +1055,13 @@ function ChatPanel({ group, isOwner }) {
       )}
 
       {/* Input */}
-      {canSend ? (
+      {canSend && !isChatBlocked ? (
         <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] relative">
+          {warningBanner && (
+            <p className="mb-1.5 text-[11px] text-amber-700">
+              Please keep communication respectful in this batch chat.
+            </p>
+          )}
           {/* @mention dropdown */}
           {showMentions && filteredMentions.length > 0 && (
             <div className="absolute bottom-full left-4 right-4 mb-1 bg-[var(--color-surface)] border border-[var(--color-border)] rounded-xl shadow-xl overflow-hidden z-20">
@@ -1092,8 +1116,9 @@ function ChatPanel({ group, isOwner }) {
               rows={1}
               className="flex-1 input resize-none text-sm py-2.5 max-h-28 overflow-y-auto"
               style={{ minHeight: '44px' }}
+              disabled={isChatBlocked}
             />
-            <button onClick={handleSend} disabled={(!text.trim() && !pendingFile) || sendMut.isPending}
+            <button onClick={handleSend} disabled={(!text.trim() && !pendingFile) || sendMut.isPending || isChatBlocked}
               className="p-2.5 btn-primary rounded-xl disabled:opacity-50 shrink-0 mb-0.5">
               <Send size={16} />
             </button>
@@ -1101,7 +1126,11 @@ function ChatPanel({ group, isOwner }) {
         </div>
       ) : (
         <div className="px-4 py-3 bg-[var(--color-surface)] border-t border-[var(--color-border)] text-center">
-          <p className="text-xs text-[var(--color-text-muted)]">Only the instructor can send messages in this batch.</p>
+          {isChatBlocked ? (
+            <p className="text-xs text-red-500">🚫 Your chat access has been blocked due to repeated inappropriate language.</p>
+          ) : (
+            <p className="text-xs text-[var(--color-text-muted)]">Only the instructor can send messages in this batch.</p>
+          )}
         </div>
       )}
     </div>
@@ -1126,6 +1155,14 @@ function MembersTab({ group, isOwner }) {
     enabled:  isOwner,
   });
   const pendingInvites = (invitesData?.invites || []).filter(i => i.status === 'pending');
+  const { data: moderationData } = useQuery({
+    queryKey: ['groupModeration', group._id],
+    queryFn: () => groupApi.getChatModeration(group._id).then(r => r.data),
+    enabled: isOwner,
+    refetchInterval: 12000,
+  });
+  const moderatedUsers = moderationData?.users || [];
+  const blockedUsers = moderatedUsers.filter(u => u.isBlocked);
 
   const cancelMut = useMutation({
     mutationFn: (invId) => groupApi.cancelInvite(group._id, invId),
@@ -1146,6 +1183,15 @@ function MembersTab({ group, isOwner }) {
       qc.invalidateQueries({ queryKey: ['groupInvites', group._id] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
+  });
+  const unlockMut = useMutation({
+    mutationFn: (userId) => groupApi.unlockChatUser(group._id, userId),
+    onSuccess: () => {
+      toast.success('Chat access restored');
+      qc.invalidateQueries({ queryKey: ['groupModeration', group._id] });
+      qc.invalidateQueries({ queryKey: ['groupMessages', group._id] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to unlock chat'),
   });
 
   const addEmail = () => {
@@ -1456,6 +1502,47 @@ function MembersTab({ group, isOwner }) {
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {isOwner && (
+          <div className="mt-3">
+            <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+              Chat Moderation
+            </p>
+            <div className="rounded-xl border border-[var(--color-border)] overflow-hidden">
+              {moderatedUsers.length === 0 ? (
+                <p className="text-xs text-[var(--color-text-muted)] px-4 py-3">
+                  No warnings or chat blocks yet.
+                </p>
+              ) : (
+                moderatedUsers.map((entry) => (
+                  <div key={idStr(entry.user?._id)} className="px-4 py-3 border-b border-[var(--color-border)] last:border-b-0 flex items-center gap-3">
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[var(--color-text)] truncate">{entry.user?.name || 'Unknown user'}</p>
+                      <p className="text-[10px] text-[var(--color-text-muted)] truncate">
+                        Warning {entry.warningCount || 0}/3
+                        {entry.isBlocked ? ' · Chat blocked' : ''}
+                      </p>
+                    </div>
+                    {entry.isBlocked && (
+                      <button
+                        onClick={() => unlockMut.mutate(entry.user?._id)}
+                        disabled={unlockMut.isPending}
+                        className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[var(--color-primary)]/10 text-[var(--color-primary)] hover:bg-[var(--color-primary)]/20 transition-colors disabled:opacity-50"
+                      >
+                        Unlock Chat
+                      </button>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+            {blockedUsers.length > 0 && (
+              <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
+                {blockedUsers.length} blocked user{blockedUsers.length !== 1 ? 's' : ''} currently require instructor unlock.
+              </p>
+            )}
           </div>
         )}
       </div>

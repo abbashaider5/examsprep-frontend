@@ -201,6 +201,8 @@ export const groupApi = {
   sendMessage:      (id, data)   => api.post(`/groups/${id}/messages`, data),
   editMessage:      (id, msgId, text) => api.patch(`/groups/${id}/messages/${msgId}`, { text }),
   deleteMessage:    (id, msgId)  => api.delete(`/groups/${id}/messages/${msgId}`),
+  getChatModeration: (id) => api.get(`/groups/${id}/chat-moderation`),
+  unlockChatUser:   (id, userId) => api.post(`/groups/${id}/chat-moderation/unlock/${userId}`),
   // Bulk invite
   bulkInvite:       (id, emails) => api.post(`/groups/${id}/bulk-invite`, { emails }),
   // Admin
