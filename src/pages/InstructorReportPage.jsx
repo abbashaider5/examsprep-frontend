@@ -10,6 +10,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
+import { SCREENSHOT_RETENTION_DAYS, screenshotDaysRemaining } from '../utils/screenshotRetention.js';
 
 ChartJS.register(ArcElement, BarElement, CategoryScale, LinearScale, Tooltip, Legend);
 
@@ -490,6 +491,9 @@ export default function InstructorReportPage() {
       {/* ── Screenshots tab ── */}
       {tab === 'screenshots' && (
         <>
+          <p className="text-[10px] text-[var(--color-text-muted)] mb-3 leading-relaxed">
+            Evidence images auto-delete after {ssData?.screenshotRetentionDays ?? SCREENSHOT_RETENTION_DAYS} days. Event logs are kept.
+          </p>
           {ssLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
               {[1,2,3,4,5,6,8].map(i => <div key={i} className="skeleton rounded-xl aspect-[4/3]" />)}
@@ -501,7 +505,9 @@ export default function InstructorReportPage() {
             </div>
           ) : (
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-              {ssData.screenshots.map(ss => (
+              {ssData.screenshots.map(ss => {
+                const rem = screenshotDaysRemaining(ss.capturedAt, ssData?.screenshotRetentionDays ?? SCREENSHOT_RETENTION_DAYS);
+                return (
                 <div key={ss._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-alt)]">
                   <div className="aspect-[4/3] bg-black">
                     <img src={ss.imageUrl || ss.imageData} alt="screenshot"
@@ -521,6 +527,11 @@ export default function InstructorReportPage() {
                         day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit',
                       })}
                     </p>
+                    {rem !== null && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
+                        {rem <= 0 ? 'Past retention' : `~${rem}d until auto-delete`}
+                      </p>
+                    )}
                     {ss.eventMessage && (
                       <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{ss.eventMessage}</p>
                     )}
@@ -535,7 +546,8 @@ export default function InstructorReportPage() {
                     )}
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           )}
         </>

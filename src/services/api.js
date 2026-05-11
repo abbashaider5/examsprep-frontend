@@ -318,9 +318,15 @@ export const enterpriseApi = {
   acceptInvite: (token) => api.post(`/enterprise/invites/${encodeURIComponent(token)}/accept`),
   schoolClasses: () => api.get('/enterprise/school/classes'),
   schoolCreateClass: (data) => api.post('/enterprise/school/classes', data),
+  schoolUpdateClass: (classId, data) => api.patch(`/enterprise/school/classes/${classId}`, data),
+  schoolDeleteClass: (classId) => api.delete(`/enterprise/school/classes/${classId}`),
   schoolStudents: (classId) => api.get('/enterprise/school/students', { params: classId ? { classId } : {} }),
+  schoolUpdateStudent: (userId, data) => api.patch(`/enterprise/school/students/${userId}`, data),
+  schoolDeleteStudent: (userId) => api.delete(`/enterprise/school/students/${userId}`),
   schoolInviteStudent: (data) => api.post('/enterprise/school/students', data),
   schoolBulkInviteStudents: (students) => api.post('/enterprise/school/students/bulk', { students }),
+  schoolClassChatGroup: (classId) => api.get(`/enterprise/school/classes/${classId}/chat-group`),
+  schoolMyChats: () => api.get('/enterprise/school/my-chats'),
 };
 
 export default api;

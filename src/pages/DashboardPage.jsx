@@ -12,7 +12,7 @@ import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
-import { examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
+import { enterpriseApi, examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import UserPageHeader from '../components/UserPageHeader.jsx';
 
@@ -62,6 +62,12 @@ export default function DashboardPage() {
     queryFn: () => profileApi.recommendation().then(r => r.data),
     staleTime: 5 * 60 * 1000,
   });
+  const { data: schoolMyChatsData } = useQuery({
+    queryKey: ['schoolMyChats'],
+    queryFn: () => enterpriseApi.schoolMyChats().then((r) => r.data),
+    enabled: isStudent && !!user?.enterpriseId,
+    retry: false,
+  });
   const { data: invitesData } = useQuery({
     queryKey: ['myInvites'],
     queryFn: () => instructorApi.getMyInvites().then(r => r.data),
@@ -80,6 +86,7 @@ export default function DashboardPage() {
   const publicExams   = publicData?.exams || [];
   const myExams       = myExamsData?.exams || [];
   const results       = resultsData?.results || [];
+  const schoolClassChats = schoolMyChatsData?.classes || [];
   const trend         = analyticsData?.trend || [];
   const pendingInvites = invitesData?.invites || [];
   const planExpiryDays = user?.planExpiresAt
@@ -237,6 +244,27 @@ export default function DashboardPage() {
               );})}
             </div>
           </div>
+
+          {schoolClassChats.length > 0 && (
+            <div>
+              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Class discussions</h3>
+              <p className="text-xs text-[var(--color-text-muted)] mb-2">Chats for classes you are enrolled in.</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {schoolClassChats.map((c) => (
+                  <Link
+                    key={c.classId}
+                    to={`/batches/${c.chatGroupId}`}
+                    className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 flex items-center justify-between gap-2 hover:border-[var(--color-primary)]/40 transition-colors"
+                  >
+                    <span className="text-sm font-medium text-[var(--color-text)] truncate">
+                      {c.name}{c.section ? ` · ${c.section}` : ''}
+                    </span>
+                    <span className="text-[11px] font-semibold text-[var(--color-primary)] shrink-0">Open</span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {[

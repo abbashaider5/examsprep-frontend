@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { AlertCircle, ArrowLeft, Camera, Shield } from 'lucide-react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { instructorApi } from '../services/api.js';
+import { SCREENSHOT_RETENTION_DAYS, screenshotDaysRemaining } from '../utils/screenshotRetention.js';
 
 export default function InstructorProctoringReviewPage() {
   const { examId, userId } = useParams();
@@ -18,6 +19,7 @@ export default function InstructorProctoringReviewPage() {
 
   const events = data?.latestResult?.proctoringEvents || [];
   const screenshots = data?.screenshots || [];
+  const retentionDays = data?.screenshotRetentionDays ?? SCREENSHOT_RETENTION_DAYS;
   const eventTypes = Array.from(new Set(events.map((e) => e?.type).filter(Boolean)));
   const filteredEvents = useMemo(
     () => (typeFilter === 'all' ? events : events.filter((e) => e?.type === typeFilter)),
@@ -113,22 +115,33 @@ export default function InstructorProctoringReviewPage() {
       </div>
 
       <div className="card p-4">
-        <h3 className="text-sm font-semibold text-[var(--color-text)] flex items-center gap-2 mb-3"><Camera size={14} className="text-[var(--color-primary)]" /> Evidence Screenshots</h3>
+        <h3 className="text-sm font-semibold text-[var(--color-text)] flex items-center gap-2 mb-1"><Camera size={14} className="text-[var(--color-primary)]" /> Evidence Screenshots</h3>
+        <p className="text-[10px] text-[var(--color-text-muted)] mb-3 leading-relaxed">
+          Images are kept for {retentionDays} days only, then removed automatically. Proctoring events and analytics are not deleted.
+        </p>
         {!screenshots.length ? (
           <p className="text-xs text-[var(--color-text-muted)]">No screenshots available.</p>
         ) : (
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {screenshots.slice(0, 40).map((ss) => (
-              <div key={ss._id} className="rounded-xl border border-[var(--color-border)] overflow-hidden bg-[var(--color-bg-alt)]">
-                <div className="aspect-[4/3] bg-black">
-                  <img src={ss.imageUrl || ss.imageData} alt="evidence" className="w-full h-full object-cover" />
+            {screenshots.slice(0, 40).map((ss) => {
+              const rem = screenshotDaysRemaining(ss.capturedAt, retentionDays);
+              return (
+                <div key={ss._id} className="rounded-xl border border-[var(--color-border)] overflow-hidden bg-[var(--color-bg-alt)]">
+                  <div className="aspect-[4/3] bg-black">
+                    <img src={ss.imageUrl || ss.imageData} alt="evidence" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="p-2">
+                    <p className="text-[10px] font-semibold text-[var(--color-text)]">{ss.eventType?.replace(/_/g, ' ') || 'capture'}</p>
+                    <p className="text-[10px] text-[var(--color-text-muted)]">{new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
+                    {rem !== null && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
+                        {rem <= 0 ? 'Past retention window' : `Auto-deletes in ~${rem} day${rem === 1 ? '' : 's'}`}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="p-2">
-                  <p className="text-[10px] font-semibold text-[var(--color-text)]">{ss.eventType?.replace(/_/g, ' ') || 'capture'}</p>
-                  <p className="text-[10px] text-[var(--color-text-muted)]">{new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</p>
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

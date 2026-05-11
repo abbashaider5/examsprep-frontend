@@ -28,11 +28,13 @@ export default function SchoolStudentsPage() {
 
   const inviteMut = useMutation({
     mutationFn: () => enterpriseApi.schoolInviteStudent({ name: name.trim(), email: email.trim(), schoolClassId: classId }),
-    onSuccess: () => {
-      toast.success('Student account created');
+    onSuccess: (res) => {
+      if (res.data?.reusedAccount) toast.success('Existing student linked to this class.');
+      else toast.success('Student account created');
       setName('');
       setEmail('');
       qc.invalidateQueries({ queryKey: ['schoolStudents'] });
+      qc.invalidateQueries({ queryKey: ['schoolClasses'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed'),
   });
@@ -45,6 +47,7 @@ export default function SchoolStudentsPage() {
       setBulkClassId('');
       setBulkModalOpen(false);
       qc.invalidateQueries({ queryKey: ['schoolStudents'] });
+      qc.invalidateQueries({ queryKey: ['schoolClasses'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Bulk upload failed'),
   });

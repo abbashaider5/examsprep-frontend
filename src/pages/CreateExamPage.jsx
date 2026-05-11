@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, Clock, Code2, Edit3, Eye, EyeOff, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Lock, Mail, Percent, Plus, RefreshCw, Search, Shield, Sparkles, Timer, Users, Wand2, X } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, Clock, Code2, Edit3, Eye, EyeOff, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Lock, Mail, Percent, Plus, RefreshCw, Search, Shield, Sparkles, Timer, Upload, Users, Wand2, X } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
@@ -291,7 +291,7 @@ export default function CreateExamPage() {
   const isFreePlan = !user?.plan || user.plan === 'free';
   const isEnterprise = user?.plan === 'enterprise';
   const enterpriseProctoringDisabled = isEnterpriseInstructor && user?.enterprise?.aiProctoringEnabled === false;
-  const isInstructor = user?.isInstructor || ['instructor', 'admin'].includes(user?.role);
+  const isInstructor = Boolean(user?.isInstructor) || ['instructor', 'admin', 'principal'].includes(user?.role);
   const remaining = user?.remaining ?? null;
 
   const [form, setForm] = useState({
@@ -317,6 +317,8 @@ export default function CreateExamPage() {
   const [source, setSource] = useState('ai');
   const [selectedResourceId, setSelectedResourceId] = useState('');
   const [showResourceModal, setShowResourceModal] = useState(false);
+  const resourceUploadRef = useRef(null);
+  const [resourceUploadTitle, setResourceUploadTitle] = useState('');
   const [errors, setErrors] = useState({});
   const [createdExam, setCreatedExam] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -333,6 +335,17 @@ export default function CreateExamPage() {
     queryFn: () => resourceApi.getMyResources().then(r => r.data),
     enabled: isInstructor && source === 'myresources',
     staleTime: 2 * 60 * 1000,
+  });
+
+  const uploadResourceMut = useMutation({
+    mutationFn: ({ file, title }) => resourceApi.upload(file, title, null),
+    onSuccess: () => {
+      toast.success('Resource uploaded');
+      setResourceUploadTitle('');
+      if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Upload failed'),
   });
 
   const createMut = useMutation({
@@ -664,6 +677,78 @@ export default function CreateExamPage() {
                     );
                   })}
                 </div>
+
+                {source === 'myresources' && isInstructor && (
+                  <div className="mt-3 space-y-2">
+                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 p-3 flex flex-col sm:flex-row gap-3 sm:items-end">
+                      <div className="flex-1 min-w-0">
+                        <label className="text-[10px] font-medium text-[var(--color-text-muted)]">Upload resource (PDF)</label>
+                        <input
+                          className="input text-sm mt-1"
+                          value={resourceUploadTitle}
+                          onChange={e => setResourceUploadTitle(e.target.value)}
+                          placeholder="Title shown in your library"
+                        />
+                      </div>
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <input
+                          ref={resourceUploadRef}
+                          type="file"
+                          accept="application/pdf"
+                          className="hidden"
+                          onChange={() => { /* selection only; upload via button */ }}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => resourceUploadRef.current?.click()}
+                          className="btn-secondary text-xs py-2 px-3 rounded-xl"
+                        >
+                          Choose file
+                        </button>
+                        <button
+                          type="button"
+                          disabled={uploadResourceMut.isPending}
+                          onClick={() => {
+                            const file = resourceUploadRef.current?.files?.[0];
+                            if (!file) {
+                              toast.error('Choose a PDF file');
+                              return;
+                            }
+                            const t = resourceUploadTitle.trim();
+                            if (!t) {
+                              toast.error('Enter a title');
+                              return;
+                            }
+                            uploadResourceMut.mutate({ file, title: t });
+                          }}
+                          className="btn-primary text-xs py-2 px-3 rounded-xl inline-flex items-center gap-1.5"
+                        >
+                          <Upload size={14} />
+                          {uploadResourceMut.isPending ? 'Uploading…' : 'Upload'}
+                        </button>
+                      </div>
+                    </div>
+                    {myResources.length > 0 && (
+                      <div>
+                        <p className="text-[10px] font-medium text-[var(--color-text-muted)] mb-1">Your files — tap to use for this exam</p>
+                        <div className="rounded-xl border border-[var(--color-border)] divide-y divide-[var(--color-border)] max-h-40 overflow-y-auto">
+                          {myResources.map(r => (
+                            <button
+                              key={r._id}
+                              type="button"
+                              onClick={() => { setSelectedResourceId(r._id); setErrors(e => ({ ...e, resource: undefined })); }}
+                              className={`w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors ${selectedResourceId === r._id ? 'bg-[var(--color-primary)]/10' : 'hover:bg-[var(--color-surface-hover)]'}`}
+                            >
+                              <FileText size={14} className="text-[var(--color-primary)] shrink-0" />
+                              <span className="truncate text-[var(--color-text)]">{r.title}</span>
+                              {selectedResourceId === r._id && <CheckCircle size={14} className="text-[var(--color-primary)] shrink-0 ml-auto" />}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Resource picker — shown for examprep and myresources */}
                 {(source === 'examprep' || source === 'myresources') && (

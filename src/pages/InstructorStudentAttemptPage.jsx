@@ -9,6 +9,7 @@ import { instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import { normalizeAnswers } from '../utils/normalizeAnswers.js';
+import { SCREENSHOT_RETENTION_DAYS, screenshotDaysRemaining } from '../utils/screenshotRetention.js';
 
 function fmtTime(secs) {
   if (!secs) return '—';
@@ -356,30 +357,41 @@ export default function InstructorStudentAttemptPage() {
 
       {studentData?.screenshots?.length > 0 && (
         <div className="card p-4">
-          <h3 className="font-semibold text-sm text-[var(--color-text)] mb-3 flex items-center gap-2">
+          <h3 className="font-semibold text-sm text-[var(--color-text)] mb-1 flex items-center gap-2">
             <Camera size={14} className="text-[var(--color-primary)]" /> Screenshots
           </h3>
+          <p className="text-[10px] text-[var(--color-text-muted)] mb-3 leading-relaxed">
+            Images auto-delete after {studentData?.screenshotRetentionDays ?? SCREENSHOT_RETENTION_DAYS} days; event history is retained.
+          </p>
           <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
-            {studentData.screenshots.slice(0, 24).map((ss) => (
-              <div key={ss._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-alt)]">
-                <div className="aspect-[4/3] bg-black">
-                  <img src={ss.imageUrl || ss.imageData} alt="screenshot" className="w-full h-full object-cover" />
-                </div>
-                <div className="p-2">
-                  {ss.eventType && (
-                    <p className="text-[10px] font-semibold text-[var(--color-text)] mb-0.5">
-                      {ss.eventType.replace(/_/g, ' ')}
+            {studentData.screenshots.slice(0, 24).map((ss) => {
+              const rem = screenshotDaysRemaining(ss.capturedAt, studentData?.screenshotRetentionDays ?? SCREENSHOT_RETENTION_DAYS);
+              return (
+                <div key={ss._id} className="border border-[var(--color-border)] rounded-xl overflow-hidden bg-[var(--color-bg-alt)]">
+                  <div className="aspect-[4/3] bg-black">
+                    <img src={ss.imageUrl || ss.imageData} alt="screenshot" className="w-full h-full object-cover" />
+                  </div>
+                  <div className="p-2">
+                    {ss.eventType && (
+                      <p className="text-[10px] font-semibold text-[var(--color-text)] mb-0.5">
+                        {ss.eventType.replace(/_/g, ' ')}
+                      </p>
+                    )}
+                    <p className="text-[10px] text-[var(--color-text-muted)]">
+                      {new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                     </p>
-                  )}
-                  <p className="text-[10px] text-[var(--color-text-muted)]">
-                    {new Date(ss.capturedAt).toLocaleString('en-IN', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                  </p>
-                  {ss.eventMessage && (
-                    <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{ss.eventMessage}</p>
-                  )}
+                    {rem !== null && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
+                        {rem <= 0 ? 'Past retention' : `~${rem}d until auto-delete`}
+                      </p>
+                    )}
+                    {ss.eventMessage && (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{ss.eventMessage}</p>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}

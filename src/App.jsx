@@ -159,7 +159,9 @@ export default function App() {
           <Route path="instructor/report/:examId" element={<Guard instructorOnly><InstructorReportPage /></Guard>} />
           <Route path="exam/:id/edit-questions" element={<Guard instructorOnly><EditQuestionsPage /></Guard>} />
           <Route path="groups" element={<GroupsPage />} />
+          <Route path="groups/:groupId" element={<GroupsPage />} />
           <Route path="batches" element={<GroupsPage />} />
+          <Route path="batches/:groupId" element={<GroupsPage />} />
           <Route path="notifications/:id" element={<NotificationDetailPage />} />
           <Route path="tickets" element={<TicketsPage />} />
           <Route path="enterprise-dashboard" element={<Guard principalOnly><EnterpriseDashboardPage /></Guard>} />

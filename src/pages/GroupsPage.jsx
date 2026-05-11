@@ -149,6 +149,7 @@ function ConfirmDialog({ icon: Icon = Trash2, title, message, confirmLabel = 'Co
 
 // ── GroupSettingsPanel ────────────────────────────────────────────────────────
 function GroupSettingsPanel({ group, isOwner, onClose, onDeleted, onLeft }) {
+  const isSchoolClassChat = group.kind === 'school_class';
   const qc = useQueryClient();
   const [form, setForm] = useState({
     name:        group.name        || '',
@@ -210,7 +211,7 @@ function GroupSettingsPanel({ group, isOwner, onClose, onDeleted, onLeft }) {
         <div className="w-full max-w-sm bg-[var(--color-surface)] border-l border-[var(--color-border)] flex flex-col h-full animate-slide-left shadow-2xl">
           {/* Header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)]">
-            <h2 className="font-bold text-[var(--color-text)] text-base">Batch Settings</h2>
+            <h2 className="font-bold text-[var(--color-text)] text-base">{isSchoolClassChat ? 'Class chat' : 'Batch Settings'}</h2>
             <button onClick={onClose} className="p-2 rounded-xl hover:bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">
               <X size={18} />
             </button>
@@ -298,10 +299,14 @@ function GroupSettingsPanel({ group, isOwner, onClose, onDeleted, onLeft }) {
               </div>
             )}
 
-            {/* Danger zone */}
+            {/* Danger zone — school class chats are tied to roster; no delete/leave here */}
             <div className="p-5 space-y-2">
               <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-3">Danger Zone</p>
-              {isOwner ? (
+              {isSchoolClassChat ? (
+                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
+                  This room is your school class chat. Membership follows class enrollment; it cannot be deleted or left from here.
+                </p>
+              ) : isOwner ? (
                 <button
                   onClick={() => setConfirm('delete')}
                   className="flex items-center gap-3 w-full px-4 py-3 rounded-xl border border-red-200 dark:border-red-800/40 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors text-sm font-medium"
@@ -1139,6 +1144,7 @@ function ChatPanel({ group, isOwner }) {
 
 // ── Members Tab ───────────────────────────────────────────────────────────────
 function MembersTab({ group, isOwner }) {
+  const isSchoolClassChat = group.kind === 'school_class';
   const qc = useQueryClient();
   const fileInputRef  = useRef(null);
   const [showInvite,   setShowInvite]   = useState(false);
@@ -1152,7 +1158,7 @@ function MembersTab({ group, isOwner }) {
   const { data: invitesData } = useQuery({
     queryKey: ['groupInvites', group._id],
     queryFn:  () => groupApi.getInvites(group._id).then(r => r.data),
-    enabled:  isOwner,
+    enabled:  isOwner && !isSchoolClassChat,
   });
   const pendingInvites = (invitesData?.invites || []).filter(i => i.status === 'pending');
   const { data: moderationData } = useQuery({
@@ -1255,11 +1261,22 @@ function MembersTab({ group, isOwner }) {
   };
 
   const totalMembers = (group.members?.length || 0) + 1; // +1 for instructor
+  const rosterStudentCount = group.members?.length || 0;
+  const rosterLabel = isSchoolClassChat
+    ? `${rosterStudentCount} Student${rosterStudentCount !== 1 ? 's' : ''}`
+    : `${totalMembers} Member${totalMembers !== 1 ? 's' : ''}`;
 
   return (
     <div className={`flex-1 overflow-y-auto ${!isOwner ? 'pt-4' : ''}`}>
-      {/* Add Members button */}
-      {isOwner && (
+      {isOwner && isSchoolClassChat && (
+        <p className="px-4 pt-3 text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+          Students are added from{' '}
+          <Link to="/school/students" className="text-[var(--color-primary)] font-medium hover:underline">Students</Link>
+          . The list below stays in sync with class enrollment.
+        </p>
+      )}
+      {/* Add Members — batch only; class rosters use school Students */}
+      {isOwner && !isSchoolClassChat && (
         <div className="px-4 pt-3 pb-2">
           <button
             onClick={() => setShowInvite(v => !v)}
@@ -1272,7 +1289,7 @@ function MembersTab({ group, isOwner }) {
       )}
 
       {/* Add Members Modal */}
-      {isOwner && showInvite && (
+      {isOwner && showInvite && !isSchoolClassChat && (
         <Modal onClose={() => { setShowInvite(false); setInviteEmails([]); setEmailInput(''); setFileName(''); }}>
           <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-2xl flex overflow-hidden" style={{ height: '80vh', maxHeight: '600px' }}>
 
@@ -1405,7 +1422,7 @@ function MembersTab({ group, isOwner }) {
       )}
 
       {/* Search */}
-      {totalMembers > 3 && (
+      {(isSchoolClassChat ? rosterStudentCount > 3 : totalMembers > 3) && (
         <div className="px-4 pb-2">
           <div className="flex items-center gap-2 bg-[var(--color-bg-alt)] rounded-lg px-2.5 py-1.5">
             <Search size={11} className="text-[var(--color-text-muted)] shrink-0" />
@@ -1422,7 +1439,7 @@ function MembersTab({ group, isOwner }) {
       {/* Member list */}
       <div className="px-4 pb-4">
         <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
-          {totalMembers} Member{totalMembers !== 1 ? 's' : ''}
+          {rosterLabel}
         </p>
 
         <div className="rounded-xl border border-[var(--color-border)] overflow-hidden divide-y divide-[var(--color-border)]">
@@ -1448,7 +1465,7 @@ function MembersTab({ group, isOwner }) {
           {(!group.members || group.members.length === 0) ? (
             <div className="px-4 py-8 text-center">
               <Users size={22} className="mx-auto mb-2 text-[var(--color-border)]" />
-              <p className="text-xs text-[var(--color-text-muted)]">No members yet.</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{isSchoolClassChat ? 'No students yet.' : 'No members yet.'}</p>
             </div>
           ) : (() => {
             const filtered = memberSearch
@@ -1467,8 +1484,8 @@ function MembersTab({ group, isOwner }) {
                       <p className="text-[10px] text-[var(--color-text-muted)] truncate hidden sm:block">{m.email}</p>
                     )}
                   </div>
-                  <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-2 py-0.5 rounded-full shrink-0">Member</span>
-                  {isOwner && (
+                  <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-2 py-0.5 rounded-full shrink-0">{isSchoolClassChat ? 'Student' : 'Member'}</span>
+                  {isOwner && !isSchoolClassChat && (
                     <button onClick={() => removeMut.mutate(m._id)} title="Remove"
                       className="p-1.5 rounded-lg hover:bg-red-50 dark:hover:bg-red-900/20 text-[var(--color-text-muted)] hover:text-red-500 transition-colors shrink-0">
                       <X size={12} />
@@ -1480,7 +1497,7 @@ function MembersTab({ group, isOwner }) {
         </div>
 
         {/* Pending invites */}
-        {isOwner && pendingInvites.length > 0 && (
+        {isOwner && !isSchoolClassChat && pendingInvites.length > 0 && (
           <div className="mt-3">
             <p className="text-[10px] font-bold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
               Pending ({pendingInvites.length})
@@ -1974,6 +1991,10 @@ function GroupDetail({ groupId, onBack }) {
   const [tab,          setTab]          = useState('chat');
   const [showSettings, setShowSettings] = useState(false);
 
+  useEffect(() => {
+    setTab('chat');
+  }, [groupId]);
+
   const { data, isLoading } = useQuery({
     queryKey:        ['group', groupId],
     queryFn:         () => groupApi.getOne(groupId).then(r => r.data),
@@ -1996,12 +2017,18 @@ function GroupDetail({ groupId, onBack }) {
   );
   if (!group) return null;
 
-  const TABS = [
-    { key: 'chat',      label: 'Chat',      icon: MessageSquare },
-    { key: 'members',   label: 'Members',   icon: Users },
-    { key: 'tests',     label: 'Tests',     icon: BookOpen },
-    ...(isOwner ? [{ key: 'resources', label: 'Resources', icon: FileText }] : []),
-  ];
+  const isSchoolClass = group.kind === 'school_class';
+  const TABS = isSchoolClass
+    ? [
+        { key: 'chat', label: 'Chat', icon: MessageSquare },
+        { key: 'members', label: 'Students', icon: Users },
+      ]
+    : [
+        { key: 'chat', label: 'Chat', icon: MessageSquare },
+        { key: 'members', label: 'Members', icon: Users },
+        { key: 'tests', label: 'Tests', icon: BookOpen },
+        ...(isOwner ? [{ key: 'resources', label: 'Resources', icon: FileText }] : []),
+      ];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -2016,7 +2043,15 @@ function GroupDetail({ groupId, onBack }) {
         <div className="flex-1 min-w-0">
           <h2 className="font-bold text-[var(--color-text)] text-sm truncate">{group.name}</h2>
           <p className="text-[10px] text-[var(--color-text-muted)]">
-            {group.members?.length || 0} members · {isOwner ? 'You own this batch' : `by ${group.instructor?.name}`}
+            {group.kind === 'school_class' ? 'School class chat' : 'Batch'}
+            {' · '}
+            {group.kind === 'school_class'
+              ? `${group.members?.length || 0} students`
+              : `${group.members?.length || 0} members`}
+            {' · '}
+            {isOwner
+              ? (group.kind === 'school_class' ? 'You teach this class' : 'You own this batch')
+              : (group.kind === 'school_class' ? `Teacher: ${group.instructor?.name}` : `by ${group.instructor?.name}`)}
           </p>
         </div>
         {/* Settings gear — opens settings panel for both owner and member */}
@@ -2056,8 +2091,8 @@ function GroupDetail({ groupId, onBack }) {
       {/* Tab content */}
       {tab === 'chat'      && <ChatPanel    group={group} isOwner={isOwner} />}
       {tab === 'members'   && <MembersTab   group={group} isOwner={isOwner} />}
-      {tab === 'tests'     && <TestsTab     group={group} isOwner={isOwner} />}
-      {tab === 'resources' && <ResourcesTab group={group} />}
+      {!isSchoolClass && tab === 'tests'     && <TestsTab     group={group} isOwner={isOwner} />}
+      {!isSchoolClass && tab === 'resources' && <ResourcesTab group={group} />}
 
       {/* Settings panel */}
       {showSettings && (
@@ -2077,6 +2112,7 @@ function GroupDetail({ groupId, onBack }) {
 export default function GroupsPage() {
   const { user }  = useAuthStore();
   const navigate  = useNavigate();
+  const { groupId: groupIdParam } = useParams();
   const [selectedGroupId, setSelectedGroupId] = useState(null);
   const [showDrawer,      setShowDrawer]      = useState(false);
   const [search,          setSearch]          = useState('');
@@ -2103,8 +2139,15 @@ export default function GroupsPage() {
   const pendingInvites = myInvitesData?.invites || [];
 
   useEffect(() => {
-    if (joinId) { setSelectedGroupId(joinId); navigate('/batches', { replace: true }); }
-  }, [joinId]);
+    if (groupIdParam) setSelectedGroupId(groupIdParam);
+  }, [groupIdParam]);
+
+  useEffect(() => {
+    if (joinId) {
+      setSelectedGroupId(joinId);
+      navigate(`/batches/${joinId}`, { replace: true });
+    }
+  }, [joinId, navigate]);
 
   return (
     <div className="flex h-full bg-[var(--color-bg)] overflow-hidden">
@@ -2120,8 +2163,8 @@ export default function GroupsPage() {
                   <ChevronLeft size={12} /> Back
                 </Link>
               </div>
-              <h2 className="font-semibold text-[var(--color-text)] text-lg tracking-tight mt-2">Batches</h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Manage your study groups</p>
+              <h2 className="font-semibold text-[var(--color-text)] text-lg tracking-tight mt-2">Chats</h2>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Batches and class discussions</p>
             </div>
             {pendingInvites.length > 0 && (
               <span className="inline-flex self-start text-[9px] font-bold bg-red-500 text-white px-1.5 py-0.5 rounded-full">
@@ -2156,7 +2199,7 @@ export default function GroupsPage() {
             <Search size={13} className="text-[var(--color-text-muted)] shrink-0" />
             <input
               type="text"
-              placeholder="Search batches…"
+              placeholder="Search chats…"
               value={search}
               onChange={e => setSearch(e.target.value)}
               className="flex-1 bg-transparent text-sm text-[var(--color-text)] placeholder-[var(--color-text-muted)] outline-none"
@@ -2209,14 +2252,14 @@ export default function GroupsPage() {
             <div className="text-center py-12 px-4">
               <Users size={28} className="mx-auto mb-2 text-[var(--color-border)]" />
               <p className="text-sm font-medium text-[var(--color-text)]">
-                {search ? 'No batches found' : 'No batches yet'}
+                {search ? 'No chats found' : 'No chats yet'}
               </p>
               <p className="text-xs text-[var(--color-text-muted)] mt-1">
                 {search
                   ? `No results for "${search}"`
                   : isInstructorRole(user) && canCreate
                     ? 'Create your first batch to get started.'
-                    : "You'll appear here once added to a batch."}
+                    : "You'll appear here once added to a batch or class."}
               </p>
             </div>
           ) : (
@@ -2240,6 +2283,9 @@ export default function GroupsPage() {
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-semibold truncate ${selectedGroupId === g._id ? 'text-[var(--color-primary)]' : 'text-[var(--color-text)]'}`}>
                       {g.name}
+                      {g.kind === 'school_class' && (
+                        <span className="ml-1.5 text-[9px] font-bold uppercase text-amber-700 dark:text-amber-400">Class</span>
+                      )}
                     </p>
                     <p className="text-[10px] text-[var(--color-text-muted)] truncate mt-0.5">
                       {g.lastMessage?.text
@@ -2283,8 +2329,8 @@ export default function GroupsPage() {
               <div className="w-20 h-20 rounded-3xl bg-[var(--color-primary)]/10 flex items-center justify-center mx-auto mb-4">
                 <MessageSquare size={36} className="text-[var(--color-primary)]" />
               </div>
-              <h3 className="font-bold text-[var(--color-text)] text-lg">Select a batch</h3>
-              <p className="text-sm text-[var(--color-text-muted)] mt-1">Choose a batch from the sidebar to start chatting.</p>
+              <h3 className="font-bold text-[var(--color-text)] text-lg">Select a chat</h3>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">Choose a batch or class from the sidebar to start messaging.</p>
               {isInstructorRole(user) && canCreate && (
                 <button onClick={() => setShowDrawer(true)}
                   className="btn-primary mt-5 px-6 py-2.5 text-sm flex items-center gap-2 mx-auto">

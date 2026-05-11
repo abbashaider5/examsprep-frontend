@@ -6,7 +6,7 @@ import {
   Eye, FileText,
   Layers,
   LayoutDashboard,
-  LifeBuoy, Mail, RefreshCw,
+  LifeBuoy, Mail, MessageSquare, RefreshCw,
   Settings, Shield,
   Timer, Trash2, Upload, Users, X, Zap
 } from 'lucide-react';
@@ -218,6 +218,7 @@ export default function InstructorPage() {
             ? [
                 { label: 'Classes', desc: 'Manage classes', icon: BookOpen, to: '/school/classes', accent: 'from-sky-400 to-blue-500' },
                 { label: 'Students', desc: 'Manage students', icon: Users, to: '/school/students', accent: 'from-emerald-400 to-teal-500' },
+                { label: 'Class chats', desc: 'Class discussions', icon: MessageSquare, to: '/batches', accent: 'from-violet-400 to-indigo-500' },
               ]
             : [{ label: 'Batches', desc: 'Groups and invites', icon: Users, to: '/batches', accent: 'from-sky-400 to-blue-500' }]),
           { label: 'Insights', desc: 'Student performance notes', icon: LayoutDashboard, to: '/instructor/performance', accent: 'from-emerald-400 to-teal-500' },

@@ -515,13 +515,13 @@ export default function ExamPage() {
   const raiseViolation = useCallback((reason, meta = {}) => {
     const now = Date.now();
     const typeKey = meta.type || 'violation';
+    const isSoftVisualOnly = Boolean(meta.nonCriticalHint);
     if (meta.nonCriticalHint) {
-      // Keep latest active non-serious hint visible while issue continues.
+      // Keep latest active non-serious hint visible while issue continues (visual only — no audio / no logs / no screenshots).
       liveReminderLastSeenAtRef.current = now;
       if (liveReminderTextRef.current !== meta.nonCriticalHint) {
         setLiveReminder(meta.nonCriticalHint);
         liveReminderTextRef.current = meta.nonCriticalHint;
-        playWarningAudio('nonSeriousWarning');
       } else if (!liveReminder) {
         setLiveReminder(meta.nonCriticalHint);
       }
@@ -553,15 +553,17 @@ export default function ExamPage() {
       seriousAlertTimerRef.current = setTimeout(() => setSeriousAlert(''), 4200);
       playWarningAudio('seriousWarning');
     }
-    pushProctoringEvent({
-      type: meta.type || 'violation',
-      source: meta.source || 'runtime',
-      severity: shouldCount
-        ? (violationsRef.current >= 3 ? 'critical' : 'warning')
-        : (meta.severity || (isCritical ? 'warning' : 'info')),
-      message: reason,
-    });
-    if (meta.captureEvidence !== false) {
+    if (!isSoftVisualOnly) {
+      pushProctoringEvent({
+        type: meta.type || 'violation',
+        source: meta.source || 'runtime',
+        severity: shouldCount
+          ? (violationsRef.current >= 3 ? 'critical' : 'warning')
+          : (meta.severity || (isCritical ? 'warning' : 'info')),
+        message: reason,
+      });
+    }
+    if (!isSoftVisualOnly && meta.captureEvidence !== false) {
       captureSuspiciousEvidence({
         type: meta.type || 'violation',
         source: meta.source || 'runtime',
