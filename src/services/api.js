@@ -80,6 +80,7 @@ export const examApi = {
   delete: (id) => api.delete(`/exams/${id}`),
   regenerate: (id, data) => api.post(`/exams/${id}/regenerate`, data),
   regenerateQuestion: (id, index) => api.post(`/exams/${id}/regenerate-question/${index}`),
+  generateQuestionFromTopic: (id, body) => api.post(`/exams/${id}/generate-question-from-topic`, body),
   parsePDF: (file) => {
     const form = new FormData();
     form.append('file', file);
@@ -88,6 +89,8 @@ export const examApi = {
   saveScreenshot: (id, imageData, meta = {}) => api.post(`/exams/${id}/screenshot`, { imageData, ...meta }),
   executeCode: (data) => api.post('/exams/execute-code', data),
   analyzeProctoring: (data) => api.post('/exams/analyze-proctoring', data),
+  issueAudioAccess: (examId, body) => api.post(`/exams/${examId}/audio-access`, body),
+  previewListeningVoice: (body) => api.post('/exams/preview-listening-voice', body),
 };
 
 export const resultApi = {

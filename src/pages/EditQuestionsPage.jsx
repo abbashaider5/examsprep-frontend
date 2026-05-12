@@ -1,12 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   AlertCircle, ArrowLeft, Award, BookOpen, Camera, CheckCircle, ChevronDown, ChevronUp,
-  Clock, Code2, Eye, EyeOff, FileText, FlipHorizontal, Hash, Percent, RefreshCw,
+  Clock, Code2, Eye, EyeOff, FileText, FlipHorizontal, Hash, ListPlus, Percent, RefreshCw,
   Save, Shield, Sparkles, Timer, Trash2,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams } from 'react-router-dom';
+import Modal from '../components/Modal.jsx';
 import { examApi } from '../services/api.js';
 
 function stripReviewMeta(q) {
@@ -45,7 +46,9 @@ function rebuildVariantsFromMerged(mergedList, originalVariants) {
   return { questions: variants[0] || mergedList.map(stripReviewMeta), questionVariants: variants };
 }
 
-function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate, onDelete, regenerating }) {
+function QuestionHeader({
+  index, type, title, collapsed, onToggle, onRegenerate, onGenerateFromTopic, onDelete, regenerating, generatingTopic,
+}) {
   const typeColors = {
     coding: 'bg-purple-500',
     descriptive: 'bg-teal-500',
@@ -64,7 +67,7 @@ function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate,
           </span>
         )}
       </div>
-      <div className="flex items-center gap-1 shrink-0">
+      <div className="flex items-center gap-0.5 shrink-0">
         <button type="button" onClick={onRegenerate} disabled={regenerating}
           title="AI regenerate this question"
           className="p-1 text-[var(--color-text-muted)] hover:text-[var(--color-primary)] disabled:opacity-50 transition-colors"
@@ -72,6 +75,19 @@ function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate,
           {regenerating
             ? <div className="w-3.5 h-3.5 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
             : <Sparkles size={13} />}
+        </button>
+        <button
+          type="button"
+          onClick={onGenerateFromTopic}
+          disabled={generatingTopic || regenerating}
+          title="Replace this question with a new one for your topic (Generate from topic)"
+          className="p-1 text-[var(--color-text-muted)] hover:text-teal-600 dark:hover:text-teal-400 disabled:opacity-50 transition-colors"
+        >
+          {generatingTopic ? (
+            <div className="w-3.5 h-3.5 border-2 border-teal-500/30 border-t-teal-600 rounded-full animate-spin" />
+          ) : (
+            <ListPlus size={13} />
+          )}
         </button>
         <button type="button" onClick={onDelete} title="Remove question"
           className="p-1 text-[var(--color-text-muted)] hover:text-red-500 transition-colors">
@@ -85,14 +101,15 @@ function QuestionHeader({ index, type, title, collapsed, onToggle, onRegenerate,
   );
 }
 
-function MCQQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
+function MCQQuestionEditor({ question, index, onChange, onRegenerate, onGenerateFromTopic, onDelete, regenerating, generatingTopic }) {
   const [collapsed, setCollapsed] = useState(false);
   return (
     <div className="card border border-[var(--color-border)] overflow-hidden">
       <QuestionHeader
         index={index} type="mcq" title={question.question}
         collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
-        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+        onRegenerate={onRegenerate} onGenerateFromTopic={onGenerateFromTopic} onDelete={onDelete}
+        regenerating={regenerating} generatingTopic={generatingTopic}
       />
       {!collapsed && (
         <div className="mt-4 space-y-4">
@@ -136,7 +153,7 @@ function MCQQuestionEditor({ question, index, onChange, onRegenerate, onDelete, 
   );
 }
 
-function CodingQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
+function CodingQuestionEditor({ question, index, onChange, onRegenerate, onGenerateFromTopic, onDelete, regenerating, generatingTopic }) {
   const [collapsed, setCollapsed] = useState(false);
   const LANGUAGES = ['javascript', 'python', 'java', 'c', 'cpp', 'csharp', 'go', 'rust', 'typescript', 'ruby', 'php'];
   return (
@@ -144,7 +161,8 @@ function CodingQuestionEditor({ question, index, onChange, onRegenerate, onDelet
       <QuestionHeader
         index={index} type="coding" title={question.question}
         collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
-        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+        onRegenerate={onRegenerate} onGenerateFromTopic={onGenerateFromTopic} onDelete={onDelete}
+        regenerating={regenerating} generatingTopic={generatingTopic}
       />
       {!collapsed && (
         <div className="mt-4 space-y-4">
@@ -190,7 +208,7 @@ function CodingQuestionEditor({ question, index, onChange, onRegenerate, onDelet
   );
 }
 
-function DescriptiveQuestionEditor({ question, index, onChange, onRegenerate, onDelete, regenerating }) {
+function DescriptiveQuestionEditor({ question, index, onChange, onRegenerate, onGenerateFromTopic, onDelete, regenerating, generatingTopic }) {
   const [collapsed, setCollapsed] = useState(false);
   const [kpInput, setKpInput] = useState('');
   return (
@@ -198,7 +216,8 @@ function DescriptiveQuestionEditor({ question, index, onChange, onRegenerate, on
       <QuestionHeader
         index={index} type="descriptive" title={question.question}
         collapsed={collapsed} onToggle={() => setCollapsed(c => !c)}
-        onRegenerate={onRegenerate} onDelete={onDelete} regenerating={regenerating}
+        onRegenerate={onRegenerate} onGenerateFromTopic={onGenerateFromTopic} onDelete={onDelete}
+        regenerating={regenerating} generatingTopic={generatingTopic}
       />
       {!collapsed && (
         <div className="mt-4 space-y-4">
@@ -281,6 +300,13 @@ export default function EditQuestionsPage() {
 
   const [questions, setQuestions] = useState(null);
   const [regeneratingIdx, setRegeneratingIdx] = useState(null);
+  const [generatingTopicIdx, setGeneratingTopicIdx] = useState(null);
+  const [topicModalAnchor, setTopicModalAnchor] = useState(null);
+  const [topicDraft, setTopicDraft] = useState('');
+  const [topicGuidance, setTopicGuidance] = useState('');
+  const [topicDifficulty, setTopicDifficulty] = useState('inherit');
+  const [topicStyle, setTopicStyle] = useState('');
+  const [topicGenPending, setTopicGenPending] = useState(false);
   const [usingMerged, setUsingMerged] = useState(false);
   const [sourceVariants, setSourceVariants] = useState(null);
 
@@ -324,6 +350,49 @@ export default function EditQuestionsPage() {
       toast.error(err.response?.data?.message || 'Failed to regenerate question');
     } finally {
       setRegeneratingIdx(null);
+    }
+  };
+
+  const openTopicModal = (anchorIdx) => {
+    setTopicModalAnchor(anchorIdx);
+    setTopicDraft(String(questions[anchorIdx]?.topic || '').trim());
+    setTopicGuidance('');
+    setTopicDifficulty('inherit');
+    setTopicStyle('');
+  };
+
+  const closeTopicModal = () => {
+    if (topicGenPending) return;
+    setTopicModalAnchor(null);
+  };
+
+  const submitTopicGenerate = async () => {
+    if (topicModalAnchor == null) return;
+    const t = topicDraft.trim();
+    if (t.length < 2) {
+      toast.error('Enter a topic or concept (at least 2 characters).');
+      return;
+    }
+    setTopicGenPending(true);
+    setGeneratingTopicIdx(topicModalAnchor);
+    try {
+      const body = {
+        anchorIndex: topicModalAnchor,
+        topic: t,
+        guidance: topicGuidance.trim() || undefined,
+        difficulty: topicDifficulty === 'inherit' ? undefined : topicDifficulty,
+        questionStyle: topicStyle || undefined,
+      };
+      const res = await examApi.generateQuestionFromTopic(id, body);
+      const { index, question } = res.data;
+      setQuestions((qs) => qs.map((q, i) => (i === index ? question : q)));
+      toast.success('Question updated from topic — review and save when ready.');
+      setTopicModalAnchor(null);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Could not generate question from topic');
+    } finally {
+      setTopicGenPending(false);
+      setGeneratingTopicIdx(null);
     }
   };
 
@@ -416,6 +485,13 @@ export default function EditQuestionsPage() {
                   }
                   handleRegenerate(i);
                 },
+                onGenerateFromTopic: () => {
+                  if (usingMerged) {
+                    toast.error('Generate from topic is not available in multi-set merged review.');
+                    return;
+                  }
+                  openTopicModal(i);
+                },
                 onDelete: () => {
                   if (usingMerged) {
                     toast.error('Cannot remove questions from merged multi-set view.');
@@ -424,6 +500,7 @@ export default function EditQuestionsPage() {
                   removeQuestion(i);
                 },
                 regenerating: usingMerged ? false : regeneratingIdx === i,
+                generatingTopic: usingMerged ? false : generatingTopicIdx === i,
               };
               if (q.type === 'coding') return <CodingQuestionEditor key={i} {...commonProps} />;
               if (q.type === 'descriptive') return <DescriptiveQuestionEditor key={i} {...commonProps} />;
@@ -486,9 +563,13 @@ export default function EditQuestionsPage() {
                   {exam.timePerQuestion ? `${exam.timePerQuestion}s` : (exam.difficulty === 'easy' ? '45s' : exam.difficulty === 'medium' ? '60s' : '90s')}
                 </span>
               </div>
-              <div className="flex items-center gap-2 p-2.5 bg-amber-50/60 dark:bg-amber-900/10 rounded-xl">
-                <Sparkles size={13} className="text-amber-600" />
-                <span className="text-xs text-[var(--color-text-muted)]">Click <Sparkles size={10} className="inline text-amber-600" /> on any question to AI-regenerate it</span>
+              <div className="flex flex-col gap-2 p-2.5 bg-amber-50/60 dark:bg-amber-900/10 rounded-xl">
+                <p className="text-xs text-[var(--color-text-muted)] leading-snug">
+                  <Sparkles size={12} className="inline text-amber-600 shrink-0 mr-1 align-text-bottom" />
+                  <Sparkles size={10} className="inline text-amber-600" /> <strong>Regenerate</strong> replaces this item.
+                  <ListPlus size={10} className="inline text-teal-600 mx-0.5 align-text-bottom" />
+                  <strong>Generate from topic</strong> replaces this slot with a new question for the topic you enter (regenerate still uses the current question as context).
+                </p>
               </div>
               {exam.topics?.length > 0 && (
                 <div className="mt-3">
@@ -525,6 +606,88 @@ export default function EditQuestionsPage() {
             </div>
           </div>
         </div>
+      )}
+
+      {topicModalAnchor != null && questions && (
+        <Modal onClose={closeTopicModal}>
+          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] shadow-xl max-w-md w-full p-4 sm:p-5">
+            <h2 className="text-sm font-bold text-[var(--color-text)] flex items-center gap-2">
+              <ListPlus size={17} className="text-teal-600 shrink-0" aria-hidden />
+              Generate from topic
+            </h2>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+              Replaces question #{topicModalAnchor + 1} with a new{' '}
+              <span className="font-semibold text-[var(--color-text)]">
+                {questions[topicModalAnchor]?.type === 'coding' ? 'coding' : questions[topicModalAnchor]?.type === 'descriptive' ? 'descriptive' : 'MCQ'}
+              </span>{' '}
+              focused on your topic. Other questions stay the same until you save.
+            </p>
+            {exam.sourceResource && (
+              <p className="text-[10px] text-teal-700 dark:text-teal-300/90 bg-teal-50/80 dark:bg-teal-950/40 rounded-lg px-2.5 py-1.5 mt-2 leading-snug">
+                This exam is linked to an uploaded resource — retrieval will prioritize passages related to your topic when possible.
+              </p>
+            )}
+            <div className="mt-3 space-y-3">
+              <div>
+                <label className="label text-xs">Topic / concept / objective</label>
+                <textarea
+                  className="input text-sm w-full resize-y min-h-[64px] py-2"
+                  value={topicDraft}
+                  onChange={(e) => setTopicDraft(e.target.value)}
+                  placeholder="e.g. Photosynthesis, JavaScript closures, Mughal administration…"
+                  maxLength={400}
+                  autoFocus
+                />
+              </div>
+              <div>
+                <label className="label text-xs">Optional guidance</label>
+                <textarea
+                  className="input text-sm w-full resize-y min-h-[52px] py-2"
+                  value={topicGuidance}
+                  onChange={(e) => setTopicGuidance(e.target.value)}
+                  placeholder="e.g. Emphasize misconceptions, include a numeric example…"
+                  maxLength={800}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="label text-xs">Difficulty</label>
+                  <select
+                    className="input text-sm py-1.5"
+                    value={topicDifficulty}
+                    onChange={(e) => setTopicDifficulty(e.target.value)}
+                  >
+                    <option value="inherit">Same as exam ({exam.difficulty})</option>
+                    <option value="easy">Easy</option>
+                    <option value="medium">Medium</option>
+                    <option value="hard">Hard</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="label text-xs">Question style</label>
+                  <select className="input text-sm py-1.5" value={topicStyle} onChange={(e) => setTopicStyle(e.target.value)}>
+                    <option value="">Default</option>
+                    <option value="concept_check">Concept check</option>
+                    <option value="application">Application / scenario</option>
+                  </select>
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-2 mt-4">
+              <button type="button" className="btn-secondary flex-1 text-sm py-2" onClick={closeTopicModal} disabled={topicGenPending}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-primary flex-1 text-sm py-2 disabled:opacity-60"
+                disabled={topicGenPending || topicDraft.trim().length < 2}
+                onClick={() => submitTopicGenerate()}
+              >
+                {topicGenPending ? 'Generating…' : 'Generate question'}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
     </div>
   );

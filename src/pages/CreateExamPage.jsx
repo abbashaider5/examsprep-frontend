@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Loader2, Lock, Mail, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
-import { useEffect, useRef, useState } from 'react';
+import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
@@ -8,6 +8,7 @@ import { z } from 'zod';
 import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
 import HelpTooltip from '../components/HelpTooltip.jsx';
 import Modal from '../components/Modal.jsx';
+import { FEATURE_AI_LISTENING } from '../config/featureFlags.js';
 import { examApi, instructorApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
@@ -366,6 +367,13 @@ export default function CreateExamPage() {
     proctored: false, examType: 'mcq', timePerQuestionInput: '',
     mixedMcqPercent: 50,
     multipleSets: false,
+    includeListeningQuestions: false,
+    listeningQuestionCount: 2,
+    audioReplayMode: 'unlimited',
+    audioReplayMax: 3,
+    listeningVoiceAccent: 'american',
+    listeningNarrationStyle: 'academic',
+    listeningResourceGrounded: true,
   });
   const [advanced, setAdvanced] = useState({
     allowReattempt: false,
@@ -391,6 +399,7 @@ export default function CreateExamPage() {
   const resourceFlowRef = useRef(resourceFlow);
   resourceFlowRef.current = resourceFlow;
   const resourceSuccessDismissRef = useRef(null);
+  const voicePreviewAudioRef = useRef(null);
   const [uploadInFlight, setUploadInFlight] = useState(false);
   const [uploadedResourceStub, setUploadedResourceStub] = useState(null);
   const [myLibraryExpanded, setMyLibraryExpanded] = useState(true);
@@ -400,6 +409,8 @@ export default function CreateExamPage() {
   const [errors, setErrors] = useState({});
   const [createdExam, setCreatedExam] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
+  /** Advanced listening controls: open when enabling listening, or via chevron (preview/configure before enable). */
+  const [listeningSettingsExpanded, setListeningSettingsExpanded] = useState(false);
 
   // Queries for resource dropdowns
   const { data: adminResourcesData, isLoading: adminResLoading } = useQuery({
@@ -478,6 +489,14 @@ export default function CreateExamPage() {
       setUploadedResourceStub(null);
     }
   }, [selectedResourceId, uploadedResourceStub]);
+
+  useEffect(() => {
+    if (source === 'ai') {
+      setForm((f) => ({ ...f, listeningResourceGrounded: false }));
+    } else if (source === 'examprep' || source === 'myresources') {
+      setForm((f) => ({ ...f, listeningResourceGrounded: true }));
+    }
+  }, [source]);
 
   const retryResourceProcessingMut = useMutation({
     mutationFn: (id) => resourceApi.retryProcessing(id),
@@ -621,9 +640,17 @@ export default function CreateExamPage() {
     if (resourceUploadRef.current) resourceUploadRef.current.value = '';
   };
 
+  const [overlayListeningGen, setOverlayListeningGen] = useState(false);
+  const [listenGenTick, setListenGenTick] = useState(0);
+
   const createMut = useMutation({
     mutationFn: (data) => examApi.create(data),
+    onMutate: (variables) => {
+      setOverlayListeningGen(!!(FEATURE_AI_LISTENING && variables?.includeListeningQuestions));
+      setListenGenTick(0);
+    },
     onSuccess: (res) => {
+      setOverlayListeningGen(false);
       qc.invalidateQueries({ queryKey: ['myExams'] });
       qc.invalidateQueries({ queryKey: ['subscription'] });
       qc.invalidateQueries({ queryKey: ['me'] });
@@ -637,8 +664,17 @@ export default function CreateExamPage() {
         navigate(`/exam/${res.data.exam._id}`);
       }
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to create exam'),
+    onError: (err) => {
+      setOverlayListeningGen(false);
+      toast.error(err.response?.data?.message || 'Failed to create exam');
+    },
   });
+
+  useEffect(() => {
+    if (!createMut.isPending || !overlayListeningGen) return undefined;
+    const id = window.setInterval(() => setListenGenTick((t) => t + 1), 2800);
+    return () => clearInterval(id);
+  }, [createMut.isPending, overlayListeningGen]);
 
   useEffect(() => {
     if (!createMut.isPending) return undefined;
@@ -667,6 +703,45 @@ export default function CreateExamPage() {
       );
   const activeResources = source === 'examprep' ? adminResources : myResources;
   const activeResLoading = source === 'examprep' ? adminResLoading : myResLoading;
+
+  const listeningDurEstimate = useMemo(() => {
+    const n = Math.max(1, Math.min(15, Number(form.listeningQuestionCount) || 1));
+    const lo = Math.max(1, Math.round(n * 0.48));
+    const hi = Math.max(lo, Math.round(n * 0.92));
+    return { lo, hi };
+  }, [form.listeningQuestionCount]);
+
+  useEffect(() => {
+    if (advanced.enableCoding || form.examType === 'coding') {
+      setForm((f) => (f.includeListeningQuestions ? { ...f, includeListeningQuestions: false } : f));
+      setListeningSettingsExpanded(false);
+    }
+  }, [advanced.enableCoding, form.examType]);
+
+  const previewVoiceMut = useMutation({
+    mutationFn: () =>
+      examApi.previewListeningVoice({
+        accent: form.listeningVoiceAccent,
+        style: form.listeningNarrationStyle,
+      }),
+    onSuccess: (res) => {
+      const u = res?.data?.dataUrl;
+      if (!u) {
+        toast.error('No preview audio returned');
+        return;
+      }
+      const el = voicePreviewAudioRef.current;
+      if (el) {
+        el.src = u;
+        el.play().catch(() => toast.error('Playback blocked — interact with the page first.'));
+      } else {
+        const a = new Audio(u);
+        a.play().catch(() => {});
+      }
+      toast.success('Playing preview');
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Preview unavailable'),
+  });
 
   const handleSubmit = (e) => {
     e.preventDefault();
@@ -743,6 +818,21 @@ export default function CreateExamPage() {
         expiryDate: advanced.expiryDate || null,
         multipleSets: !!form.multipleSets,
       });
+      if (FEATURE_AI_LISTENING && !advanced.enableCoding && examType !== 'coding') {
+        payload.includeListeningQuestions = !!form.includeListeningQuestions;
+        if (form.includeListeningQuestions) {
+          const lc = Math.min(Number(form.numQuestions) - 1, Math.max(1, Number(form.listeningQuestionCount) || 1));
+          payload.listeningQuestionCount = Math.min(15, lc);
+          payload.audioReplayMode = form.audioReplayMode || 'unlimited';
+          if (form.audioReplayMode === 'limited') {
+            payload.audioReplayMax = Math.max(2, Math.min(20, Number(form.audioReplayMax) || 3));
+          }
+          payload.listeningVoiceAccent = form.listeningVoiceAccent;
+          payload.listeningNarrationStyle = form.listeningNarrationStyle;
+          const canGroundListen = (source === 'examprep' || source === 'myresources') && !!selectedResourceId;
+          payload.listeningResourceGrounded = canGroundListen ? !!form.listeningResourceGrounded : false;
+        }
+      }
     }
     createMut.mutate(payload);
   };
@@ -870,6 +960,198 @@ export default function CreateExamPage() {
                     {errors.mixedMcqPercent && <p className="text-red-500 text-xs">{errors.mixedMcqPercent}</p>}
                   </div>
                 )}
+              </div>
+            )}
+
+            {FEATURE_AI_LISTENING && isInstructor && !advanced.enableCoding && form.examType !== 'coding' && (
+              <div className="relative rounded-xl p-px bg-gradient-to-br from-teal-400/45 via-indigo-400/25 to-violet-500/40 shadow-md shadow-teal-500/8 dark:from-teal-500/20 dark:via-indigo-500/15 dark:to-violet-500/25 dark:shadow-violet-900/15">
+                <div className="relative rounded-[11px] bg-[var(--color-surface)] ring-1 ring-black/[0.04] dark:ring-white/[0.06] overflow-hidden">
+                  <div className="absolute inset-0 rounded-[11px] pointer-events-none bg-gradient-to-br from-teal-500/[0.04] via-transparent to-violet-500/[0.06] dark:from-teal-400/[0.06]" aria-hidden />
+                  <audio ref={voicePreviewAudioRef} className="hidden" preload="none" />
+                  <div className="relative px-2.5 py-2 sm:px-3 sm:py-2.5">
+                    <div className="flex items-center gap-2 sm:gap-2.5">
+                      <div className="shrink-0 w-9 h-9 rounded-xl bg-gradient-to-br from-teal-500/15 to-violet-500/20 flex items-center justify-center text-[var(--color-primary)] border border-teal-500/10 shadow-inner">
+                        <Headphones size={17} strokeWidth={1.75} aria-hidden />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-semibold text-[var(--color-text)] tracking-tight truncate">AI Listening Assessment</h3>
+                          <Sparkles size={12} className="text-violet-500 dark:text-violet-400 shrink-0 opacity-80" aria-hidden />
+                          <FieldHint
+                            placement="bottom"
+                            text="AI-generated items with narration; audio via CAMB.AI, stored securely. Requires CAMB_AI_API_KEY and Cloudinary."
+                          />
+                        </div>
+                        <p className="text-[11px] text-[var(--color-text-muted)] leading-snug truncate sm:whitespace-normal sm:line-clamp-1">
+                          Generate AI-narrated listening questions automatically.
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        checked={form.includeListeningQuestions}
+                        onChange={(e) => {
+                          const on = e.target.checked;
+                          setF('includeListeningQuestions')(on);
+                          setListeningSettingsExpanded(on);
+                        }}
+                      />
+                      <button
+                        type="button"
+                        aria-expanded={listeningSettingsExpanded}
+                        aria-label={listeningSettingsExpanded ? 'Collapse listening settings' : 'Expand listening settings'}
+                        onClick={() => setListeningSettingsExpanded((v) => !v)}
+                        className="shrink-0 p-1 rounded-lg text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:bg-teal-500/10 active:scale-95 transition-all"
+                      >
+                        <ChevronDown size={17} className={`transition-transform duration-300 ease-out ${listeningSettingsExpanded ? 'rotate-180' : ''}`} aria-hidden />
+                      </button>
+                    </div>
+
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-300 ease-out ${listeningSettingsExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                    >
+                      <div className="overflow-hidden min-h-0">
+                        <div
+                          className={`space-y-2 pt-2 mt-2 border-t border-[var(--color-border)]/70 transition-opacity duration-200 ${listeningSettingsExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                        >
+                          <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 justify-between">
+                            <p className="text-[10px] text-[var(--color-text-muted)] tabular-nums">
+                              Est. duration{' '}
+                              <span className="font-semibold text-[var(--color-text)]">
+                                {listeningDurEstimate.lo}–{listeningDurEstimate.hi} min
+                              </span>
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => previewVoiceMut.mutate()}
+                              disabled={previewVoiceMut.isPending}
+                              className="inline-flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg-alt)]/60 text-[var(--color-text-muted)] hover:text-[var(--color-text)] hover:border-teal-400/45 transition-colors disabled:opacity-50"
+                            >
+                              {previewVoiceMut.isPending ? <Loader2 size={12} className="animate-spin" /> : <Mic size={12} />}
+                              Preview voice
+                            </button>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 items-end">
+                            <div className="flex flex-wrap items-end gap-2">
+                              <div>
+                                <label className="block text-[10px] font-medium text-[var(--color-text-muted)] mb-0.5">Items</label>
+                                <input
+                                  type="number"
+                                  className="input text-xs h-8 py-1 w-[4.25rem]"
+                                  min={1}
+                                  max={Math.max(1, Math.min(15, Number(form.numQuestions) - 1))}
+                                  value={form.listeningQuestionCount}
+                                  onChange={(e) => {
+                                    const maxL = Math.max(1, Math.min(15, Number(form.numQuestions) - 1));
+                                    setF('listeningQuestionCount')(Math.min(maxL, Math.max(1, Number(e.target.value) || 1)));
+                                  }}
+                                />
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                                <span className="text-[10px] font-medium text-[var(--color-text-muted)] shrink-0">Replay</span>
+                                <div className="inline-flex rounded-md border border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 p-0.5 gap-px">
+                                  {[
+                                    { id: 'unlimited', label: 'Unlimited' },
+                                    { id: 'once', label: 'Once' },
+                                    { id: 'limited', label: 'Max' },
+                                  ].map((opt) => (
+                                    <button
+                                      key={opt.id}
+                                      type="button"
+                                      onClick={() => setF('audioReplayMode')(opt.id)}
+                                      className={`px-2 sm:px-2.5 py-1 rounded-[5px] text-[10px] font-semibold transition-all ${
+                                        form.audioReplayMode === opt.id
+                                          ? 'bg-teal-500/15 text-teal-800 dark:text-teal-100 shadow-sm ring-1 ring-teal-400/25'
+                                          : 'text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
+                                      }`}
+                                    >
+                                      {opt.label}
+                                    </button>
+                                  ))}
+                                </div>
+                                {form.audioReplayMode === 'limited' && (
+                                  <input
+                                    type="number"
+                                    title="Max plays"
+                                    className="input text-[10px] h-8 w-10 py-0 px-1 text-center tabular-nums"
+                                    min={2}
+                                    max={20}
+                                    value={form.audioReplayMax}
+                                    onChange={(e) => setF('audioReplayMax')(Math.max(2, Math.min(20, Number(e.target.value) || 3)))}
+                                  />
+                                )}
+                              </div>
+                            </div>
+                            <div className="flex flex-col gap-1 min-w-0">
+                              <span className="text-[10px] font-medium text-[var(--color-text-muted)]">Accent</span>
+                              <div className="flex flex-wrap gap-1">
+                                {[
+                                  { id: 'american', label: 'US', title: 'American English' },
+                                  { id: 'british', label: 'UK', title: 'British English' },
+                                  { id: 'indian', label: 'IN', title: 'Indian English' },
+                                ].map((a) => (
+                                  <button
+                                    key={a.id}
+                                    type="button"
+                                    title={a.title}
+                                    onClick={() => setF('listeningVoiceAccent')(a.id)}
+                                    className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
+                                      form.listeningVoiceAccent === a.id
+                                        ? 'border-teal-400/80 bg-teal-50 dark:bg-teal-950/40 text-teal-900 dark:text-teal-100'
+                                        : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-teal-400/40'
+                                    }`}
+                                  >
+                                    {a.label}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div>
+                            <span className="text-[10px] font-medium text-[var(--color-text-muted)]">Style</span>
+                            <div className="flex flex-wrap gap-1 mt-0.5">
+                              {[
+                                { id: 'formal', label: 'Formal' },
+                                { id: 'conversational', label: 'Casual' },
+                                { id: 'academic', label: 'Academic' },
+                                { id: 'kids_friendly', label: 'Kids' },
+                              ].map((s) => (
+                                <button
+                                  key={s.id}
+                                  type="button"
+                                  title={s.id === 'conversational' ? 'Conversational' : s.id === 'kids_friendly' ? 'Kids friendly' : s.label}
+                                  onClick={() => setF('listeningNarrationStyle')(s.id)}
+                                  className={`px-2 py-0.5 rounded-md text-[10px] font-semibold border transition-all ${
+                                    form.listeningNarrationStyle === s.id
+                                      ? 'border-violet-400/70 bg-violet-50 dark:bg-violet-950/40 text-violet-900 dark:text-violet-100'
+                                      : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-violet-400/40'
+                                  }`}
+                                >
+                                  {s.label}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+
+                          {(source === 'examprep' || source === 'myresources') && selectedResourceId && (
+                            <label className="flex items-start gap-2 cursor-pointer rounded-lg border border-[var(--color-border)]/70 px-2 py-1.5 hover:border-teal-400/35 transition-colors">
+                              <input
+                                type="checkbox"
+                                className="mt-0.5 rounded accent-[var(--color-primary)] shrink-0"
+                                checked={!!form.listeningResourceGrounded}
+                                onChange={(e) => setF('listeningResourceGrounded')(e.target.checked)}
+                              />
+                              <span className="text-[10px] leading-snug text-[var(--color-text)]">
+                                <span className="font-semibold">Ground in resource</span>
+                                <span className="text-[var(--color-text-muted)]"> — align narration with your uploaded material.</span>
+                              </span>
+                            </label>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1973,7 +2255,15 @@ export default function CreateExamPage() {
                   Your test is being generated
                 </h2>
                 <p className="text-sm text-[var(--color-text-muted)] leading-relaxed max-w-sm mx-auto mb-10">
-                  Our AI is composing questions to match your topic, difficulty, and format. This may take up to a minute — please keep this page open.
+                  {overlayListeningGen
+                    ? [
+                        'Generating listening exercises…',
+                        'Creating AI narration…',
+                        'Preparing educational audio…',
+                        'Generating comprehension content…',
+                        'Finalizing audio questions…',
+                      ][listenGenTick % 5]
+                    : 'Our AI is composing questions to match your topic, difficulty, and format. This may take up to a minute — please keep this page open.'}
                 </p>
 
                 <div className="flex justify-center gap-2">

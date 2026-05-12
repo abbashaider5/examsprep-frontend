@@ -9,6 +9,8 @@ import {
   ChevronRight,
   Clock,
   Flag,
+  Headphones,
+  Pause,
   Lightbulb,
   Loader,
   Lock,
@@ -26,6 +28,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { FaceDetector, FaceLandmarker, FilesetResolver, ObjectDetector } from '@mediapipe/tasks-vision';
 import toast from 'react-hot-toast';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
+import { FEATURE_AI_LISTENING } from '../config/featureFlags.js';
 import { examApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import ProctoringConsentModal from '../components/ProctoringConsentModal.jsx';
@@ -65,6 +68,12 @@ export default function ExamPage() {
   const [acknowledged, setAcknowledged] = useState(false);
   const [proctoringConsentAccepted, setProctoringConsentAccepted] = useState(false);
   const [showProctoringConsentModal, setShowProctoringConsentModal] = useState(false);
+  const [listeningAudioSrc, setListeningAudioSrc] = useState('');
+  const [listeningAudioLoading, setListeningAudioLoading] = useState(false);
+  const [listeningProgress, setListeningProgress] = useState(0);
+  const [listeningPlayInfo, setListeningPlayInfo] = useState({ playsUsed: null, playsMax: null });
+  const [listenPlaying, setListenPlaying] = useState(false);
+  const listeningAudioRef = useRef(null);
 
   // Preflight state
   const [cameraReady, setCameraReady] = useState(false);
@@ -402,6 +411,56 @@ export default function ExamPage() {
       }
     }
   }, [data, phase, isPractice, examQueryEnabled]);
+
+  useEffect(() => {
+    setListenPlaying(false);
+    if (!exam?.questions?.length) return;
+    if (!FEATURE_AI_LISTENING) {
+      setListeningProgress(0);
+      setListeningAudioSrc('');
+      setListeningPlayInfo({ playsUsed: null, playsMax: null });
+      const el = listeningAudioRef.current;
+      if (el) {
+        try {
+          el.pause();
+          el.currentTime = 0;
+        } catch {
+          /* ignore */
+        }
+      }
+      return;
+    }
+    const qq = exam.questions[current];
+    setListeningProgress(0);
+    const el = listeningAudioRef.current;
+    if (el) {
+      try {
+        el.pause();
+        el.currentTime = 0;
+      } catch {
+        /* ignore */
+      }
+    }
+    if (!qq?.isAudioQuestion) {
+      setListeningAudioSrc('');
+      setListeningPlayInfo({ playsUsed: null, playsMax: null });
+      setListenPlaying(false);
+      return;
+    }
+    if (qq.audioUrl && !qq.audioRequiresToken) {
+      setListeningAudioSrc(qq.audioUrl);
+      setListeningPlayInfo({
+        playsUsed: null,
+        playsMax: typeof qq.replayLimit === 'number' ? qq.replayLimit : null,
+      });
+    } else {
+      setListeningAudioSrc('');
+      setListeningPlayInfo({
+        playsUsed: null,
+        playsMax: typeof qq.replayLimit === 'number' ? qq.replayLimit : null,
+      });
+    }
+  }, [exam, current, id]);
 
   useEffect(() => {
     setProctoringConsentAccepted(false);
@@ -1434,6 +1493,39 @@ export default function ExamPage() {
     setPhase('exam');
   };
 
+  const handleListeningToggle = async () => {
+    if (!FEATURE_AI_LISTENING) return;
+    if (!exam?.questions?.length) return;
+    const qq = exam.questions[current];
+    if (!qq?.isAudioQuestion) return;
+    const el = listeningAudioRef.current;
+    if (el && !el.paused) {
+      el.pause();
+      return;
+    }
+    if (qq.audioUrl && !qq.audioRequiresToken) {
+      try {
+        await el?.play();
+      } catch {
+        toast.error('Unable to start playback.');
+      }
+      return;
+    }
+    if (listeningAudioLoading) return;
+    setListeningAudioLoading(true);
+    try {
+      const { data } = await examApi.issueAudioAccess(id, { questionIndex: current });
+      setListeningAudioSrc(data.url);
+      setListeningPlayInfo({ playsUsed: data.playsUsed, playsMax: data.playsMax });
+      await new Promise((r) => setTimeout(r, 50));
+      await listeningAudioRef.current?.play();
+    } catch (e) {
+      toast.error(e.response?.data?.message || 'Could not load audio');
+    } finally {
+      setListeningAudioLoading(false);
+    }
+  };
+
   const handleAnswer = (i) => {
     setAnswers(a => ({ ...a, [current]: i }));
     if (isPractice) setRevealedAnswers(r => new Set([...r, current]));
@@ -2164,6 +2256,78 @@ export default function ExamPage() {
                 </button>
               )}
             </div>
+
+            {FEATURE_AI_LISTENING && q.isAudioQuestion && (
+              <div className="mb-5 rounded-2xl border border-[var(--color-border)] bg-gradient-to-br from-slate-50/90 to-[var(--color-bg-alt)] dark:from-slate-900/35 dark:to-[var(--color-bg-alt)]/50 p-4 sm:p-5">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="shrink-0 w-10 h-10 rounded-xl bg-[var(--color-primary)]/12 text-[var(--color-primary)] flex items-center justify-center">
+                      <Headphones size={18} aria-hidden />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">Listening</p>
+                      <p className="text-sm text-[var(--color-text)] font-medium leading-snug">
+                        {(q.listeningExerciseType || 'passage').replace(/_/g, ' ')}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-[var(--color-text-muted)] tabular-nums text-right shrink-0 leading-tight">
+                    {listeningPlayInfo.playsMax != null ? (
+                      <>
+                        {listeningPlayInfo.playsUsed != null ? (
+                          <span className="block font-semibold text-[var(--color-text)]">{listeningPlayInfo.playsUsed} / {listeningPlayInfo.playsMax} plays</span>
+                        ) : (
+                          <span className="block">Max {listeningPlayInfo.playsMax} plays</span>
+                        )}
+                      </>
+                    ) : (
+                      <span className="block">Unlimited replay</span>
+                    )}
+                  </div>
+                </div>
+                <audio
+                  ref={listeningAudioRef}
+                  src={listeningAudioSrc || undefined}
+                  preload="metadata"
+                  className="hidden"
+                  onPlay={() => setListenPlaying(true)}
+                  onPause={() => setListenPlaying(false)}
+                  onTimeUpdate={(e) => {
+                    const a = e.currentTarget;
+                    if (!a.duration || !Number.isFinite(a.duration)) return;
+                    setListeningProgress((a.currentTime / a.duration) * 100);
+                  }}
+                  onEnded={() => setListeningProgress(100)}
+                />
+                <div className="flex flex-col sm:flex-row sm:items-center gap-3">
+                  <button
+                    type="button"
+                    onClick={handleListeningToggle}
+                    disabled={listeningAudioLoading}
+                    className="inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold bg-[var(--color-primary)] text-white shadow-sm hover:opacity-95 disabled:opacity-50 shrink-0"
+                  >
+                    {listeningAudioLoading ? (
+                      <><Loader size={16} className="animate-spin" /> Preparing…</>
+                    ) : listenPlaying ? (
+                      <><Pause size={16} /> Pause</>
+                    ) : (
+                      <><Play size={16} /> Play audio</>
+                    )}
+                  </button>
+                  <div className="flex-1 min-w-0">
+                    <div className="h-1.5 rounded-full bg-[var(--color-border)] overflow-hidden">
+                      <div
+                        className="h-full rounded-full bg-[var(--color-primary)]/90 transition-[width] duration-150"
+                        style={{ width: `${listeningProgress}%` }}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-3 leading-snug">
+                  Listen carefully before answering. If playback fails, check your connection and try Play again.
+                </p>
+              </div>
+            )}
 
             {/* Question Card */}
             <div className="card mb-6 border-l-4 border-l-[var(--color-primary)]">
