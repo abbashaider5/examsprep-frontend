@@ -19,6 +19,7 @@ import toast from 'react-hot-toast';
 import { Link, Outlet, useLocation, useSearchParams } from 'react-router-dom';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 import AnnouncementBanner from '../components/AnnouncementBanner.jsx';
+import LegalFooterLinks from '../components/LegalFooterLinks.jsx';
 import FeedbackModal from '../components/FeedbackModal.jsx';
 import HelpSearch from '../components/HelpSearch.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
@@ -632,6 +633,10 @@ export default function DashboardLayout() {
         <main className="flex-1 overflow-y-auto">
           <Outlet />
         </main>
+
+        <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface)]/90 px-3 py-2">
+          <LegalFooterLinks className="max-w-4xl mx-auto" />
+        </footer>
       </div>
 
       {showFeedback && (

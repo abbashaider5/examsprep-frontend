@@ -2,6 +2,7 @@ import { Award, Moon, ShieldCheck, Sparkles, Sun } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import LegalFooterLinks from '../components/LegalFooterLinks.jsx';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
@@ -134,6 +135,9 @@ export default function AuthLayout() {
           <p className="text-center text-xs text-[var(--color-text-muted)] mt-6">
             Free forever &middot; No credit card needed &middot; 10,000+ learners
           </p>
+          <div className="mt-4 pb-2">
+            <LegalFooterLinks />
+          </div>
         </div>
       </div>
 

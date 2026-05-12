@@ -28,6 +28,7 @@ import toast from 'react-hot-toast';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { examApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import ProctoringConsentModal from '../components/ProctoringConsentModal.jsx';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import { playWarningAudio } from '../utils/warningAudio.js';
 
@@ -62,6 +63,8 @@ export default function ExamPage() {
   const [revealedAnswers, setRevealedAnswers] = useState(new Set());
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [proctoringConsentAccepted, setProctoringConsentAccepted] = useState(false);
+  const [showProctoringConsentModal, setShowProctoringConsentModal] = useState(false);
 
   // Preflight state
   const [cameraReady, setCameraReady] = useState(false);
@@ -182,6 +185,7 @@ export default function ExamPage() {
   const qSegmentStartRef = useRef(null);
   const lastQuestionIdxRef = useRef(0);
   const phaseWasExamRef = useRef(false);
+  const pendingAfterConsentRef = useRef(null);
   const audioMonitorIntervalRef = useRef(null);
   const audioStreamRef = useRef(null);
   const audioContextRef = useRef(null);
@@ -398,6 +402,12 @@ export default function ExamPage() {
       }
     }
   }, [data, phase, isPractice, examQueryEnabled]);
+
+  useEffect(() => {
+    setProctoringConsentAccepted(false);
+    setShowProctoringConsentModal(false);
+    pendingAfterConsentRef.current = null;
+  }, [id]);
 
   // ── Submit (stale-closure-safe via refs) ──────────────────
   const submitMut = useMutation({
@@ -1397,7 +1407,29 @@ export default function ExamPage() {
     });
   }, []);
 
+  const handleProctoringConsentAccept = useCallback(() => {
+    setProctoringConsentAccepted(true);
+    setShowProctoringConsentModal(false);
+    const next = pendingAfterConsentRef.current;
+    pendingAfterConsentRef.current = null;
+    if (next === 'instructions') setPhase('instructions');
+    else if (next === 'exam') {
+      startedAt.current = Date.now();
+      setPhase('exam');
+    }
+  }, []);
+
+  const handleProctoringConsentModalClose = useCallback(() => {
+    setShowProctoringConsentModal(false);
+    pendingAfterConsentRef.current = null;
+  }, []);
+
   const startExam = () => {
+    if (!isPractice && isProctoredExam && !proctoringConsentAccepted) {
+      pendingAfterConsentRef.current = 'exam';
+      setShowProctoringConsentModal(true);
+      return;
+    }
     startedAt.current = Date.now();
     setPhase('exam');
   };
@@ -1752,7 +1784,15 @@ export default function ExamPage() {
                   <ChevronLeft size={14} /> Cancel
                 </button>
                 <button
-                  onClick={() => setPhase('instructions')}
+                  onClick={() => {
+                    if (!allReady) return;
+                    if (!isPractice && isProctoredExam && !proctoringConsentAccepted) {
+                      pendingAfterConsentRef.current = 'instructions';
+                      setShowProctoringConsentModal(true);
+                      return;
+                    }
+                    setPhase('instructions');
+                  }}
                   disabled={!allReady}
                   className="btn-primary flex-1 py-2 text-xs flex items-center justify-center gap-1.5 disabled:opacity-50"
                 >
@@ -1810,6 +1850,11 @@ export default function ExamPage() {
             </div>
           </div>
         </div>
+        <ProctoringConsentModal
+          open={showProctoringConsentModal}
+          onClose={handleProctoringConsentModalClose}
+          onAccept={handleProctoringConsentAccept}
+        />
       </div>
     );
   }
@@ -1933,6 +1978,11 @@ export default function ExamPage() {
             </button>
           </div>
         </div>
+        <ProctoringConsentModal
+          open={showProctoringConsentModal}
+          onClose={handleProctoringConsentModalClose}
+          onAccept={handleProctoringConsentAccept}
+        />
       </div>
     );
   }

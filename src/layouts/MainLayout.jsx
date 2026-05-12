@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { useAuth } from '../hooks/useAuth.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
+import { LEGAL_ALL_PAGES } from '../config/legalLinks.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
@@ -116,7 +117,7 @@ export default function MainLayout() {
 
       <footer className="border-t border-[var(--color-border)] bg-[var(--color-surface)] py-12 mt-16">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="grid grid-cols-1 md:grid-cols-4 gap-8 mb-8">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 mb-8">
             <div>
               <div className="flex items-center gap-2 text-[var(--color-primary)] font-bold mb-3">
                 <img src={likhitaiLogo} alt="LikhitAI" className="h-7 w-auto" />
@@ -142,14 +143,11 @@ export default function MainLayout() {
                 ))}
               </div>
             </div>
-            <div>
-              <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Support & Legal</p>
-              <div className="space-y-2">
-                {[
-                  { to: '/contact', label: 'Contact Us' },
-                  { to: '/privacy', label: 'Privacy Policy' },
-                  { to: '/terms', label: 'Terms & Conditions' },
-                ].map(l => (
+            <div className="md:col-span-1">
+              <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Legal &amp; compliance</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                <Link to="/contact" className="block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Contact (product)</Link>
+                {LEGAL_ALL_PAGES.map((l) => (
                   <Link key={l.to} to={l.to} className="block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{l.label}</Link>
                 ))}
               </div>
@@ -157,9 +155,13 @@ export default function MainLayout() {
           </div>
           <div className="border-t border-[var(--color-border)] pt-6 flex flex-col md:flex-row items-center justify-between gap-3">
             <p className="text-xs text-[var(--color-text-muted)]">© {new Date().getFullYear()} LikhitAI. All rights reserved.</p>
-            <div className="flex items-center gap-4">
-              <Link to="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Privacy Policy</Link>
-              <Link to="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Terms & Conditions</Link>
+            <div className="flex flex-wrap items-center justify-center gap-x-4 gap-y-1">
+              <Link to="/privacy" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Privacy</Link>
+              <Link to="/terms" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Terms</Link>
+              <Link to="/legal/refunds" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Refunds</Link>
+              <Link to="/legal/cookies" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Cookies</Link>
+              <Link to="/legal/ai-proctoring" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">AI Proctoring</Link>
+              <Link to="/legal/contact" className="text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">Legal contact</Link>
             </div>
           </div>
         </div>

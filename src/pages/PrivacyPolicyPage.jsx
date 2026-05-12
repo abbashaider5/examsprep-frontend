@@ -1,92 +1,119 @@
-import { Shield } from 'lucide-react';
+import { Link } from 'react-router-dom';
+import LegalPageShell from '../components/LegalPageShell.jsx';
+import { LEGAL_PRIVACY_EMAIL, SUPPORT_EMAIL } from '../config/legalContact.js';
+import { SCREENSHOT_RETENTION_DAYS } from '../utils/screenshotRetention.js';
 
 export default function PrivacyPolicyPage() {
   return (
-    <div className="bg-[var(--color-bg)] animate-fade-in">
-      <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-16">
-        {/* Header */}
-        <div className="mb-10">
-          <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
-            <Shield size={13} /> Legal
-          </div>
-          <h1 className="text-3xl font-extrabold text-[var(--color-text)] mb-2">Privacy Policy</h1>
-          <p className="text-[var(--color-text-muted)] text-sm">Last updated: April 2026</p>
-        </div>
+    <LegalPageShell
+      title="Privacy Policy"
+      description="How LikhitAI collects, uses, and protects student, instructor, and enterprise data—including AI proctoring, retention, and your rights."
+    >
+      <section>
+        <h2>1. Who we are</h2>
+        <p>
+          LikhitAI provides an AI-powered examination and learning platform for individuals, educators, and organizations. This Privacy Policy explains what personal data we process, why, how long we keep it, and your choices.
+        </p>
+      </section>
 
-        <div className="prose-like space-y-8 text-[var(--color-text)]">
+      <section>
+        <h2>2. Data we collect — students & candidates</h2>
+        <ul>
+          <li><strong>Account and profile:</strong> name, email, authentication identifiers, optional profile fields, and activity tied to your user ID.</li>
+          <li><strong>Exam activity:</strong> answers, scores, timing, flags, device/browser context needed to run exams, and proctoring signals described below.</li>
+          <li><strong>AI proctoring (when an exam is configured as proctored):</strong> camera frames are analyzed in-session for integrity (e.g. face visibility, multiple faces, certain objects where object detection is enabled). Microphone audio may be analyzed for noise/voice-activity indicators when enabled. We detect tab visibility changes, fullscreen state, window focus, and certain input patterns (e.g. blocked shortcuts) to support exam rules.</li>
+          <li><strong>Screenshot evidence:</strong> where enabled by the exam author, still images may be captured and stored in connection with serious integrity events—not for every minor on-screen reminder.</li>
+          <li><strong>Soft vs hard signals:</strong> gentle in-exam reminders (for example, prompts to re-center your face) are shown live and are <strong>not stored</strong> as proctoring timeline events and <strong>do not</strong> create screenshot evidence. Serious or policy-relevant events may be logged for instructor/organization review.</li>
+          <li><strong>Screenshot retention:</strong> stored proctoring screenshots are automatically deleted after approximately <strong>{SCREENSHOT_RETENTION_DAYS} days</strong>. Separate analytics and result records may be retained as described in our <Link to="/legal/data-retention">Data Retention Policy</Link>.</li>
+        </ul>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">1. Information We Collect</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              When you create an account, we collect your name, email address, and password (hashed). When you take exams, we store your answers, scores, and time taken. If proctoring is enabled, we may capture webcam snapshots during the exam session. Payment information is processed securely by Razorpay — we do not store your card details.
-            </p>
-          </section>
+      <section>
+        <h2>3. Data we collect — teachers, instructors, principals</h2>
+        <ul>
+          <li><strong>Account and billing context:</strong> name, email, role, plan, usage counters, and enterprise linkage where applicable.</li>
+          <li><strong>Content you create:</strong> exams, questions, invites, resources, batch/class configuration, tickets, and communications you send through the platform.</li>
+          <li><strong>Enterprise administration:</strong> for organization accounts, we process roster-related data you submit (e.g. class lists, student emails for invites) strictly to operate features you enable.</li>
+          <li><strong>Review data:</strong> proctoring timelines and evidence made available to you for exams you own or administer, subject to permissions and enterprise settings.</li>
+        </ul>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">2. How We Use Your Information</h2>
-            <ul className="text-[var(--color-text-muted)] text-sm space-y-1.5 list-disc list-inside leading-relaxed">
-              <li>To provide, maintain, and improve the platform.</li>
-              <li>To generate and display your exam results and certificates.</li>
-              <li>To send transactional emails (OTP, results, payment receipts).</li>
-              <li>To display personalised AI study recommendations.</li>
-              <li>To detect and prevent fraud or misuse.</li>
-            </ul>
-          </section>
+      <section>
+        <h2>4. Enterprise and school isolation</h2>
+        <p>
+          Where your organization uses LikhitAI Enterprise features, we design access controls so organization-scoped data is available to authorized roles within that organization (for example, principals and assigned instructors) according to your configuration. We do not use one customer&apos;s confidential exam content to train public models or to advertise to other customers.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">3. Data Storage & Security</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              Your data is stored on MongoDB Atlas with encryption at rest. Passwords are bcrypt-hashed and never stored in plain text. Access tokens are short-lived and transmitted over HTTPS only. We follow OWASP security best practices and perform regular dependency audits.
-            </p>
-          </section>
+      <section>
+        <h2>5. Authentication, sessions, and security</h2>
+        <p>
+          We use industry-standard authentication mechanisms, including HttpOnly cookies where applicable for session continuity, transport encryption (HTTPS), password hashing, rate limiting, and administrative tooling to detect abuse. Security monitoring may process metadata (e.g. IP addresses, timestamps, error signals) needed to protect accounts and the service.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">4. Cookies</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              We use HttpOnly, Secure cookies to manage authentication sessions (access token and refresh token). These are essential for the platform to function and cannot be disabled. We do not use advertising or tracking cookies.
-            </p>
-          </section>
+      <section>
+        <h2>6. Analytics and product improvement</h2>
+        <p>
+          We may use aggregated or de-identified usage metrics (e.g. feature adoption, performance timings) to operate and improve LikhitAI. We do not sell personal data. Marketing communications, if any, are sent in line with applicable law and your preferences.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">5. Third-Party Services</h2>
-            <ul className="text-[var(--color-text-muted)] text-sm space-y-1.5 list-disc list-inside leading-relaxed">
-              <li><strong>Razorpay</strong> — payment processing (PCI-DSS compliant).</li>
-              <li><strong>Groq AI</strong> — exam question generation (no personal data is sent).</li>
-              <li><strong>Resend</strong> — transactional email delivery.</li>
-              <li><strong>MongoDB Atlas</strong> — cloud database hosting.</li>
-            </ul>
-          </section>
+      <section>
+        <h2>7. Chat and communications moderation</h2>
+        <p>
+          Where in-product chat is offered, automated and human moderation may process message content to enforce <Link to="/legal/acceptable-use">Acceptable Use</Link>, safety, and enterprise policies. See also our Terms regarding prohibited conduct.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">6. Data Retention</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              We retain your account data for as long as your account is active. Exam results and certificates are kept indefinitely so you can access them at any time. You may request deletion of your account and all associated data by contacting us at the email below.
-            </p>
-          </section>
+      <section>
+        <h2>8. Third-party processors</h2>
+        <p>
+          We rely on vetted infrastructure and service providers (for example, cloud hosting, email delivery, payments, media storage, and AI inference) to deliver the platform. Contracts and configuration aim to limit processing to what is necessary for each service.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">7. Your Rights</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              You have the right to access, correct, or delete your personal data. To exercise these rights, contact us using the information below. We will respond within 30 days.
-            </p>
-          </section>
+      <section>
+        <h2>9. Your rights and account deletion</h2>
+        <p>
+          Depending on your location, you may have rights to access, rectify, export, restrict, or delete personal data, and to object to certain processing. To exercise rights or request account deletion, contact <a href={`mailto:${LEGAL_PRIVACY_EMAIL}`}>{LEGAL_PRIVACY_EMAIL}</a> or use <Link to="/legal/contact">Contact &amp; grievance</Link>. We will verify requests and respond within reasonable timelines (typically up to 30 days for standard requests, subject to legal exceptions).
+        </p>
+        <p>
+          Deletion may be limited where we must retain certain records for security, billing disputes, or legal compliance. Enterprise accounts may require coordination with your organization&apos;s administrator.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">8. Changes to This Policy</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              We may update this Privacy Policy from time to time. When we do, we will update the "Last updated" date at the top of this page. Continued use of the platform after changes constitutes acceptance.
-            </p>
-          </section>
+      <section>
+        <h2>10. International transfers</h2>
+        <p>
+          Our service providers may process data in multiple regions. We implement appropriate safeguards consistent with applicable law and vendor arrangements.
+        </p>
+      </section>
 
-          <section>
-            <h2 className="text-lg font-bold mb-2">9. Contact Us</h2>
-            <p className="text-[var(--color-text-muted)] leading-relaxed text-sm">
-              For privacy-related questions or data requests, contact us via the <a href="/contact" className="text-[var(--color-primary)] hover:underline">Contact page</a> or connect with Abbas Haider on <a href="https://www.linkedin.com/in/abbashaider14/" target="_blank" rel="noopener noreferrer" className="text-[var(--color-primary)] hover:underline">LinkedIn</a>.
-            </p>
-          </section>
+      <section>
+        <h2>11. Children</h2>
+        <p>
+          LikhitAI is intended for educational use under appropriate institutional supervision. Schools and enterprises are responsible for obtaining any required parental or guardian consent for minors, consistent with local law.
+        </p>
+      </section>
 
-        </div>
-      </div>
-    </div>
+      <section>
+        <h2>12. Changes</h2>
+        <p>
+          We may update this Privacy Policy. Material changes will be reflected by the &quot;Last updated&quot; date and, where appropriate, additional notice in-product.
+        </p>
+      </section>
+
+      <section>
+        <h2>13. Contact</h2>
+        <p>
+          Privacy inquiries: <a href={`mailto:${LEGAL_PRIVACY_EMAIL}`}>{LEGAL_PRIVACY_EMAIL}</a>
+          <br />
+          General support: <a href={`mailto:${SUPPORT_EMAIL}`}>{SUPPORT_EMAIL}</a>
+          <br />
+          <Link to="/legal/contact">Legal, privacy &amp; grievance desk</Link>
+        </p>
+      </section>
+    </LegalPageShell>
   );
 }

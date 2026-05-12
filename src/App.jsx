@@ -38,7 +38,15 @@ import MaintenancePage from './pages/MaintenancePage.jsx';
 import NotFoundPage from './pages/NotFoundPage.jsx';
 import NotificationDetailPage from './pages/NotificationDetailPage.jsx';
 import PricingPage from './pages/PricingPage.jsx';
+import AcceptableUsePolicyPage from './pages/AcceptableUsePolicyPage.jsx';
+import AiProctoringConsentPolicyPage from './pages/AiProctoringConsentPolicyPage.jsx';
+import CookiePolicyPage from './pages/CookiePolicyPage.jsx';
+import DataRetentionPolicyPage from './pages/DataRetentionPolicyPage.jsx';
+import EnterpriseDataSecurityPage from './pages/EnterpriseDataSecurityPage.jsx';
+import LegalContactGrievancePage from './pages/LegalContactGrievancePage.jsx';
 import PrivacyPolicyPage from './pages/PrivacyPolicyPage.jsx';
+import RefundCancellationPolicyPage from './pages/RefundCancellationPolicyPage.jsx';
+import StudentMonitoringDisclosurePage from './pages/StudentMonitoringDisclosurePage.jsx';
 import ProfilePage from './pages/ProfilePage.jsx';
 import PlanPage from './pages/PlanPage.jsx';
 import SettingsPage from './pages/SettingsPage.jsx';
@@ -115,6 +123,14 @@ export default function App() {
           <Route path="pricing" element={<PricingPage />} />
           <Route path="privacy" element={<PrivacyPolicyPage />} />
           <Route path="terms" element={<TermsPage />} />
+          <Route path="legal/refunds" element={<RefundCancellationPolicyPage />} />
+          <Route path="legal/cookies" element={<CookiePolicyPage />} />
+          <Route path="legal/ai-proctoring" element={<AiProctoringConsentPolicyPage />} />
+          <Route path="legal/data-retention" element={<DataRetentionPolicyPage />} />
+          <Route path="legal/acceptable-use" element={<AcceptableUsePolicyPage />} />
+          <Route path="legal/student-monitoring" element={<StudentMonitoringDisclosurePage />} />
+          <Route path="legal/enterprise-security" element={<EnterpriseDataSecurityPage />} />
+          <Route path="legal/contact" element={<LegalContactGrievancePage />} />
           <Route path="verify/:certId" element={<VerifyCertPage />} />
         </Route>
 

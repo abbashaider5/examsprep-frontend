@@ -4,6 +4,7 @@ import HelpSearch from '../components/HelpSearch.jsx';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
+import LegalFooterLinks from '../components/LegalFooterLinks.jsx';
 
 export default function HelpLayout() {
   const { isAuthenticated, user } = useAuthStore();
@@ -49,6 +50,9 @@ export default function HelpLayout() {
       <main className="flex-1">
         <Outlet />
       </main>
+      <footer className="shrink-0 border-t border-[var(--color-border)] bg-[var(--color-surface)] py-3 px-4">
+        <LegalFooterLinks />
+      </footer>
     </div>
   );
 }
