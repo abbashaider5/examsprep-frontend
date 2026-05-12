@@ -1590,6 +1590,11 @@ function ResourcesTab({ group }) {
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !title.trim()) return toast.error('Title and file are required');
+    const n = (file.name || '').toLowerCase();
+    if (n.endsWith('.pdf') || file.type === 'application/pdf') {
+      toast.error('PDF isn’t supported. Save as Word (.docx) and upload again.');
+      return;
+    }
     setUploading(true);
     try {
       const { data: res } = await resourceApi.upload(file, title.trim(), group._id);
@@ -1630,7 +1635,7 @@ function ResourcesTab({ group }) {
           <input
             ref={fileInputRef}
             type="file"
-            accept=".pdf,.doc,.docx"
+            accept=".doc,.docx,.ppt,.pptx,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,text/plain"
             className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-sm file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
             onChange={e => setFile(e.target.files?.[0] || null)}
           />

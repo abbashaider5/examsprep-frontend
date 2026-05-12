@@ -73,9 +73,10 @@ function resourceFailureFriendly(payload) {
   const code = payload?.error?.code ?? payload?.processingErrorCode;
   const msg = payload?.error?.message ?? payload?.processingErrorMessage ?? '';
   const map = {
-    UNSUPPORTED_FILE: 'This file type isn’t supported. Use PDF, DOCX, PPTX, or TXT.',
+    PDF_NOT_SUPPORTED: 'PDF isn’t supported. Save as Word (.docx) and upload that file instead.',
+    UNSUPPORTED_FILE: 'This file type isn’t supported. Use DOCX, PPTX, or TXT.',
     LEGACY_PPT: 'Older .ppt files aren’t supported. Save as .pptx and upload again.',
-    NO_TEXT: 'We couldn’t read enough text. Try a text-based PDF or editable document (not a scan).',
+    NO_TEXT: 'We couldn’t read enough text. Try an editable Word document or other text-based file (not a scan).',
     EXTRACTION_FAILED: 'We couldn’t read this file. Try another export or format.',
     CHUNK_FAILED: 'We couldn’t split this document into study segments.',
     AI_INDEXING_FAILED: 'AI indexing didn’t complete. You can retry in a moment.',
@@ -525,6 +526,10 @@ export default function CreateExamPage() {
       return;
     }
     const ext = fileExtension(file);
+    if (ext === 'pdf' || (file.type && file.type.toLowerCase() === 'application/pdf')) {
+      toast.error('PDF isn’t supported. Save as Word (.docx) and upload that file instead.');
+      return;
+    }
     setUploadInFlight(true);
     setResourceFlow({
       open: true,
@@ -959,7 +964,7 @@ export default function CreateExamPage() {
                   Question Generate Source
                   <FieldHint
                     placement="bottom"
-                    text="Web: general AI knowledge. LikhitAI Resources: curated documents. My Resources: your uploads. Resource modes analyse the file to build questions."
+                    text="Web: general AI knowledge. LikhitAI Resources: curated documents. My Resources: your uploads (DOCX, PPTX, or TXT — not PDF). Resource modes analyse the file to build questions."
                   />
                 </label>
 
@@ -987,22 +992,6 @@ export default function CreateExamPage() {
 
                 {source === 'myresources' && isInstructor && (
                   <div className="mt-3 space-y-2">
-                    {(pickedUploadFile || (resourceFlow.open && resourceFlow.fileLabel)) && (
-                      <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-800/40 bg-emerald-50/95 dark:bg-emerald-950/25 px-3 py-2.5 shadow-sm ring-1 ring-emerald-500/15">
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">Chosen file</p>
-                        <p className="text-sm font-semibold text-[var(--color-text)] truncate mt-0.5" title={pickedUploadFile?.name || resourceFlow.fileLabel}>
-                          {pickedUploadFile?.name || resourceFlow.fileLabel}
-                        </p>
-                        {(resourceFlow.open ? resourceFlow.libraryTitle : resourceUploadTitle.trim()) ? (
-                          <p className="text-[11px] text-[var(--color-text-muted)] mt-1 truncate">
-                            Library title:{' '}
-                            <span className="font-medium text-[var(--color-text)]">
-                              {resourceFlow.open ? resourceFlow.libraryTitle : resourceUploadTitle.trim()}
-                            </span>
-                          </p>
-                        ) : null}
-                      </div>
-                    )}
                     <div className="rounded-xl border border-teal-200/70 dark:border-teal-800/50 bg-gradient-to-br from-teal-50/90 via-cyan-50/40 to-violet-100/50 dark:from-teal-950/35 dark:via-[var(--color-bg-alt)] dark:to-violet-950/30 p-3 space-y-3 shadow-sm ring-1 ring-teal-500/10 dark:ring-teal-400/10">
                       <div className="flex items-center gap-2 mb-0.5">
                         <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
@@ -1025,10 +1014,16 @@ export default function CreateExamPage() {
                       <input
                         ref={resourceUploadRef}
                         type="file"
-                        accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,text/plain"
+                        accept=".doc,.docx,.ppt,.pptx,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,text/plain"
                         className="hidden"
                         onChange={(e) => {
                           const f = e.target.files?.[0];
+                          if (f && (fileExtension(f) === 'pdf' || (f.type && f.type.toLowerCase() === 'application/pdf'))) {
+                            toast.error('PDF isn’t supported. Save as Word (.docx) and upload that file instead.');
+                            e.target.value = '';
+                            setPickedUploadFile(null);
+                            return;
+                          }
                           setPickedUploadFile(f || null);
                         }}
                       />
@@ -1038,7 +1033,8 @@ export default function CreateExamPage() {
                             <FileKindIcon ext={fileExtension(pickedUploadFile)} className="w-5 h-5" />
                           </div>
                           <div className="min-w-0 flex-1">
-                            <p className="text-xs font-semibold text-[var(--color-text)] truncate leading-snug" title={pickedUploadFile.name}>
+                            <p className="text-[9px] font-semibold uppercase tracking-wide text-violet-600/90 dark:text-violet-300/90">Chosen file</p>
+                            <p className="text-xs font-semibold text-[var(--color-text)] truncate leading-snug mt-0.5" title={pickedUploadFile.name}>
                               {pickedUploadFile.name}
                             </p>
                             <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
@@ -1078,7 +1074,7 @@ export default function CreateExamPage() {
                           className="w-full rounded-xl border-2 border-dashed border-teal-300/60 dark:border-teal-700/50 hover:border-teal-500/70 hover:bg-teal-50/50 dark:hover:bg-teal-950/25 py-3 px-3 text-left transition-all"
                         >
                           <span className="text-xs font-semibold text-teal-900 dark:text-teal-200">Choose file</span>
-                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">PDF, DOCX, PPTX, or TXT</span>
+                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">DOCX, PPTX, or TXT — not PDF (use Word)</span>
                         </button>
                       )}
                       <div className="flex justify-end">
@@ -1596,7 +1592,7 @@ export default function CreateExamPage() {
                 'Use Descriptive type for written exams',
                 'Mixed type combines MCQ + open-ended questions',
                 'Set custom time per question for your audience',
-                'Upload PDF, DOCX, PPTX, or TXT for curriculum-aligned, resource-grounded questions',
+                'Upload DOCX, PPTX, or TXT for curriculum-aligned, resource-grounded questions (PDF not supported — use Word)',
               ].map((tip, i) => (
                 <li key={i} className="flex items-start gap-1.5">
                   <span className="text-[var(--color-primary)] font-bold shrink-0">{i + 1}.</span>

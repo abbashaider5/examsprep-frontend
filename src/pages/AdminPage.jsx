@@ -2115,6 +2115,11 @@ function ResourcesTab() {
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !title.trim()) return toast.error('Title and file are required');
+    const n = (file.name || '').toLowerCase();
+    if (n.endsWith('.pdf') || file.type === 'application/pdf') {
+      toast.error('PDF isn’t supported. Save as Word (.docx) and upload again.');
+      return;
+    }
     setUploading(true);
     try {
       await resourceApi.adminUpload(file, title.trim());
@@ -2150,10 +2155,10 @@ function ResourcesTab() {
             />
           </div>
           <div>
-            <label className="label">File (PDF / DOC / DOCX, max 20 MB)</label>
+            <label className="label">File (DOC / DOCX, max 20 MB — not PDF)</label>
             <input
               type="file"
-              accept=".pdf,.doc,.docx"
+              accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
               className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
               onChange={e => setFile(e.target.files?.[0] || null)}
             />
