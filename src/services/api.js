@@ -220,12 +220,29 @@ export const notificationApi = {
 
 export const resourceApi = {
   // Upload (admin or instructor)
-  upload: (file, title, groupId = null) => {
+  upload: (file, title, groupId = null, opts = {}) => {
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
+    if (opts.subject) form.append('subject', opts.subject);
     return api.post('/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+  },
+  /** Same as upload with axios onUploadProgress (0–100% of request body). */
+  uploadWithProgress: (file, title, groupId = null, opts = {}, onUploadProgress) => {
+    const form = new FormData();
+    form.append('file', file);
+    form.append('title', title);
+    if (groupId) form.append('groupId', groupId);
+    if (opts.subject) form.append('subject', opts.subject);
+    return api.post('/resources', form, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      onUploadProgress: onUploadProgress
+        ? (evt) => {
+            if (evt.total) onUploadProgress({ loaded: evt.loaded, total: evt.total, pct: Math.round((evt.loaded / evt.total) * 100) });
+          }
+        : undefined,
+    });
   },
   // Admin: list + upload via admin panel
   adminList: () => api.get('/admin/resources'),
@@ -244,6 +261,8 @@ export const resourceApi = {
   getGroupResources: (groupId) => api.get(`/resources/group/${groupId}`),
   // Get extracted text for AI generation
   getText: (id) => api.get(`/resources/${id}/text`),
+  getProcessingStatus: (id) => api.get(`/resources/${id}/processing-status`),
+  retryProcessing: (id) => api.post(`/resources/${id}/retry-processing`),
   // Delete
   delete: (id) => api.delete(`/resources/${id}`),
 };

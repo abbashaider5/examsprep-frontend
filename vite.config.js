@@ -35,6 +35,7 @@ export default defineConfig({
     }),
   ],
   server: {
+    // /api → Express (default http://localhost:5000). Run the API (`npm run dev:server` from repo root, or `npm run dev` for both) or Vite will log ECONNREFUSED on API calls.
     proxy: {
       '/api': { target: 'http://localhost:5000', changeOrigin: true },
     },

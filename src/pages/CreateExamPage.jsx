@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, Clock, Code2, Edit3, Eye, EyeOff, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Lock, Mail, Percent, Plus, RefreshCw, Search, Shield, Sparkles, Timer, Upload, Users, Wand2, X } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Info, Layers, Loader2, Lock, Mail, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
@@ -41,6 +41,69 @@ function FieldHint({ text, placement = 'top' }) {
       </button>
     </HelpTooltip>
   );
+}
+
+const INITIAL_RESOURCE_FLOW = {
+  open: false,
+  phase: 'idle',
+  resourceId: null,
+  uploadPct: 0,
+  startedAt: null,
+  fileLabel: '',
+  fileSize: 0,
+  ext: '',
+  libraryTitle: '',
+  errorFriendly: '',
+};
+
+function formatFileSize(bytes) {
+  if (bytes == null || Number.isNaN(bytes)) return '';
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1048576).toFixed(1)} MB`;
+}
+
+function fileExtension(file) {
+  const n = file?.name || '';
+  const i = n.lastIndexOf('.');
+  return i > 0 ? n.slice(i + 1).toLowerCase() : '';
+}
+
+function resourceFailureFriendly(payload) {
+  const code = payload?.error?.code ?? payload?.processingErrorCode;
+  const msg = payload?.error?.message ?? payload?.processingErrorMessage ?? '';
+  const map = {
+    UNSUPPORTED_FILE: 'This file type isn’t supported. Use PDF, DOCX, PPTX, or TXT.',
+    LEGACY_PPT: 'Older .ppt files aren’t supported. Save as .pptx and upload again.',
+    NO_TEXT: 'We couldn’t read enough text. Try a text-based PDF or editable document (not a scan).',
+    EXTRACTION_FAILED: 'We couldn’t read this file. Try another export or format.',
+    CHUNK_FAILED: 'We couldn’t split this document into study segments.',
+    AI_INDEXING_FAILED: 'AI indexing didn’t complete. You can retry in a moment.',
+    DOWNLOAD_FAILED: 'The file couldn’t be loaded from storage. Try again.',
+    NO_FILE: 'The upload didn’t attach correctly. Please try again.',
+    UNEXPECTED: 'Something went wrong while preparing your resource.',
+    FAILED: 'AI preparation didn’t finish. Try again or upload a different file.',
+  };
+  return map[code] || (typeof msg === 'string' && msg.trim() ? msg.trim() : 'AI couldn’t finish preparing this resource.');
+}
+
+function uploadErrorFriendly(err) {
+  const status = err?.response?.status;
+  const msg = err?.response?.data?.message;
+  if (status === 413) return 'File is too large for upload.';
+  if (status === 403) return 'You don’t have permission to upload this resource.';
+  if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';
+  if (msg) return String(msg);
+  return 'Upload didn’t complete. Check your connection and try again.';
+}
+
+function FileKindIcon({ ext, className = 'w-5 h-5' }) {
+  const e = (ext || '').toLowerCase();
+  if (e === 'pdf') return <FileText className={className} aria-hidden />;
+  if (['ppt', 'pptx'].includes(e)) return <Presentation className={className} aria-hidden />;
+  if (['doc', 'docx'].includes(e)) return <FileText className={className} aria-hidden />;
+  if (e === 'txt') return <FileIcon className={className} aria-hidden />;
+  return <FileIcon className={className} aria-hidden />;
 }
 
 function ResourcePickerModal({ resources, loading, selected, onSelect, onClose, title }) {
@@ -102,6 +165,9 @@ function ResourcePickerModal({ resources, loading, selected, onSelect, onClose, 
                   <p className="font-medium text-sm text-[var(--color-text)] truncate">{r.title}</p>
                   <p className="text-[10px] text-[var(--color-text-muted)] truncate">
                     {r.originalName}{r.pages ? ` · ${r.pages} pages` : ''}{r.group?.name ? ` · ${r.group.name}` : ''}
+                    {r.processingStatus === 'processing' || r.processingStatus === 'uploading' ? ' · Indexing…' : ''}
+                    {r.processingStatus === 'failed' ? ' · Failed' : ''}
+                    {(r.chunkCount > 0 || r.processingStatus === 'ready') && r.processingStatus !== 'failed' ? ' · AI ready' : ''}
                   </p>
                 </div>
                 {isSelected && <CheckCircle size={16} className="shrink-0 text-[var(--color-primary)]" />}
@@ -319,6 +385,17 @@ export default function CreateExamPage() {
   const [showResourceModal, setShowResourceModal] = useState(false);
   const resourceUploadRef = useRef(null);
   const [resourceUploadTitle, setResourceUploadTitle] = useState('');
+  const [pickedUploadFile, setPickedUploadFile] = useState(null);
+  const [resourceFlow, setResourceFlow] = useState(() => ({ ...INITIAL_RESOURCE_FLOW }));
+  const resourceFlowRef = useRef(resourceFlow);
+  resourceFlowRef.current = resourceFlow;
+  const resourceSuccessDismissRef = useRef(null);
+  const [uploadInFlight, setUploadInFlight] = useState(false);
+  const [uploadedResourceStub, setUploadedResourceStub] = useState(null);
+  const [myLibraryExpanded, setMyLibraryExpanded] = useState(true);
+  const [myLibraryQuery, setMyLibraryQuery] = useState('');
+  /** `{ _id, title }` when showing delete confirmation (replaces `window.confirm`). */
+  const [resourceDeleteConfirm, setResourceDeleteConfirm] = useState(null);
   const [errors, setErrors] = useState({});
   const [createdExam, setCreatedExam] = useState(null);
   const [showFeedback, setShowFeedback] = useState(false);
@@ -337,16 +414,207 @@ export default function CreateExamPage() {
     staleTime: 2 * 60 * 1000,
   });
 
-  const uploadResourceMut = useMutation({
-    mutationFn: ({ file, title }) => resourceApi.upload(file, title, null),
-    onSuccess: () => {
-      toast.success('Resource uploaded');
-      setResourceUploadTitle('');
-      if (resourceUploadRef.current) resourceUploadRef.current.value = '';
-      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+  const resourcePollId = resourceFlow.open && resourceFlow.phase === 'processing' ? resourceFlow.resourceId : null;
+  const { data: resourceAiStatus } = useQuery({
+    queryKey: ['resourceProcessing', resourcePollId],
+    queryFn: () => resourceApi.getProcessingStatus(resourcePollId).then(r => r.data),
+    enabled: Boolean(resourcePollId),
+    refetchInterval: (q) => {
+      const st = q.state.data?.processingStatus;
+      if (st === 'ready' || st === 'failed') return false;
+      return 2000;
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Upload failed'),
   });
+
+  useEffect(() => {
+    if (!resourceFlow.open || resourceFlow.phase !== 'processing' || !resourceFlow.resourceId) return;
+    const st = resourceAiStatus?.processingStatus;
+    if (!st) return;
+    if (st === 'ready') {
+      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+      qc.invalidateQueries({ queryKey: ['adminResourcesForCreate'] });
+      setResourceFlow((prev) => ({ ...prev, phase: 'success', uploadPct: 100 }));
+    }
+    if (st === 'failed') {
+      setResourceFlow((prev) => ({
+        ...prev,
+        phase: 'failed',
+        errorFriendly: resourceFailureFriendly(resourceAiStatus),
+      }));
+    }
+  }, [resourceAiStatus, resourceFlow.open, resourceFlow.phase, resourceFlow.resourceId, qc]);
+
+  useEffect(() => {
+    if (resourceFlow.phase !== 'success' || !resourceFlow.open) return undefined;
+    if (resourceSuccessDismissRef.current) clearTimeout(resourceSuccessDismissRef.current);
+    resourceSuccessDismissRef.current = window.setTimeout(() => {
+      resourceSuccessDismissRef.current = null;
+      setResourceFlow({ ...INITIAL_RESOURCE_FLOW });
+      setPickedUploadFile(null);
+      if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+    }, 2800);
+    return () => {
+      if (resourceSuccessDismissRef.current) clearTimeout(resourceSuccessDismissRef.current);
+    };
+  }, [resourceFlow.phase, resourceFlow.open]);
+
+  useEffect(() => {
+    if (source !== 'myresources') {
+      setPickedUploadFile(null);
+      if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+      if (resourceSuccessDismissRef.current) {
+        clearTimeout(resourceSuccessDismissRef.current);
+        resourceSuccessDismissRef.current = null;
+      }
+      setResourceFlow({ ...INITIAL_RESOURCE_FLOW });
+      setMyLibraryQuery('');
+      setResourceDeleteConfirm(null);
+    }
+  }, [source]);
+
+  useEffect(() => {
+    if (uploadedResourceStub && selectedResourceId !== uploadedResourceStub._id) {
+      setUploadedResourceStub(null);
+    }
+  }, [selectedResourceId, uploadedResourceStub]);
+
+  const retryResourceProcessingMut = useMutation({
+    mutationFn: (id) => resourceApi.retryProcessing(id),
+    onSuccess: (_, id) => {
+      toast.success('Retry started');
+      setResourceFlow((prev) => ({
+        ...prev,
+        open: true,
+        phase: 'processing',
+        resourceId: id,
+        errorFriendly: '',
+        uploadPct: 100,
+      }));
+      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+      qc.invalidateQueries({ queryKey: ['adminResourcesForCreate'] });
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Retry failed'),
+  });
+
+  const deleteResourceMut = useMutation({
+    mutationFn: (id) => resourceApi.delete(id),
+    onSuccess: (_, id) => {
+      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+      if (selectedResourceId === id) setSelectedResourceId('');
+      if (uploadedResourceStub?._id === id) setUploadedResourceStub(null);
+      if (resourceFlowRef.current.resourceId === id) {
+        setResourceFlow({ ...INITIAL_RESOURCE_FLOW });
+        setPickedUploadFile(null);
+        if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+      }
+      toast.success('Removed');
+      setResourceDeleteConfirm((c) => (c?._id === id ? null : c));
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not remove'),
+  });
+
+  const runMyResourceUpload = async () => {
+    const file = pickedUploadFile || resourceUploadRef.current?.files?.[0];
+    if (!file) {
+      toast.error('Choose a supported file');
+      return;
+    }
+    const t = resourceUploadTitle.trim();
+    if (!t) {
+      toast.error('Enter a title');
+      return;
+    }
+    const ext = fileExtension(file);
+    setUploadInFlight(true);
+    setResourceFlow({
+      open: true,
+      phase: 'uploading',
+      resourceId: null,
+      uploadPct: 0,
+      startedAt: Date.now(),
+      fileLabel: file.name || 'Document',
+      fileSize: file.size ?? 0,
+      ext,
+      libraryTitle: t,
+      errorFriendly: '',
+    });
+    try {
+      const res = await resourceApi.uploadWithProgress(
+        file,
+        t,
+        null,
+        { subject: form.subject?.trim() || '' },
+        ({ pct }) => {
+          setResourceFlow((prev) => (prev.open && prev.phase === 'uploading' ? { ...prev, uploadPct: pct } : prev));
+        },
+      );
+      qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
+      const r = res.data?.resource;
+      if (r?._id) {
+        setSelectedResourceId(r._id);
+        setUploadedResourceStub(r);
+        setResourceUploadTitle('');
+        if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+        setPickedUploadFile(null);
+        const st = r.processingStatus;
+        if (st === 'ready') {
+          setResourceFlow((prev) => ({
+            ...prev,
+            phase: 'success',
+            resourceId: r._id,
+            uploadPct: 100,
+          }));
+        } else if (st === 'failed') {
+          setResourceFlow((prev) => ({
+            ...prev,
+            phase: 'failed',
+            resourceId: r._id,
+            uploadPct: 100,
+            errorFriendly: resourceFailureFriendly(r),
+          }));
+        } else {
+          setResourceFlow((prev) => ({
+            ...prev,
+            phase: 'processing',
+            resourceId: r._id,
+            uploadPct: 100,
+          }));
+        }
+      } else {
+        setResourceFlow((prev) => ({
+          ...prev,
+          phase: 'upload_error',
+          errorFriendly: 'Upload completed but the server did not return a resource. Try again.',
+        }));
+      }
+    } catch (err) {
+      setResourceFlow((prev) => ({
+        ...prev,
+        phase: 'upload_error',
+        errorFriendly: uploadErrorFriendly(err),
+      }));
+    } finally {
+      setUploadInFlight(false);
+    }
+  };
+
+  const closeResourceAiModal = () => {
+    if (resourceSuccessDismissRef.current) {
+      clearTimeout(resourceSuccessDismissRef.current);
+      resourceSuccessDismissRef.current = null;
+    }
+    setResourceFlow({ ...INITIAL_RESOURCE_FLOW });
+  };
+
+  const dismissSuccessModal = () => {
+    if (resourceSuccessDismissRef.current) {
+      clearTimeout(resourceSuccessDismissRef.current);
+      resourceSuccessDismissRef.current = null;
+    }
+    setResourceFlow({ ...INITIAL_RESOURCE_FLOW });
+    setPickedUploadFile(null);
+    if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+  };
 
   const createMut = useMutation({
     mutationFn: (data) => examApi.create(data),
@@ -383,6 +651,18 @@ export default function CreateExamPage() {
     };
   }, [createMut.isPending]);
 
+  const adminResources = adminResourcesData?.resources || [];
+  const myResources = myResourcesData?.resources || [];
+  const myLibraryQ = myLibraryQuery.trim().toLowerCase();
+  const filteredMyResources = !myLibraryQ
+    ? myResources
+    : myResources.filter((r) =>
+        (r.title || '').toLowerCase().includes(myLibraryQ)
+        || (r.originalName || '').toLowerCase().includes(myLibraryQ),
+      );
+  const activeResources = source === 'examprep' ? adminResources : myResources;
+  const activeResLoading = source === 'examprep' ? adminResLoading : myResLoading;
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const result = schema.safeParse({ ...form, numQuestions: Number(form.numQuestions) });
@@ -395,6 +675,19 @@ export default function CreateExamPage() {
     if (isInstructor && (source === 'examprep' || source === 'myresources') && !selectedResourceId) {
       setErrors({ resource: 'Please select a resource' });
       return;
+    }
+    const selectedFromList = activeResources.find(r => r._id === selectedResourceId);
+    const selRes = selectedFromList || (uploadedResourceStub?._id === selectedResourceId ? uploadedResourceStub : null);
+    if (isInstructor && (source === 'examprep' || source === 'myresources') && selRes) {
+      const st = selRes.processingStatus;
+      if (st === 'processing' || st === 'uploading') {
+        setErrors({ resource: 'Wait until AI finishes reading your material (Ready) before generating questions.' });
+        return;
+      }
+      if (st === 'failed') {
+        setErrors({ resource: 'This resource failed AI processing. Retry from the library or pick another file.' });
+        return;
+      }
     }
     const numQ = Number(form.numQuestions);
     if (numQ > planMaxQ) {
@@ -454,18 +747,32 @@ export default function CreateExamPage() {
 
   const timeTotal = parseDurationInput(form.timePerQuestionInput);
 
+  const showResourceAiOverlay = resourceFlow.open;
+
+  useEffect(() => {
+    if (!showResourceAiOverlay) return undefined;
+    const prevOverflow = document.body.style.overflow;
+    const prevPaddingRight = document.body.style.paddingRight;
+    const prevOverscroll = document.documentElement.style.overscrollBehavior;
+    const scrollbarW = window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.overflow = 'hidden';
+    document.documentElement.style.overscrollBehavior = 'none';
+    if (scrollbarW > 0) document.body.style.paddingRight = `${scrollbarW}px`;
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      document.body.style.paddingRight = prevPaddingRight;
+      document.documentElement.style.overscrollBehavior = prevOverscroll;
+    };
+  }, [showResourceAiOverlay]);
+
   const SOURCES = [
     { value: 'ai',          icon: Globe,       label: 'Web',                   desc: 'Generate from AI knowledge' },
     { value: 'examprep',    icon: BookOpen,    label: 'LikhitAI Resources', desc: 'Admin-curated materials' },
     { value: 'myresources', icon: FolderOpen,  label: 'My Resources',          desc: 'Your uploaded files' },
   ];
 
-  // Resolved resource lists
-  const adminResources = adminResourcesData?.resources || [];
-  const myResources = myResourcesData?.resources || [];
-  const activeResources = source === 'examprep' ? adminResources : myResources;
-  const activeResLoading = source === 'examprep' ? adminResLoading : myResLoading;
-  const selectedResource = activeResources.find(r => r._id === selectedResourceId);
+  const selectedResource = activeResources.find(r => r._id === selectedResourceId)
+    || (uploadedResourceStub?._id === selectedResourceId ? uploadedResourceStub : null);
 
   const EXAM_TYPES = [
     { value: 'mcq', label: 'MCQ', desc: 'Multiple choice', icon: '☑' },
@@ -680,71 +987,193 @@ export default function CreateExamPage() {
 
                 {source === 'myresources' && isInstructor && (
                   <div className="mt-3 space-y-2">
-                    <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 p-3 flex flex-col sm:flex-row gap-3 sm:items-end">
-                      <div className="flex-1 min-w-0">
-                        <label className="text-[10px] font-medium text-[var(--color-text-muted)]">Upload resource (PDF)</label>
+                    {(pickedUploadFile || (resourceFlow.open && resourceFlow.fileLabel)) && (
+                      <div className="rounded-xl border border-emerald-200/80 dark:border-emerald-800/40 bg-emerald-50/95 dark:bg-emerald-950/25 px-3 py-2.5 shadow-sm ring-1 ring-emerald-500/15">
+                        <p className="text-[9px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-300">Chosen file</p>
+                        <p className="text-sm font-semibold text-[var(--color-text)] truncate mt-0.5" title={pickedUploadFile?.name || resourceFlow.fileLabel}>
+                          {pickedUploadFile?.name || resourceFlow.fileLabel}
+                        </p>
+                        {(resourceFlow.open ? resourceFlow.libraryTitle : resourceUploadTitle.trim()) ? (
+                          <p className="text-[11px] text-[var(--color-text-muted)] mt-1 truncate">
+                            Library title:{' '}
+                            <span className="font-medium text-[var(--color-text)]">
+                              {resourceFlow.open ? resourceFlow.libraryTitle : resourceUploadTitle.trim()}
+                            </span>
+                          </p>
+                        ) : null}
+                      </div>
+                    )}
+                    <div className="rounded-xl border border-teal-200/70 dark:border-teal-800/50 bg-gradient-to-br from-teal-50/90 via-cyan-50/40 to-violet-100/50 dark:from-teal-950/35 dark:via-[var(--color-bg-alt)] dark:to-violet-950/30 p-3 space-y-3 shadow-sm ring-1 ring-teal-500/10 dark:ring-teal-400/10">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
+                          <Sparkles size={14} className="text-white" aria-hidden />
+                        </div>
+                        <div>
+                          <p className="text-[11px] font-semibold text-[var(--color-text)]">Upload for AI</p>
+                          <p className="text-[9px] text-[var(--color-text-muted)]">Teal zone: new file → LikhitAI reads it</p>
+                        </div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] font-medium text-teal-800/80 dark:text-teal-300/90">Library title</label>
                         <input
-                          className="input text-sm mt-1"
+                          className="input text-sm mt-1 bg-white/80 dark:bg-[var(--color-surface)]/90 border-teal-200/60 dark:border-teal-800/40"
                           value={resourceUploadTitle}
                           onChange={e => setResourceUploadTitle(e.target.value)}
                           placeholder="Title shown in your library"
                         />
                       </div>
-                      <div className="flex flex-wrap gap-2 items-center">
-                        <input
-                          ref={resourceUploadRef}
-                          type="file"
-                          accept="application/pdf"
-                          className="hidden"
-                          onChange={() => { /* selection only; upload via button */ }}
-                        />
+                      <input
+                        ref={resourceUploadRef}
+                        type="file"
+                        accept=".pdf,.doc,.docx,.ppt,.pptx,.txt,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,text/plain"
+                        className="hidden"
+                        onChange={(e) => {
+                          const f = e.target.files?.[0];
+                          setPickedUploadFile(f || null);
+                        }}
+                      />
+                      {pickedUploadFile ? (
+                        <div className="rounded-xl border border-violet-200/70 dark:border-violet-800/45 bg-white/70 dark:bg-violet-950/20 px-3 py-2.5 flex items-start gap-3 shadow-sm ring-1 ring-violet-400/15">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/20 to-teal-500/25 border border-violet-300/50 dark:border-violet-600/30 flex items-center justify-center shrink-0 text-violet-700 dark:text-violet-300">
+                            <FileKindIcon ext={fileExtension(pickedUploadFile)} className="w-5 h-5" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-xs font-semibold text-[var(--color-text)] truncate leading-snug" title={pickedUploadFile.name}>
+                              {pickedUploadFile.name}
+                            </p>
+                            <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
+                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] px-1 py-0 font-medium uppercase tracking-wide">
+                                {fileExtension(pickedUploadFile) || 'file'}
+                              </span>
+                              {pickedUploadFile.size ? (
+                                <span className="ml-1.5">{formatFileSize(pickedUploadFile.size)}</span>
+                              ) : null}
+                            </p>
+                          </div>
+                          <div className="flex flex-col gap-1 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setPickedUploadFile(null);
+                                if (resourceUploadRef.current) resourceUploadRef.current.value = '';
+                              }}
+                              className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                              aria-label="Remove selected file"
+                            >
+                              <Trash2 size={15} aria-hidden />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => resourceUploadRef.current?.click()}
+                              className="text-[10px] font-medium text-[var(--color-primary)] hover:underline py-0.5"
+                            >
+                              Change file
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
                         <button
                           type="button"
                           onClick={() => resourceUploadRef.current?.click()}
-                          className="btn-secondary text-xs py-2 px-3 rounded-xl"
+                          className="w-full rounded-xl border-2 border-dashed border-teal-300/60 dark:border-teal-700/50 hover:border-teal-500/70 hover:bg-teal-50/50 dark:hover:bg-teal-950/25 py-3 px-3 text-left transition-all"
                         >
-                          Choose file
+                          <span className="text-xs font-semibold text-teal-900 dark:text-teal-200">Choose file</span>
+                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">PDF, DOCX, PPTX, or TXT</span>
                         </button>
+                      )}
+                      <div className="flex justify-end">
                         <button
                           type="button"
-                          disabled={uploadResourceMut.isPending}
-                          onClick={() => {
-                            const file = resourceUploadRef.current?.files?.[0];
-                            if (!file) {
-                              toast.error('Choose a PDF file');
-                              return;
-                            }
-                            const t = resourceUploadTitle.trim();
-                            if (!t) {
-                              toast.error('Enter a title');
-                              return;
-                            }
-                            uploadResourceMut.mutate({ file, title: t });
-                          }}
-                          className="btn-primary text-xs py-2 px-3 rounded-xl inline-flex items-center gap-1.5"
+                          disabled={uploadInFlight || resourceFlow.open}
+                          onClick={() => { void runMyResourceUpload(); }}
+                          className="btn-primary text-xs py-2 px-4 rounded-xl inline-flex items-center gap-1.5"
                         >
-                          <Upload size={14} />
-                          {uploadResourceMut.isPending ? 'Uploading…' : 'Upload'}
+                          {uploadInFlight ? <Loader2 size={14} className="animate-spin shrink-0" aria-hidden /> : <Upload size={14} aria-hidden />}
+                          Upload & prepare with AI
                         </button>
                       </div>
                     </div>
                     {myResources.length > 0 && (
-                      <div>
-                        <p className="text-[10px] font-medium text-[var(--color-text-muted)] mb-1">Your files — tap to use for this exam</p>
-                        <div className="rounded-xl border border-[var(--color-border)] divide-y divide-[var(--color-border)] max-h-40 overflow-y-auto">
-                          {myResources.map(r => (
-                            <button
-                              key={r._id}
-                              type="button"
-                              onClick={() => { setSelectedResourceId(r._id); setErrors(e => ({ ...e, resource: undefined })); }}
-                              className={`w-full text-left px-3 py-2.5 text-xs flex items-center gap-2 transition-colors ${selectedResourceId === r._id ? 'bg-[var(--color-primary)]/10' : 'hover:bg-[var(--color-surface-hover)]'}`}
-                            >
-                              <FileText size={14} className="text-[var(--color-primary)] shrink-0" />
-                              <span className="truncate text-[var(--color-text)]">{r.title}</span>
-                              {selectedResourceId === r._id && <CheckCircle size={14} className="text-[var(--color-primary)] shrink-0 ml-auto" />}
-                            </button>
-                          ))}
-                        </div>
+                      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-b from-slate-50/95 to-blue-50/30 dark:from-slate-900/40 dark:to-blue-950/20 overflow-hidden shadow-sm ring-1 ring-slate-300/20 dark:ring-slate-600/20">
+                        <button
+                          type="button"
+                          onClick={() => setMyLibraryExpanded((e) => !e)}
+                          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left bg-gradient-to-r from-blue-500/8 to-violet-500/8 hover:from-blue-500/12 hover:to-violet-500/12 transition-colors border-b border-slate-200/60 dark:border-slate-700/50"
+                        >
+                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
+                            Your library
+                            <span className="text-slate-500 dark:text-slate-400 font-normal"> ({myResources.length})</span>
+                          </span>
+                          {myLibraryExpanded ? <ChevronDown size={16} className="text-blue-600/70 dark:text-blue-400 shrink-0" aria-hidden /> : <ChevronRight size={16} className="text-blue-600/70 dark:text-blue-400 shrink-0" aria-hidden />}
+                        </button>
+                        {myLibraryExpanded && (
+                          <>
+                            <div className="px-3 pb-2 pt-2 bg-white/40 dark:bg-black/10">
+                              <div className="relative">
+                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-500/70 pointer-events-none" aria-hidden />
+                                <input
+                                  type="search"
+                                  className="input text-xs py-1.5 pl-8 w-full border-blue-200/50 dark:border-blue-900/40 bg-white/90 dark:bg-[var(--color-surface)]/80"
+                                  placeholder="Search files…"
+                                  value={myLibraryQuery}
+                                  onChange={(e) => setMyLibraryQuery(e.target.value)}
+                                  aria-label="Search your files"
+                                />
+                              </div>
+                            </div>
+                            <div className="max-h-52 overflow-auto border-t border-slate-200/70 dark:border-slate-700/50 bg-white/30 dark:bg-black/15">
+                              <table className="w-full text-left text-[11px]">
+                                <thead className="sticky top-0 z-[1] bg-gradient-to-r from-blue-100/90 to-violet-100/70 dark:from-slate-800/95 dark:to-slate-800/90 border-b border-slate-200/80 dark:border-slate-600/50">
+                                  <tr className="text-slate-600 dark:text-slate-300 font-medium">
+                                    <th className="px-2 py-1.5 font-medium">Title</th>
+                                    <th className="px-2 py-1.5 font-medium w-[4.5rem]">Status</th>
+                                    <th className="px-1 py-1.5 w-9 text-right font-medium" aria-label="Actions" />
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-200/60 dark:divide-slate-700/50">
+                                  {filteredMyResources.map((r) => {
+                                    const ext = fileExtension({ name: r.originalName || '' });
+                                    const busy = deleteResourceMut.isPending && deleteResourceMut.variables === r._id;
+                                    const st = r.processingStatus;
+                                    const statusLabel = st === 'failed' ? 'Failed' : st === 'processing' || st === 'uploading' ? 'Busy' : r.chunkCount > 0 || st === 'ready' ? 'Ready' : '—';
+                                    return (
+                                      <tr
+                                        key={r._id}
+                                        className={`cursor-pointer transition-colors ${selectedResourceId === r._id ? 'bg-teal-500/12 dark:bg-teal-500/15' : 'hover:bg-blue-50/80 dark:hover:bg-slate-800/50'}`}
+                                        onClick={() => { setSelectedResourceId(r._id); setErrors((e) => ({ ...e, resource: undefined })); }}
+                                      >
+                                        <td className="px-2 py-1.5 min-w-0">
+                                          <div className="flex items-center gap-1.5 min-w-0">
+                                            <FileKindIcon ext={ext} className="w-3.5 h-3.5 shrink-0 text-teal-600 dark:text-teal-400" />
+                                            <span className="truncate text-[var(--color-text)]" title={r.title}>{r.title}</span>
+                                          </div>
+                                        </td>
+                                        <td className="px-2 py-1.5 text-[var(--color-text-muted)] tabular-nums whitespace-nowrap">{statusLabel}</td>
+                                        <td className="px-1 py-1 text-right">
+                                          <button
+                                            type="button"
+                                            className="inline-flex p-1 rounded-md text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 disabled:opacity-40"
+                                            disabled={busy}
+                                            aria-label={`Delete ${r.title}`}
+                                            onClick={(ev) => {
+                                              ev.stopPropagation();
+                                              setResourceDeleteConfirm({ _id: r._id, title: r.title });
+                                            }}
+                                          >
+                                            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
+                                          </button>
+                                        </td>
+                                      </tr>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                              {filteredMyResources.length === 0 && (
+                                <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 py-6 px-2">No matches</p>
+                              )}
+                            </div>
+                          </>
+                        )}
                       </div>
                     )}
                   </div>
@@ -761,7 +1190,12 @@ export default function CreateExamPage() {
                         </div>
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-[var(--color-text)] truncate">{selectedResource.title}</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)] truncate">{selectedResource.originalName}{selectedResource.pages ? ` · ${selectedResource.pages} pages` : ''}</p>
+                          <p className="text-[10px] text-[var(--color-text-muted)] truncate">
+                            {selectedResource.originalName}{selectedResource.pages ? ` · ${selectedResource.pages} pages` : ''}
+                            {selectedResource.processingStatus === 'processing' || selectedResource.processingStatus === 'uploading' ? ' · Indexing…' : ''}
+                            {selectedResource.processingStatus === 'failed' ? ' · Failed' : ''}
+                            {(selectedResource.chunkCount > 0 || selectedResource.processingStatus === 'ready') && selectedResource.processingStatus !== 'failed' ? ' · AI ready' : ''}
+                          </p>
                         </div>
                         <button
                           type="button"
@@ -786,20 +1220,10 @@ export default function CreateExamPage() {
                         className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border-2 border-dashed border-[var(--color-border)] hover:border-[var(--color-primary)]/60 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-all"
                       >
                         <Search size={14} />
-                        Browse &amp; select a resource…
+                        Browse & select a resource…
                       </button>
                     )}
                     {errors.resource && <p className="text-red-500 text-xs mt-1.5">{errors.resource}</p>}
-                  </div>
-                )}
-
-                {/* Notice: resource-based generation takes longer */}
-                {(source === 'examprep' || source === 'myresources') && selectedResourceId && (
-                  <div className="mt-2 flex items-start gap-2 p-2.5 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700">
-                    <Clock size={13} className="text-amber-600 shrink-0 mt-0.5" />
-                    <p className="text-xs text-amber-700 dark:text-amber-300">
-                      AI will analyse your resource document to generate questions. This may take a little longer than usual.
-                    </p>
                   </div>
                 )}
               </div>
@@ -1172,7 +1596,7 @@ export default function CreateExamPage() {
                 'Use Descriptive type for written exams',
                 'Mixed type combines MCQ + open-ended questions',
                 'Set custom time per question for your audience',
-                'Upload PDFs for curriculum-aligned questions',
+                'Upload PDF, DOCX, PPTX, or TXT for curriculum-aligned, resource-grounded questions',
               ].map((tip, i) => (
                 <li key={i} className="flex items-start gap-1.5">
                   <span className="text-[var(--color-primary)] font-bold shrink-0">{i + 1}.</span>
@@ -1202,6 +1626,280 @@ export default function CreateExamPage() {
           onClose={() => setShowResourceModal(false)}
           title={source === 'examprep' ? 'LikhitAI Resources' : 'My Resources'}
         />
+      )}
+
+      {resourceDeleteConfirm && (
+        <Modal onClose={() => !deleteResourceMut.isPending && setResourceDeleteConfirm(null)}>
+          <div className="bg-gradient-to-b from-rose-50/95 to-white dark:from-rose-950/40 dark:to-[var(--color-surface)] rounded-2xl border border-rose-200/80 dark:border-rose-900/50 shadow-2xl p-5 w-[min(100vw-2rem,380px)] ring-1 ring-rose-300/30 dark:ring-rose-800/30">
+            <div className="flex items-start gap-3 mb-4">
+              <div className="w-11 h-11 rounded-xl bg-rose-500/15 border border-rose-400/30 flex items-center justify-center shrink-0">
+                <Trash2 className="w-5 h-5 text-rose-600 dark:text-rose-400" aria-hidden />
+              </div>
+              <div>
+                <h3 className="text-sm font-semibold text-[var(--color-text)]">Remove from library?</h3>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
+                  <span className="font-medium text-[var(--color-text)]">“{resourceDeleteConfirm.title}”</span>
+                  {' '}will be deleted. You can’t undo this.
+                </p>
+              </div>
+            </div>
+            <div className="flex gap-2 justify-end">
+              <button
+                type="button"
+                disabled={deleteResourceMut.isPending}
+                onClick={() => setResourceDeleteConfirm(null)}
+                className="btn-secondary text-xs py-2 px-4 rounded-xl"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={deleteResourceMut.isPending}
+                onClick={() => { deleteResourceMut.mutate(resourceDeleteConfirm._id); }}
+                className="text-xs py-2 px-4 rounded-xl font-medium bg-rose-600 hover:bg-rose-700 text-white border border-rose-700/30 inline-flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {deleteResourceMut.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : null}
+                Remove
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {showResourceAiOverlay && typeof document !== 'undefined' && createPortal(
+        (
+          <div
+            className="fixed inset-0 z-[9998] flex items-center justify-center p-4 pointer-events-auto touch-none"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="resource-ai-title"
+            onWheel={(e) => e.preventDefault()}
+            onTouchMove={(e) => e.preventDefault()}
+          >
+            <style>{`
+              @keyframes resourceAiSpinRing { to { transform: rotate(360deg); } }
+              @keyframes resourceAiSpinRingRev { to { transform: rotate(-360deg); } }
+              @keyframes resourceAiDot {
+                0%, 75%, 100% { transform: translateY(0); opacity: 0.2; }
+                35% { transform: translateY(-5px); opacity: 1; }
+              }
+              @keyframes resourceAiBar {
+                0% { transform: translateX(-100%); }
+                100% { transform: translateX(100%); }
+              }
+              @keyframes resourceAiGlowPulse {
+                0%, 100% { opacity: 0.35; transform: scale(1); }
+                50% { opacity: 0.65; transform: scale(1.08); }
+              }
+              @keyframes resourceAiBorderFlow {
+                0%, 100% { filter: hue-rotate(0deg) brightness(1); }
+                50% { filter: hue-rotate(-18deg) brightness(1.08); }
+              }
+              @keyframes resourceAiMeshDrift {
+                0% { transform: translate(0, 0); }
+                100% { transform: translate(-20px, -20px); }
+              }
+            `}</style>
+            <div
+              className="absolute inset-0 bg-white/40 dark:bg-slate-950/20"
+              style={{ backdropFilter: 'blur(4px)' }}
+              aria-hidden
+            />
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-100/25 via-transparent to-violet-100/30 dark:from-emerald-900/10 dark:via-transparent dark:to-violet-900/10 pointer-events-none" aria-hidden />
+            <div className="relative z-10 w-full max-w-[min(100%,380px)]">
+              <div
+                className="rounded-[1.35rem] p-[2px] shadow-lg shadow-teal-400/15 dark:shadow-slate-900/25"
+                style={{
+                  background: 'linear-gradient(135deg, #a7f3d0, #bae6fd, #ddd6fe, #99f6e4)',
+                  animation: 'resourceAiBorderFlow 5s ease-in-out infinite',
+                }}
+              >
+                <div className="rounded-[1.2rem] bg-white dark:bg-slate-800 overflow-hidden relative min-h-[200px] border border-slate-100 dark:border-slate-600/40 shadow-sm">
+                  <div className="absolute inset-0 pointer-events-none overflow-hidden" aria-hidden>
+                    <div
+                      className="absolute -inset-1/2 opacity-[0.06] dark:opacity-[0.04]"
+                      style={{
+                        background: 'radial-gradient(ellipse 70% 50% at 50% 0%, rgba(45,212,191,0.28), transparent 55%), radial-gradient(ellipse 60% 45% at 100% 100%, rgba(167,139,250,0.18), transparent 50%)',
+                        animation: 'resourceAiGlowPulse 3.2s ease-in-out infinite',
+                      }}
+                    />
+                    <div className="absolute inset-0 opacity-[0.035] dark:opacity-[0.05] text-teal-500" style={{ animation: 'resourceAiMeshDrift 18s linear infinite' }}>
+                      <svg className="w-[200%] h-[200%]" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <pattern id="createResourceAiMesh" width="24" height="24" patternUnits="userSpaceOnUse">
+                            <path d="M 24 0 L 0 0 0 24" fill="none" stroke="currentColor" strokeWidth="0.5" />
+                          </pattern>
+                        </defs>
+                        <rect width="100%" height="100%" fill="url(#createResourceAiMesh)" />
+                      </svg>
+                    </div>
+                  </div>
+                  <div className="relative p-6 pt-8">
+                    <button
+                      type="button"
+                      onClick={closeResourceAiModal}
+                      className={`absolute top-3 right-3 z-20 p-1.5 rounded-lg text-slate-500 hover:text-slate-800 dark:text-slate-600 dark:hover:text-slate-900 hover:bg-slate-100 dark:hover:bg-slate-200/80 transition-colors ${resourceFlow.phase === 'success' ? 'hidden' : ''}`}
+                      aria-label="Close"
+                    >
+                      <X size={16} aria-hidden />
+                    </button>
+
+                    {resourceFlow.phase === 'success' && (
+                      <div className="text-center">
+                        <div className="mx-auto mb-4 relative w-16 h-16">
+                          <div className="absolute inset-0 rounded-full bg-gradient-to-tr from-teal-400/40 to-emerald-400/30 blur-md animate-pulse" />
+                          <div className="relative w-full h-full rounded-2xl bg-gradient-to-br from-teal-500 to-emerald-600 flex items-center justify-center shadow-lg shadow-teal-500/30">
+                            <CheckCircle2 className="w-8 h-8 text-white" strokeWidth={2} aria-hidden />
+                          </div>
+                        </div>
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-teal-600 dark:text-teal-400 mb-1">LikhitAI</p>
+                        <h2 id="resource-ai-title" className="text-base font-bold bg-gradient-to-r from-teal-600 to-emerald-600 dark:from-teal-300 dark:to-emerald-300 bg-clip-text text-transparent">
+                          All set
+                        </h2>
+                        <p className="text-[11px] text-[var(--color-text-muted)] mt-1.5 leading-snug">This file is ready. You can generate your exam when you like.</p>
+                        <p className="text-xs font-semibold tabular-nums text-violet-600/90 dark:text-violet-300 mt-2">Complete · 100%</p>
+                        <button type="button" onClick={dismissSuccessModal} className="btn-primary text-xs py-2.5 px-5 rounded-xl mt-5 w-full shadow-md shadow-teal-500/20">
+                          Done
+                        </button>
+                      </div>
+                    )}
+
+                    {resourceFlow.phase === 'failed' && (
+                      <div>
+                        <div className="flex justify-center mb-3">
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-red-600/25 border border-rose-300/50 dark:border-rose-800/50 flex items-center justify-center">
+                            <AlertCircle className="w-8 h-8 text-rose-600 dark:text-rose-400" aria-hidden />
+                          </div>
+                        </div>
+                        <h2 id="resource-ai-title" className="text-center text-base font-bold text-rose-700 dark:text-rose-300">Processing didn’t complete</h2>
+                        <p className="text-[10px] font-medium text-rose-600/80 dark:text-rose-400/90 text-center mt-1">The chosen file could not be prepared</p>
+                        <p className="text-[11px] text-[var(--color-text-muted)] text-center mt-2 line-clamp-3 leading-snug px-1" title={resourceFlow.errorFriendly}>
+                          {resourceFlow.errorFriendly || 'Something went wrong while preparing this upload.'}
+                        </p>
+                        <div className="mt-5 grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            disabled={!resourceFlow.resourceId || retryResourceProcessingMut.isPending}
+                            onClick={() => resourceFlow.resourceId && retryResourceProcessingMut.mutate(resourceFlow.resourceId)}
+                            className="btn-primary text-xs py-2.5 rounded-xl inline-flex items-center justify-center gap-1"
+                          >
+                            {retryResourceProcessingMut.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <RefreshCw size={14} aria-hidden />}
+                            Retry
+                          </button>
+                          <button type="button" onClick={closeResourceAiModal} className="btn-secondary text-xs py-2.5 rounded-xl">
+                            Close
+                          </button>
+                          <button
+                            type="button"
+                            disabled={!resourceFlow.resourceId || deleteResourceMut.isPending}
+                            onClick={() => resourceFlow.resourceId && deleteResourceMut.mutate(resourceFlow.resourceId)}
+                            className="btn-secondary text-xs py-2.5 rounded-xl col-span-2 text-rose-700 dark:text-rose-300 border-rose-200/80 dark:border-rose-900/50 inline-flex items-center justify-center gap-1"
+                          >
+                            {deleteResourceMut.isPending ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
+                            Remove file
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {resourceFlow.phase === 'upload_error' && (
+                      <div>
+                        <div className="flex justify-center mb-3">
+                          <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400/25 to-orange-500/20 border border-amber-300/50 flex items-center justify-center">
+                            <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" aria-hidden />
+                          </div>
+                        </div>
+                        <h2 id="resource-ai-title" className="text-center text-base font-bold text-amber-800 dark:text-amber-200">Upload not sent</h2>
+                        <p className="text-[10px] font-medium text-amber-700/85 dark:text-amber-300/90 text-center mt-1">Your chosen file did not reach the server</p>
+                        <p className="text-[11px] text-[var(--color-text-muted)] text-center mt-2 line-clamp-3 px-1">{resourceFlow.errorFriendly}</p>
+                        <div className="mt-5 flex gap-2">
+                          <button type="button" disabled={uploadInFlight} onClick={() => { void runMyResourceUpload(); }} className="btn-primary flex-1 text-xs py-2.5 rounded-xl">
+                            Retry
+                          </button>
+                          <button type="button" onClick={closeResourceAiModal} className="btn-secondary flex-1 text-xs py-2.5 rounded-xl">
+                            Close
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
+                    {(resourceFlow.phase === 'uploading' || resourceFlow.phase === 'processing') && (
+                      <div className="text-center">
+                        <p className="text-[10px] font-semibold uppercase tracking-widest text-teal-600 dark:text-teal-400 mb-4">LikhitAI</p>
+                        <div className="relative mx-auto mb-5 h-28 w-28">
+                          <div
+                            className="absolute inset-0 rounded-full border-2 border-dashed border-teal-400/35"
+                            style={{ animation: 'resourceAiSpinRing 12s linear infinite' }}
+                            aria-hidden
+                          />
+                          <div
+                            className="absolute inset-1 rounded-full border-2 border-violet-400/30 border-t-violet-500 border-b-transparent"
+                            style={{ animation: 'resourceAiSpinRingRev 2.4s linear infinite' }}
+                            aria-hidden
+                          />
+                          <div
+                            className="absolute inset-3 rounded-full bg-gradient-to-br from-teal-500/25 via-cyan-500/15 to-violet-500/25 blur-sm"
+                            style={{ animation: 'resourceAiGlowPulse 2s ease-in-out infinite' }}
+                            aria-hidden
+                          />
+                          <div className="absolute inset-5 rounded-2xl bg-gradient-to-br from-teal-500 via-cyan-500 to-violet-600 flex items-center justify-center shadow-xl shadow-teal-500/35">
+                            {resourceFlow.phase === 'uploading' ? (
+                              <Upload className="w-9 h-9 text-white drop-shadow-md" aria-hidden />
+                            ) : (
+                              <Brain className="w-9 h-9 text-white drop-shadow-md" strokeWidth={1.5} aria-hidden />
+                            )}
+                          </div>
+                          <div className="absolute -bottom-0.5 -right-0.5 w-9 h-9 rounded-xl bg-white dark:bg-slate-700 border border-teal-200/70 dark:border-teal-700/50 flex items-center justify-center shadow-md text-teal-600 dark:text-teal-300">
+                            <Sparkles className="w-4 h-4" aria-hidden />
+                          </div>
+                        </div>
+                        <h2 id="resource-ai-title" className="text-sm font-bold text-[var(--color-text)]">
+                          {resourceFlow.phase === 'uploading' ? 'Uploading your chosen file' : 'LikhitAI is preparing your file'}
+                        </h2>
+                        <p className="text-[11px] text-violet-600/85 dark:text-violet-300/90 mt-1 font-medium leading-snug px-1">
+                          {resourceFlow.phase === 'uploading'
+                            ? 'Sending securely — you’ll see progress below.'
+                            : 'Extracting text and building the index for exam questions. This usually takes a short while.'}
+                        </p>
+                        <p className="text-2xl font-bold tabular-nums bg-gradient-to-r from-teal-600 to-violet-600 dark:from-teal-300 dark:to-violet-300 bg-clip-text text-transparent mt-3">
+                          {resourceFlow.phase === 'uploading' ? `${Math.min(100, resourceFlow.uploadPct || 0)}%` : 'In progress'}
+                        </p>
+                        <p className="text-[10px] font-medium text-teal-700/80 dark:text-teal-300/90 mt-1">
+                          {resourceFlow.phase === 'uploading' ? 'Upload status' : 'Processing status'}
+                        </p>
+                        <div className="mt-4 h-2 rounded-full bg-slate-200/80 dark:bg-slate-800 overflow-hidden relative ring-1 ring-teal-500/15">
+                          <div
+                            className="h-full rounded-full bg-gradient-to-r from-teal-500 via-cyan-500 to-violet-500 transition-[width] duration-200 shadow-sm"
+                            style={{ width: `${resourceFlow.phase === 'uploading' ? Math.min(100, resourceFlow.uploadPct || 0) : 100}%` }}
+                          />
+                          {resourceFlow.phase === 'processing' && (
+                            <div
+                              className="absolute inset-0 opacity-40 pointer-events-none"
+                              style={{
+                                background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.75), transparent)',
+                                animation: 'resourceAiBar 1.2s ease-in-out infinite',
+                              }}
+                            />
+                          )}
+                        </div>
+                        <div className="flex justify-center gap-1.5 mt-4">
+                          {[0, 1, 2, 3, 4, 5].map((i) => (
+                            <span
+                              key={i}
+                              className="h-1.5 w-1.5 rounded-full bg-gradient-to-br from-teal-500 to-violet-500"
+                              style={{ animation: 'resourceAiDot 1.05s ease-in-out infinite', animationDelay: `${i * 0.06}s` }}
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+        document.body,
       )}
 
       {createMut.isPending && typeof document !== 'undefined' && createPortal(
