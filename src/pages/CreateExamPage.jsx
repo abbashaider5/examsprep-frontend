@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Brain, Building2, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
+import ExamLimitReachedModal from '../components/ExamLimitReachedModal.jsx';
 import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../components/FeedbackModal.jsx';
 import HelpTooltip from '../components/HelpTooltip.jsx';
 import Modal from '../components/Modal.jsx';
 import { FEATURE_AI_LISTENING } from '../config/featureFlags.js';
-import { examApi, instructorApi, resourceApi } from '../services/api.js';
+import { authApi, examApi, instructorApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 import { playWarningAudio } from '../utils/warningAudio.js';
@@ -55,7 +56,130 @@ const INITIAL_RESOURCE_FLOW = {
   ext: '',
   libraryTitle: '',
   errorFriendly: '',
+  /** @type {{ title: string, subtitle: string, tips: string[], stageLine: string, code: string } | null} */
+  failurePresentation: null,
 };
+
+const FAILURE_STAGE_LABEL = {
+  download: 'Loading your file',
+  extract: 'Extracting PDF text',
+  ocr: 'Running OCR',
+  rasterize: 'Processing scanned pages',
+  prepare: 'Preparing AI content',
+  index: 'Saving your study index',
+  upload: 'Finishing upload',
+  other: 'Processing',
+};
+
+/**
+ * Premium, code-specific copy for the resource AI modal (matches backend processingErrorCode).
+ */
+function getResourceFailurePresentation(payload) {
+  const code = payload?.error?.code ?? payload?.processingErrorCode ?? 'FAILED';
+  const stageKey = payload?.error?.stage ?? payload?.processingFailedStage ?? '';
+  const rawMsg = (payload?.error?.message ?? payload?.processingErrorMessage ?? '').trim();
+
+  const stageLine = stageKey && FAILURE_STAGE_LABEL[stageKey]
+    ? `Stopped while: ${FAILURE_STAGE_LABEL[stageKey]}`
+    : '';
+
+  const catalog = {
+    PDF_TOO_LARGE_FOR_OCR: {
+      title: 'PDF too large for OCR',
+      subtitle: 'This file is above what we can scan automatically.',
+      tips: ['Export fewer pages or compress the PDF', 'Split into smaller uploads'],
+    },
+    OCR_TIMEOUT: {
+      title: 'OCR timed out',
+      subtitle: 'Reading scanned pages took longer than our time limit.',
+      tips: ['Try fewer pages', 'Use a lighter or lower-resolution file', 'Retry after reducing size'],
+    },
+    OCR_FAILED: {
+      title: 'Couldn’t read scanned pages',
+      subtitle: 'We couldn’t pull readable text from this scan.',
+      tips: ['Use a clearer, straighter scan', 'For best results, convert to Word', 'Check the file isn’t mostly blank'],
+    },
+    NO_TEXT_OCR: {
+      title: 'Scanned PDF quality too low',
+      subtitle: 'The pages may be image-only, very faint, or unreadable after OCR.',
+      tips: ['Use a clearer scan', 'Convert scanned PDFs to Word for best results', 'Try a text-based export if available'],
+    },
+    NO_TEXT: {
+      title: 'No readable text detected',
+      subtitle: 'We couldn’t find enough text to build exam content.',
+      tips: ['Re-export the PDF', 'Use DOCX when possible', 'Reduce image-only pages'],
+    },
+    EXTRACTION_FAILED: {
+      title: 'PDF structure not supported',
+      subtitle: 'The file may be corrupted, password-locked, or an unusual export.',
+      tips: ['Export the PDF again from the original app', 'Remove password protection', 'Try DOCX instead'],
+    },
+    PDF_NOT_SUPPORTED: {
+      title: 'This PDF couldn’t be opened',
+      subtitle: 'We couldn’t process this file as a PDF.',
+      tips: ['Save again from Word, Docs, or your scanner', 'Try a different export preset'],
+    },
+    CHUNK_FAILED: {
+      title: 'Couldn’t extract study-ready content',
+      subtitle: 'We couldn’t shape this into useful segments for exams.',
+      tips: ['Use a document with more continuous text', 'Simplify layout', 'Re-export and try again'],
+    },
+    AI_INDEXING_FAILED: {
+      title: 'Couldn’t save the AI index',
+      subtitle: 'Something went wrong while saving indexed content.',
+      tips: ['Tap Retry in a moment', 'If it repeats, try a smaller file'],
+    },
+    DOWNLOAD_FAILED: {
+      title: 'Couldn’t load your file',
+      subtitle: 'We couldn’t download it from storage.',
+      tips: ['Try again shortly', 'Re-upload if it keeps happening'],
+    },
+    NO_FILE: {
+      title: 'Upload didn’t complete',
+      subtitle: 'The file didn’t attach correctly on our side.',
+      tips: ['Upload again', 'Check your connection'],
+    },
+    UNSUPPORTED_FILE: {
+      title: 'This file type isn’t supported',
+      subtitle: 'Use a format LikhitAI can read for resources.',
+      tips: ['DOCX, PPTX, PDF, and TXT are supported', 'Save old .ppt as .pptx'],
+    },
+    LEGACY_PPT: {
+      title: 'Older .ppt not supported',
+      subtitle: 'We need the modern .pptx format.',
+      tips: ['Open in PowerPoint and Save As .pptx', 'Then upload again'],
+    },
+    UNEXPECTED: {
+      title: 'Something interrupted processing',
+      subtitle: 'The run stopped before finishing.',
+      tips: ['Try Retry below', 'Or remove and upload again'],
+    },
+    FAILED: {
+      title: 'Couldn’t finish processing',
+      subtitle: 'AI preparation didn’t complete.',
+      tips: ['Try Retry', 'Export the document again'],
+    },
+  };
+
+  const entry = catalog[code];
+  if (entry) {
+    return {
+      title: entry.title,
+      subtitle: (rawMsg && rawMsg.length <= 280 ? rawMsg : '') || entry.subtitle,
+      tips: entry.tips,
+      stageLine,
+      code,
+    };
+  }
+
+  return {
+    title: 'Couldn’t finish preparing your file',
+    subtitle: rawMsg || 'Something prevented AI from completing this upload.',
+    tips: ['Try Retry', 'Re-export the document', 'DOCX usually works best'],
+    stageLine,
+    code,
+  };
+}
 
 function formatFileSize(bytes) {
   if (bytes == null || Number.isNaN(bytes)) return '';
@@ -68,25 +192,6 @@ function fileExtension(file) {
   const n = file?.name || '';
   const i = n.lastIndexOf('.');
   return i > 0 ? n.slice(i + 1).toLowerCase() : '';
-}
-
-function resourceFailureFriendly(payload) {
-  const code = payload?.error?.code ?? payload?.processingErrorCode;
-  const msg = payload?.error?.message ?? payload?.processingErrorMessage ?? '';
-  const map = {
-    PDF_NOT_SUPPORTED: 'PDF isn’t supported. Save as Word (.docx) and upload that file instead.',
-    UNSUPPORTED_FILE: 'This file type isn’t supported. Use DOCX, PPTX, or TXT.',
-    LEGACY_PPT: 'Older .ppt files aren’t supported. Save as .pptx and upload again.',
-    NO_TEXT: 'We couldn’t read enough text. Try an editable Word document or other text-based file (not a scan).',
-    EXTRACTION_FAILED: 'We couldn’t read this file. Try another export or format.',
-    CHUNK_FAILED: 'We couldn’t split this document into study segments.',
-    AI_INDEXING_FAILED: 'AI indexing didn’t complete. You can retry in a moment.',
-    DOWNLOAD_FAILED: 'The file couldn’t be loaded from storage. Try again.',
-    NO_FILE: 'The upload didn’t attach correctly. Please try again.',
-    UNEXPECTED: 'Something went wrong while preparing your resource.',
-    FAILED: 'AI preparation didn’t finish. Try again or upload a different file.',
-  };
-  return map[code] || (typeof msg === 'string' && msg.trim() ? msg.trim() : 'AI couldn’t finish preparing this resource.');
 }
 
 function uploadErrorFriendly(err) {
@@ -349,9 +454,11 @@ export default function CreateExamPage() {
 
   const navigate = useNavigate();
   const qc = useQueryClient();
-  const { user } = useAuthStore();
+  const { user, setUser } = useAuthStore();
 
   const isEnterpriseInstructor = user?.role === 'instructor' && Boolean(user?.enterprise);
+  /** Org-linked instructors: billing and upgrades are handled by the organization. */
+  const orgManagedBilling = user?.subscriptionBillingManagedByOrg === true;
   const enterpriseQuestionsLimit = user?.enterprise?.questionsPerExamLimit;
   const planMaxQ = isEnterpriseInstructor
     ? (enterpriseQuestionsLimit || 100)
@@ -360,7 +467,15 @@ export default function CreateExamPage() {
   const isEnterprise = user?.plan === 'enterprise';
   const enterpriseProctoringDisabled = isEnterpriseInstructor && user?.enterprise?.aiProctoringEnabled === false;
   const isInstructor = Boolean(user?.isInstructor) || ['instructor', 'admin', 'principal'].includes(user?.role);
-  const remaining = user?.remaining ?? null;
+  const usageCap = user?.monthlyLimit ?? 3;
+  const usageRemaining =
+    typeof user?.remaining === 'number'
+      ? user.remaining
+      : Math.max(0, usageCap - (user?.examsUsedThisMonth ?? 0));
+  /** Legacy: null when no signal from API (avoid treating unknown as unlimited). */
+  const remaining = typeof user?.remaining === 'number' ? user.remaining : (user?.monthlyLimit != null ? usageRemaining : null);
+  const usageUsed = user?.examsUsedThisMonth ?? Math.max(0, usageCap - usageRemaining);
+  const usagePct = usageCap > 0 ? Math.min(100, (usageUsed / usageCap) * 100) : 0;
 
   const [form, setForm] = useState({
     title: '', subject: '', numQuestions: 10, topics: '',
@@ -451,7 +566,7 @@ export default function CreateExamPage() {
       setResourceFlow((prev) => ({
         ...prev,
         phase: 'failed',
-        errorFriendly: resourceFailureFriendly(resourceAiStatus),
+        failurePresentation: getResourceFailurePresentation(resourceAiStatus),
       }));
     }
   }, [resourceAiStatus, resourceFlow.open, resourceFlow.phase, resourceFlow.resourceId, qc]);
@@ -508,6 +623,7 @@ export default function CreateExamPage() {
         phase: 'processing',
         resourceId: id,
         errorFriendly: '',
+        failurePresentation: null,
         uploadPct: 100,
       }));
       qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
@@ -545,12 +661,9 @@ export default function CreateExamPage() {
       return;
     }
     const ext = fileExtension(file);
-    if (ext === 'pdf' || (file.type && file.type.toLowerCase() === 'application/pdf')) {
-      toast.error('PDF isn’t supported. Save as Word (.docx) and upload that file instead.');
-      return;
-    }
     setUploadInFlight(true);
     setResourceFlow({
+      ...INITIAL_RESOURCE_FLOW,
       open: true,
       phase: 'uploading',
       resourceId: null,
@@ -560,7 +673,6 @@ export default function CreateExamPage() {
       fileSize: file.size ?? 0,
       ext,
       libraryTitle: t,
-      errorFriendly: '',
     });
     try {
       const res = await resourceApi.uploadWithProgress(
@@ -594,7 +706,7 @@ export default function CreateExamPage() {
             phase: 'failed',
             resourceId: r._id,
             uploadPct: 100,
-            errorFriendly: resourceFailureFriendly(r),
+            failurePresentation: getResourceFailurePresentation(r),
           }));
         } else {
           setResourceFlow((prev) => ({
@@ -640,8 +752,9 @@ export default function CreateExamPage() {
     if (resourceUploadRef.current) resourceUploadRef.current.value = '';
   };
 
-  const [overlayListeningGen, setOverlayListeningGen] = useState(false);
+  const [showExamLimitModal, setShowExamLimitModal] = useState(false);
   const [listenGenTick, setListenGenTick] = useState(0);
+  const [overlayListeningGen, setOverlayListeningGen] = useState(false);
 
   const createMut = useMutation({
     mutationFn: (data) => examApi.create(data),
@@ -649,11 +762,17 @@ export default function CreateExamPage() {
       setOverlayListeningGen(!!(FEATURE_AI_LISTENING && variables?.includeListeningQuestions));
       setListenGenTick(0);
     },
-    onSuccess: (res) => {
+    onSuccess: async (res) => {
       setOverlayListeningGen(false);
       qc.invalidateQueries({ queryKey: ['myExams'] });
       qc.invalidateQueries({ queryKey: ['subscription'] });
       qc.invalidateQueries({ queryKey: ['me'] });
+      try {
+        const me = await authApi.getMe();
+        setUser(me.data.user);
+      } catch {
+        /* ignore — limits still invalidated */
+      }
       toast.success('Exam created!');
       playWarningAudio('examCreationCompleted');
       trackFeedbackInteraction();
@@ -666,6 +785,9 @@ export default function CreateExamPage() {
     },
     onError: (err) => {
       setOverlayListeningGen(false);
+      if (err.response?.status === 429 && err.response?.data?.code === 'EXAM_LIMIT_REACHED') {
+        setShowExamLimitModal(true);
+      }
       toast.error(err.response?.data?.message || 'Failed to create exam');
     },
   });
@@ -765,7 +887,10 @@ export default function CreateExamPage() {
         return;
       }
       if (st === 'failed') {
-        setErrors({ resource: 'This resource failed AI processing. Retry from the library or pick another file.' });
+        const fp = getResourceFailurePresentation(selRes);
+        setErrors({
+          resource: `${fp.title}. ${fp.tips?.[0] || 'Use Retry on the file or pick another resource.'}`,
+        });
         return;
       }
     }
@@ -884,6 +1009,19 @@ export default function CreateExamPage() {
         <div className="relative">
           <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles size={20} /> Create New Exam</h1>
           <p className="text-teal-100 text-sm mt-1">Build a test with questions generated for your topic and settings.</p>
+          {orgManagedBilling && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-teal-50/95 text-[11px] sm:text-xs">
+              <span className="inline-flex items-center gap-1.5 font-medium">
+                <Building2 size={13} className="opacity-90 shrink-0" aria-hidden />
+                Managed by {user?.enterprise?.name || 'your organization'}
+              </span>
+              <span className="hidden sm:inline text-teal-200/80">·</span>
+              <span className="tabular-nums text-teal-50/90">
+                Exams this month: <strong className="font-semibold text-white">{usageUsed}</strong> / {usageCap} used
+                <span className="opacity-90"> ({usageRemaining} left)</span>
+              </span>
+            </div>
+          )}
         </div>
       </div>
 
@@ -911,8 +1049,8 @@ export default function CreateExamPage() {
                       type="button"
                       onClick={() => {
                         if (et.enterpriseOnly && !isEnterprise) {
-                          toast('Coding exams require Enterprise plan', { icon: '🔒' });
-                          navigate('/pricing');
+                          toast('Coding exams require an Enterprise plan.', { icon: '🔒' });
+                          if (!orgManagedBilling) navigate('/plan');
                           return;
                         }
                         setF('examType')(et.value);
@@ -1218,9 +1356,9 @@ export default function CreateExamPage() {
                 </label>
                 <input className="input" type="number" min={5} max={planMaxQ} value={form.numQuestions} onChange={e => setF('numQuestions')(e.target.value)} />
                 {errors.numQuestions && <p className="text-red-500 text-xs mt-1">{errors.numQuestions}</p>}
-                {isFreePlan && (
+                {isFreePlan && !orgManagedBilling && (
                   <p className="text-xs text-[var(--color-text-muted)] mt-1">
-                    Free: up to {planMaxQ}. <Link to="/pricing" className="text-[var(--color-primary)] hover:underline">Upgrade</Link>
+                    Free: up to {planMaxQ}. <Link to="/plan" className="text-[var(--color-primary)] hover:underline">Upgrade</Link>
                   </p>
                 )}
               </div>
@@ -1246,7 +1384,7 @@ export default function CreateExamPage() {
                   Question Generate Source
                   <FieldHint
                     placement="bottom"
-                    text="Web: general AI knowledge. LikhitAI Resources: curated documents. My Resources: your uploads (DOCX, PPTX, or TXT — not PDF). Resource modes analyse the file to build questions."
+                    text="Web: general AI knowledge. LikhitAI Resources: curated documents. My Resources: your uploads (DOCX, PPTX, PDF, TXT). PDFs use smart text extraction and OCR for scans. Resource modes analyse the file to build questions."
                   />
                 </label>
 
@@ -1296,17 +1434,10 @@ export default function CreateExamPage() {
                       <input
                         ref={resourceUploadRef}
                         type="file"
-                        accept=".doc,.docx,.ppt,.pptx,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,text/plain"
+                        accept=".doc,.docx,.ppt,.pptx,.pdf,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf,text/plain"
                         className="hidden"
                         onChange={(e) => {
-                          const f = e.target.files?.[0];
-                          if (f && (fileExtension(f) === 'pdf' || (f.type && f.type.toLowerCase() === 'application/pdf'))) {
-                            toast.error('PDF isn’t supported. Save as Word (.docx) and upload that file instead.');
-                            e.target.value = '';
-                            setPickedUploadFile(null);
-                            return;
-                          }
-                          setPickedUploadFile(f || null);
+                          setPickedUploadFile(e.target.files?.[0] || null);
                         }}
                       />
                       {pickedUploadFile ? (
@@ -1356,9 +1487,12 @@ export default function CreateExamPage() {
                           className="w-full rounded-xl border-2 border-dashed border-teal-300/60 dark:border-teal-700/50 hover:border-teal-500/70 hover:bg-teal-50/50 dark:hover:bg-teal-950/25 py-3 px-3 text-left transition-all"
                         >
                           <span className="text-xs font-semibold text-teal-900 dark:text-teal-200">Choose file</span>
-                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">DOCX, PPTX, or TXT — not PDF (use Word)</span>
+                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">DOCX, PPTX, PDF, or TXT</span>
                         </button>
                       )}
+                      <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed mt-2">
+                        LikhitAI reads text PDFs directly and runs OCR on scanned pages automatically. Very large scans may need a smaller export.
+                      </p>
                       <div className="flex justify-end">
                         <button
                           type="button"
@@ -1515,7 +1649,7 @@ export default function CreateExamPage() {
                     checked={form.multipleSets}
                     onChange={(e) => {
                       const on = e.target.checked;
-                      if (on && remaining != null && remaining < 3) {
+                      if (on && usageRemaining < 3) {
                         toast.error('Multiple sets use 3 tests from your usage limit. You need at least 3 remaining.');
                         return;
                       }
@@ -1567,7 +1701,9 @@ export default function CreateExamPage() {
                     {enterpriseProctoringDisabled
                       ? 'AI Proctoring is not enabled in your plan. Please contact your administrator.'
                       : isFreePlan
-                      ? <><Link to="/pricing" className="text-[var(--color-primary)] hover:underline font-medium">Upgrade to Pro</Link> to unlock AI Proctoring.</>
+                      ? orgManagedBilling
+                        ? 'AI Proctoring follows your organization policy. Contact your administrator if you need it enabled.'
+                        : <><Link to="/plan" className="text-[var(--color-primary)] hover:underline font-medium">Upgrade to Premium</Link> to unlock AI Proctoring.</>
                       : 'Webcam monitoring, tab-switch detection, violation tracking.'
                     }
                   </div>
@@ -1579,16 +1715,16 @@ export default function CreateExamPage() {
               type="submit"
               disabled={
                 createMut.isPending
-                || remaining === 0
-                || (isInstructor && form.multipleSets && remaining != null && remaining < 3)
+                || usageRemaining === 0
+                || (isInstructor && form.multipleSets && usageRemaining < 3)
               }
               className="btn-primary w-full py-3 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
             >
               {createMut.isPending ? (
                 <><div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Generating questions…</>
-              ) : remaining === 0 ? (
-                <><Lock size={16} /> No exams remaining — Upgrade your plan</>
-              ) : isInstructor && form.multipleSets && remaining != null && remaining < 3 ? (
+              ) : usageRemaining === 0 ? (
+                <><Lock size={16} /> {orgManagedBilling ? 'No exams remaining — contact your organization' : 'No exams remaining — upgrade your plan'}</>
+              ) : isInstructor && form.multipleSets && usageRemaining < 3 ? (
                 <><Lock size={16} /> Multiple sets need at least 3 tests left on your plan</>
               ) : (
                 <><Sparkles size={16} /> Generate Exam with AI</>
@@ -1704,7 +1840,9 @@ export default function CreateExamPage() {
                           <Lock size={10} className="text-[var(--color-text-muted)]" />
                           <FieldHint placement="left" text="Code-based questions with execution checks are limited to Enterprise. Pick the Coding exam type when available." />
                         </div>
-                        <p className="text-[10px] text-[var(--color-text-muted)]"><Link to="/pricing" className="text-[var(--color-primary)] hover:underline">Enterprise only</Link></p>
+                        <p className="text-[10px] text-[var(--color-text-muted)]">
+                          {orgManagedBilling ? 'Enterprise feature — ask your organization.' : <Link to="/plan" className="text-[var(--color-primary)] hover:underline">Enterprise only</Link>}
+                        </p>
                       </div>
                     </div>
                     <ToggleSwitch checked={false} disabled={true} onChange={() => {}} />
@@ -1795,21 +1933,27 @@ export default function CreateExamPage() {
             </div>
           ) : (
             <>
-              {remaining !== null && (
-                <div className={`card ${remaining === 0 ? 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10' : ''}`}>
+              {remaining !== null && !orgManagedBilling && (
+                <div className={`card ${usageRemaining === 0 ? 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10' : ''}`}>
                   <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Monthly Usage</p>
-                  <div className="flex items-end justify-between mb-2">
-                    <span className={`text-2xl font-bold ${remaining === 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--color-text)]'}`}>{remaining}</span>
-                    <span className="text-xs text-[var(--color-text-muted)]">/ {user?.monthlyLimit ?? 3} exams</span>
+                  <div className="flex items-end justify-between mb-1 gap-2">
+                    <div>
+                      <span className={`text-2xl font-bold ${usageRemaining === 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--color-text)]'}`}>{usageRemaining}</span>
+                      <span className="text-xs text-[var(--color-text-muted)] ml-1">remaining</span>
+                    </div>
+                    <span className="text-[10px] text-[var(--color-text-muted)] text-right tabular-nums">{usageUsed} / {usageCap} used</span>
                   </div>
                   <div className="w-full bg-[var(--color-bg-alt)] rounded-full h-1.5 mb-3">
-                    <div className={`h-1.5 rounded-full transition-all ${remaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${Math.max(0, 100 - (remaining / (user?.monthlyLimit ?? 3)) * 100)}%` }} />
+                    <div className={`h-1.5 rounded-full transition-all ${usageRemaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${usagePct}%` }} />
                   </div>
                   <p className="text-xs text-[var(--color-text-muted)] mb-3 capitalize">{user?.plan || 'free'} plan</p>
-                  {remaining === 0 ? (
-                    <Link to="/pricing" className="btn-primary text-xs py-1.5 w-full text-center block">Upgrade to continue</Link>
+                  {(user?.examsBonusSlots ?? 0) > 0 && (
+                    <p className="text-[10px] text-[var(--color-text-muted)] mb-2">Includes {user.examsBonusSlots} add-on credit{user.examsBonusSlots === 1 ? '' : 's'} (expire with your paid plan).</p>
+                  )}
+                  {usageRemaining === 0 ? (
+                    <button type="button" onClick={() => setShowExamLimitModal(true)} className="btn-primary text-xs py-1.5 w-full text-center block">View upgrade options</button>
                   ) : isFreePlan ? (
-                    <Link to="/pricing" className="text-xs text-[var(--color-primary)] font-semibold hover:underline">Upgrade for more exams &rarr;</Link>
+                    <Link to="/plan" className="text-xs text-[var(--color-primary)] font-semibold hover:underline">Upgrade for more exams &rarr;</Link>
                   ) : null}
                 </div>
               )}
@@ -1839,19 +1983,27 @@ export default function CreateExamPage() {
 
       {/* ── Instructor: info cards below grid ── */}
       {isInstructor && (
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mt-6">
-          {remaining !== null && (
-            <div className={`card ${remaining === 0 ? 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10' : ''}`}>
-              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Monthly Usage</p>
-              <div className="flex items-end justify-between mb-2">
-                <span className={`text-2xl font-bold ${remaining === 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--color-text)]'}`}>{remaining}</span>
-                <span className="text-xs text-[var(--color-text-muted)]">/ {user?.monthlyLimit ?? 3} exams</span>
+        <div className={`grid grid-cols-1 gap-4 mt-6 ${orgManagedBilling ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+          {!orgManagedBilling && (
+            <div className={`card ${usageRemaining === 0 ? 'border-red-300 dark:border-red-700 bg-red-50/50 dark:bg-red-900/10' : ''}`}>
+              <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">Monthly exam allowance</p>
+              <div className="flex items-end justify-between mb-1 gap-2">
+                <div>
+                  <span className={`text-2xl font-bold ${usageRemaining === 0 ? 'text-red-600 dark:text-red-400' : 'text-[var(--color-text)]'}`}>{usageRemaining}</span>
+                  <span className="text-xs text-[var(--color-text-muted)] ml-1">remaining</span>
+                </div>
+                <span className="text-[10px] text-[var(--color-text-muted)] text-right tabular-nums">{usageUsed} / {usageCap} used</span>
               </div>
               <div className="w-full bg-[var(--color-bg-alt)] rounded-full h-1.5 mb-3">
-                <div className={`h-1.5 rounded-full transition-all ${remaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${Math.max(0, 100 - (remaining / (user?.monthlyLimit ?? 3)) * 100)}%` }} />
+                <div className={`h-1.5 rounded-full transition-all ${usageRemaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${usagePct}%` }} />
               </div>
               <p className="text-xs text-[var(--color-text-muted)] capitalize">{user?.plan || 'free'} plan</p>
-              {remaining === 0 && <Link to="/pricing" className="btn-primary text-xs py-1.5 w-full text-center block mt-2">Upgrade to continue</Link>}
+              {(user?.examsBonusSlots ?? 0) > 0 && (
+                <p className="text-[10px] text-[var(--color-text-muted)] mt-1">+{user.examsBonusSlots} add-on credit{user.examsBonusSlots === 1 ? '' : 's'} (with paid plan).</p>
+              )}
+              {usageRemaining === 0 && (
+                <button type="button" onClick={() => setShowExamLimitModal(true)} className="btn-primary text-xs py-1.5 w-full text-center block mt-2">View upgrade options</button>
+              )}
             </div>
           )}
 
@@ -1874,7 +2026,7 @@ export default function CreateExamPage() {
                 'Use Descriptive type for written exams',
                 'Mixed type combines MCQ + open-ended questions',
                 'Set custom time per question for your audience',
-                'Upload DOCX, PPTX, or TXT for curriculum-aligned, resource-grounded questions (PDF not supported — use Word)',
+                'Upload DOCX, PPTX, PDF, or TXT for curriculum-aligned, resource-grounded questions (scanned PDFs use OCR automatically)',
               ].map((tip, i) => (
                 <li key={i} className="flex items-start gap-1.5">
                   <span className="text-[var(--color-primary)] font-bold shrink-0">{i + 1}.</span>
@@ -1893,6 +2045,8 @@ export default function CreateExamPage() {
       {showFeedback && (
         <FeedbackModal trigger="exam_created" onClose={() => setShowFeedback(false)} />
       )}
+
+      <ExamLimitReachedModal open={showExamLimitModal} onClose={() => setShowExamLimitModal(false)} managedByOrganization={orgManagedBilling} />
 
       {/* Resource picker modal */}
       {showResourceModal && (
@@ -2042,18 +2196,37 @@ export default function CreateExamPage() {
                       </div>
                     )}
 
-                    {resourceFlow.phase === 'failed' && (
+                    {resourceFlow.phase === 'failed' && (() => {
+                      const fp = resourceFlow.failurePresentation
+                        || getResourceFailurePresentation({ processingStatus: 'failed', processingErrorCode: 'FAILED' });
+                      return (
                       <div>
                         <div className="flex justify-center mb-3">
                           <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-rose-500/20 to-red-600/25 border border-rose-300/50 dark:border-rose-800/50 flex items-center justify-center">
                             <AlertCircle className="w-8 h-8 text-rose-600 dark:text-rose-400" aria-hidden />
                           </div>
                         </div>
-                        <h2 id="resource-ai-title" className="text-center text-base font-bold text-rose-700 dark:text-rose-300">Processing didn’t complete</h2>
-                        <p className="text-[10px] font-medium text-rose-600/80 dark:text-rose-400/90 text-center mt-1">The chosen file could not be prepared</p>
-                        <p className="text-[11px] text-[var(--color-text-muted)] text-center mt-2 line-clamp-3 leading-snug px-1" title={resourceFlow.errorFriendly}>
-                          {resourceFlow.errorFriendly || 'Something went wrong while preparing this upload.'}
+                        <h2 id="resource-ai-title" className="text-center text-[15px] font-bold text-rose-700 dark:text-rose-300 leading-snug px-0.5">
+                          {fp.title}
+                        </h2>
+                        <p className="text-[11px] text-[var(--color-text-muted)] text-center mt-2 leading-snug px-1">
+                          {fp.subtitle}
                         </p>
+                        {fp.stageLine ? (
+                          <p className="text-[10px] font-medium text-violet-600/85 dark:text-violet-300/90 text-center mt-1.5 px-1">
+                            {fp.stageLine}
+                          </p>
+                        ) : null}
+                        {fp.tips?.length ? (
+                          <ul className="mt-3 text-left rounded-xl border border-rose-200/40 dark:border-rose-900/40 bg-rose-50/40 dark:bg-rose-950/20 px-3 py-2.5 space-y-1.5">
+                            {fp.tips.map((tip, i) => (
+                              <li key={i} className="text-[10px] text-[var(--color-text-muted)] leading-snug flex gap-2">
+                                <span className="text-teal-600 dark:text-teal-400 font-bold shrink-0" aria-hidden>·</span>
+                                <span>{tip}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        ) : null}
                         <div className="mt-5 grid grid-cols-2 gap-2">
                           <button
                             type="button"
@@ -2078,7 +2251,8 @@ export default function CreateExamPage() {
                           </button>
                         </div>
                       </div>
-                    )}
+                      );
+                    })()}
 
                     {resourceFlow.phase === 'upload_error' && (
                       <div>
@@ -2137,7 +2311,8 @@ export default function CreateExamPage() {
                         <p className="text-[11px] text-violet-600/85 dark:text-violet-300/90 mt-1 font-medium leading-snug px-1">
                           {resourceFlow.phase === 'uploading'
                             ? 'Sending securely — you’ll see progress below.'
-                            : 'Extracting text and building the index for exam questions. This usually takes a short while.'}
+                            : (resourceAiStatus?.processingStageLabel?.trim()
+                              || 'Extracting text and building the index for exam questions. This usually takes a short while.')}
                         </p>
                         <p className="text-2xl font-bold tabular-nums bg-gradient-to-r from-teal-600 to-violet-600 dark:from-teal-300 dark:to-violet-300 bg-clip-text text-transparent mt-3">
                           {resourceFlow.phase === 'uploading' ? `${Math.min(100, resourceFlow.uploadPct || 0)}%` : 'In progress'}

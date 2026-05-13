@@ -113,8 +113,9 @@ export const useMe = () => {
       }
     },
     enabled: isAuthenticated,
-    staleTime: 5 * 60 * 1000,    // 5 minutes — don't refetch so aggressively
-    retry: 1,                      // one retry for network hiccups
-    refetchOnWindowFocus: false,   // don't spam on every tab switch
+    staleTime: 30 * 1000,
+    retry: 1,
+    refetchOnMount: 'always',
+    refetchOnWindowFocus: true,
   });
 };

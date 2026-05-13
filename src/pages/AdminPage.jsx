@@ -1153,7 +1153,7 @@ function PlansTab() {
                           onChange={e => setEditForm(f => ({ ...f, months: Number(e.target.value) }))}
                           className="input text-xs py-1 px-2 h-7 w-24"
                         >
-                          {[1, 3, 6, 12].map(m => <option key={m} value={m}>{m} mo</option>)}
+                          {[1, 3, 6].map(m => <option key={m} value={m}>{m} mo</option>)}
                         </select>
                       )}
                       <button
@@ -2115,11 +2115,6 @@ function ResourcesTab() {
   const handleUpload = async (e) => {
     e.preventDefault();
     if (!file || !title.trim()) return toast.error('Title and file are required');
-    const n = (file.name || '').toLowerCase();
-    if (n.endsWith('.pdf') || file.type === 'application/pdf') {
-      toast.error('PDF isn’t supported. Save as Word (.docx) and upload again.');
-      return;
-    }
     setUploading(true);
     try {
       await resourceApi.adminUpload(file, title.trim());
@@ -2155,10 +2150,10 @@ function ResourcesTab() {
             />
           </div>
           <div>
-            <label className="label">File (DOC / DOCX, max 20 MB — not PDF)</label>
+            <label className="label">File (DOC, DOCX, PDF, PPTX, TXT — max 20 MB)</label>
             <input
               type="file"
-              accept=".doc,.docx,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+              accept=".doc,.docx,.pdf,.pptx,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
               className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
               onChange={e => setFile(e.target.files?.[0] || null)}
             />
@@ -2256,9 +2251,17 @@ function EnterprisesTab() {
     zipCode: '',
     mode: 'institute',
     teacherLimit: 5,
+    studentLimit: 2000,
     examsPerTeacherLimit: 30,
     questionsPerExamLimit: 100,
     aiProctoringEnabled: true,
+    aiListeningEnabled: true,
+    aiResourceProcessingEnabled: true,
+    codingExamsEnabled: true,
+    aiExamGenerationEnabled: true,
+    estimatedMonthlyCostManualPaise: '',
+    orgPlanDurationMonths: '',
+    orgTrialDays: 0,
     principalName: '',
     principalEmail: '',
   });
@@ -2281,9 +2284,19 @@ function EnterprisesTab() {
       },
       mode: form.mode,
       teacherLimit: Number(form.teacherLimit) || 5,
+      studentLimit: Number(form.studentLimit) || 2000,
       examsPerTeacherLimit: Number(form.examsPerTeacherLimit) || 30,
       questionsPerExamLimit: Number(form.questionsPerExamLimit) || 100,
       aiProctoringEnabled: !!form.aiProctoringEnabled,
+      aiListeningEnabled: !!form.aiListeningEnabled,
+      aiResourceProcessingEnabled: !!form.aiResourceProcessingEnabled,
+      codingExamsEnabled: !!form.codingExamsEnabled,
+      aiExamGenerationEnabled: !!form.aiExamGenerationEnabled,
+      estimatedMonthlyCostManualPaise: form.estimatedMonthlyCostManualPaise === '' || form.estimatedMonthlyCostManualPaise == null
+        ? undefined
+        : Math.max(100, Math.round(Number(form.estimatedMonthlyCostManualPaise))),
+      orgPlanDurationMonths: form.orgPlanDurationMonths ? Number(form.orgPlanDurationMonths) : undefined,
+      orgTrialDays: Number(form.orgTrialDays) || 0,
       principalName: form.principalName.trim(),
       principalEmail: form.principalEmail.trim(),
     }),
@@ -2302,6 +2315,11 @@ function EnterprisesTab() {
         examsPerTeacherLimit: 30,
         questionsPerExamLimit: 100,
         aiProctoringEnabled: true,
+        aiListeningEnabled: true,
+        aiResourceProcessingEnabled: true,
+        codingExamsEnabled: true,
+        aiExamGenerationEnabled: true,
+        estimatedMonthlyCostManualPaise: '',
         principalName: '',
         principalEmail: '',
       }));
@@ -2393,6 +2411,23 @@ function EnterprisesTab() {
             <label className="text-xs text-[var(--color-text-muted)]">Questions limit per exam</label>
             <input className="input w-full mt-0.5" type="number" min={5} value={form.questionsPerExamLimit} onChange={(e) => setForm((f) => ({ ...f, questionsPerExamLimit: e.target.value }))} />
           </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Student cap</label>
+            <input className="input w-full mt-0.5" type="number" min={1} value={form.studentLimit} onChange={(e) => setForm((f) => ({ ...f, studentLimit: e.target.value }))} />
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Paid org term (months)</label>
+            <select className="input w-full mt-0.5" value={form.orgPlanDurationMonths} onChange={(e) => setForm((f) => ({ ...f, orgPlanDurationMonths: e.target.value }))}>
+              <option value="">None</option>
+              <option value="1">1 month</option>
+              <option value="3">3 months</option>
+              <option value="6">6 months</option>
+            </select>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Org trial (days)</label>
+            <input className="input w-full mt-0.5" type="number" min={0} max={90} value={form.orgTrialDays} onChange={(e) => setForm((f) => ({ ...f, orgTrialDays: e.target.value }))} />
+          </div>
         </div>
         <div className="grid sm:grid-cols-2 gap-3 mb-3">
           <div>
@@ -2413,13 +2448,47 @@ function EnterprisesTab() {
           <input className="input" placeholder="ZIP" value={form.zipCode} onChange={(e) => setForm((f) => ({ ...f, zipCode: e.target.value }))} />
         </div>
    
-        <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)] p-3">
-          <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
-            <input type="checkbox" checked={form.aiProctoringEnabled} onChange={(e) => setForm((f) => ({ ...f, aiProctoringEnabled: e.target.checked }))} />
-            AI Proctoring Enabled
-          </label>
-          <p className="text-xs text-[var(--color-text-muted)] mt-2">
-            Estimated Monthly Cost: <span className="font-semibold text-[var(--color-text)]">₹{Math.round(estimatedMonthlyCost / 100).toLocaleString('en-IN')}</span>
+        <div className="mb-3 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)] p-3 space-y-2">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">AI &amp; product access</p>
+          <div className="grid sm:grid-cols-2 gap-2 text-xs text-[var(--color-text-muted)]">
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={form.aiProctoringEnabled} onChange={(e) => setForm((f) => ({ ...f, aiProctoringEnabled: e.target.checked }))} />
+              AI proctoring
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={form.aiListeningEnabled} onChange={(e) => setForm((f) => ({ ...f, aiListeningEnabled: e.target.checked }))} />
+              Listening / audio
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={form.aiResourceProcessingEnabled} onChange={(e) => setForm((f) => ({ ...f, aiResourceProcessingEnabled: e.target.checked }))} />
+              AI resource processing
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input type="checkbox" checked={form.codingExamsEnabled} onChange={(e) => setForm((f) => ({ ...f, codingExamsEnabled: e.target.checked }))} />
+              Coding exams
+            </label>
+            <label className="inline-flex items-center gap-2 sm:col-span-2">
+              <input type="checkbox" checked={form.aiExamGenerationEnabled} onChange={(e) => setForm((f) => ({ ...f, aiExamGenerationEnabled: e.target.checked }))} />
+              AI exam generation
+            </label>
+          </div>
+          <div>
+            <label className="text-xs text-[var(--color-text-muted)]">Custom monthly price override (paise, optional)</label>
+            <input
+              className="input w-full mt-0.5 text-sm"
+              type="number"
+              min={100}
+              step={100}
+              placeholder="Leave empty to use formula below"
+              value={form.estimatedMonthlyCostManualPaise}
+              onChange={(e) => setForm((f) => ({ ...f, estimatedMonthlyCostManualPaise: e.target.value }))}
+            />
+          </div>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Formula monthly estimate: <span className="font-semibold text-[var(--color-text)]">₹{Math.round(estimatedMonthlyCost / 100).toLocaleString('en-IN')}</span>
+            {form.estimatedMonthlyCostManualPaise && Number(form.estimatedMonthlyCostManualPaise) >= 100 ? (
+              <span className="block mt-1 text-amber-700 dark:text-amber-300">Checkout will use your custom override when set.</span>
+            ) : null}
           </p>
         </div>
         <div className="mb-3">
@@ -2488,7 +2557,13 @@ function EnterprisesTab() {
                         teacherLimit: e.teacherLimit || 5,
                         examsPerTeacherLimit: e.examsPerTeacherLimit || 30,
                         questionsPerExamLimit: e.questionsPerExamLimit || 100,
+                        studentLimit: e.studentLimit ?? 2000,
                         aiProctoringEnabled: e.aiProctoringEnabled !== false,
+                        aiListeningEnabled: e.aiListeningEnabled !== false,
+                        aiResourceProcessingEnabled: e.aiResourceProcessingEnabled !== false,
+                        codingExamsEnabled: e.codingExamsEnabled !== false,
+                        aiExamGenerationEnabled: e.aiExamGenerationEnabled !== false,
+                        estimatedMonthlyCostManualPaise: e.estimatedMonthlyCostManualPaise != null ? String(e.estimatedMonthlyCostManualPaise) : '',
                       })}
                     >
                       Edit
@@ -2562,10 +2637,43 @@ function EnterprisesTab() {
               <input className="input" placeholder="ZIP" value={editEnterprise.zipCode} onChange={(e) => setEditEnterprise((x) => ({ ...x, zipCode: e.target.value }))} />
             </div>
             <div className="mt-3 text-xs text-[var(--color-text-muted)]">Mode: <span className="font-semibold capitalize text-[var(--color-text)]">{editEnterprise.mode}</span> (cannot be changed)</div>
-            <label className="inline-flex items-center gap-2 text-xs text-[var(--color-text-muted)] mt-3">
-              <input type="checkbox" checked={!!editEnterprise.aiProctoringEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiProctoringEnabled: e.target.checked }))} />
-              AI Proctoring Enabled
-            </label>
+            <div className="mt-3 grid sm:grid-cols-2 gap-2 text-xs text-[var(--color-text-muted)]">
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!editEnterprise.aiProctoringEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiProctoringEnabled: e.target.checked }))} />
+                AI proctoring
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!editEnterprise.aiListeningEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiListeningEnabled: e.target.checked }))} />
+                Listening / audio
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!editEnterprise.aiResourceProcessingEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiResourceProcessingEnabled: e.target.checked }))} />
+                AI resource processing
+              </label>
+              <label className="inline-flex items-center gap-2">
+                <input type="checkbox" checked={!!editEnterprise.codingExamsEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, codingExamsEnabled: e.target.checked }))} />
+                Coding exams
+              </label>
+              <label className="inline-flex items-center gap-2 sm:col-span-2">
+                <input type="checkbox" checked={!!editEnterprise.aiExamGenerationEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiExamGenerationEnabled: e.target.checked }))} />
+                AI exam generation
+              </label>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-[var(--color-text-muted)]">Student cap</label>
+              <input className="input w-full mt-0.5 text-sm" type="number" min={1} value={editEnterprise.studentLimit} onChange={(e) => setEditEnterprise((x) => ({ ...x, studentLimit: e.target.value }))} />
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-[var(--color-text-muted)]">Monthly price override (paise, empty to clear)</label>
+              <input
+                className="input w-full mt-0.5 text-sm"
+                type="number"
+                min={100}
+                placeholder="Clear field and save to use formula"
+                value={editEnterprise.estimatedMonthlyCostManualPaise}
+                onChange={(e) => setEditEnterprise((x) => ({ ...x, estimatedMonthlyCostManualPaise: e.target.value }))}
+              />
+            </div>
             <div className="flex gap-2 mt-4">
               <button type="button" className="flex-1 py-2 rounded-xl border border-[var(--color-border)] text-sm" onClick={() => setEditEnterprise(null)}>Cancel</button>
               <button
@@ -2581,7 +2689,15 @@ function EnterprisesTab() {
                     teacherLimit: Number(editEnterprise.teacherLimit) || 5,
                     examsPerTeacherLimit: Number(editEnterprise.examsPerTeacherLimit) || 30,
                     questionsPerExamLimit: Number(editEnterprise.questionsPerExamLimit) || 100,
+                    studentLimit: Number(editEnterprise.studentLimit) || 2000,
                     aiProctoringEnabled: !!editEnterprise.aiProctoringEnabled,
+                    aiListeningEnabled: !!editEnterprise.aiListeningEnabled,
+                    aiResourceProcessingEnabled: !!editEnterprise.aiResourceProcessingEnabled,
+                    codingExamsEnabled: !!editEnterprise.codingExamsEnabled,
+                    aiExamGenerationEnabled: !!editEnterprise.aiExamGenerationEnabled,
+                    estimatedMonthlyCostManualPaise: editEnterprise.estimatedMonthlyCostManualPaise === '' || editEnterprise.estimatedMonthlyCostManualPaise == null
+                      ? null
+                      : Math.max(100, Math.round(Number(editEnterprise.estimatedMonthlyCostManualPaise))),
                     address: {
                       country: editEnterprise.country,
                       state: editEnterprise.state,

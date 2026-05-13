@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { BarElement, CategoryScale, Chart as ChartJS, LinearScale, Tooltip } from 'chart.js';
 import {
-  ArrowLeft, Award, BadgeCheck, BarChart2, Camera, Check, Edit3, Loader2, Settings, Shield, Star, Trophy, User, X, Zap,
+  ArrowLeft, Award, BadgeCheck, BarChart2, Building2, Camera, Check, Edit3, Loader2, Settings, Shield, Star, Trophy, User, X, Zap,
 } from 'lucide-react';
 import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
@@ -19,8 +19,9 @@ const PLAN_INFO = {
 };
 
 const TABS = [
-  { id: 'account',      label: 'Account',      icon: User },
-  { id: 'performance',  label: 'Performance',  icon: Star },
+  { id: 'account', label: 'Account', icon: User },
+  { id: 'org-access', label: 'Organization access', icon: Building2, orgManagedInstructorOnly: true },
+  { id: 'performance', label: 'Performance', icon: Star },
 ];
 
 const COUNTRIES = [
@@ -87,6 +88,7 @@ export default function ProfilePage() {
   const orgLocked = isEnterpriseTeacher || isPrincipal;
   const visibleTabs = TABS.filter((t) => {
     if (user?.role === 'user' && t.hideForUserRole) return false;
+    if (t.orgManagedInstructorOnly && !(user?.subscriptionBillingManagedByOrg === true && user?.role === 'instructor')) return false;
     return !t.instructorOnly || isInstructor || !isFreePlan;
   });
   const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
@@ -355,8 +357,98 @@ export default function ProfilePage() {
         </div>
       )}
 
-      
+      {tab === 'org-access' && user?.subscriptionBillingManagedByOrg === true && user?.role === 'instructor' && (
+        <div className="space-y-5 animate-fade-in">
+          <div className="card border border-teal-500/20 bg-gradient-to-br from-teal-500/[0.04] to-transparent">
+            <h3 className="font-semibold text-[var(--color-text)] text-sm mb-1 flex items-center gap-2">
+              <Building2 size={15} className="text-teal-600 dark:text-teal-400" /> Organization access
+            </h3>
+            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-4">
+              Your instructor limits are set by <span className="font-medium text-[var(--color-text)]">{user?.enterprise?.name || 'your organization'}</span>.
+              Billing and plan changes are handled there — this is a read-only summary of what you can use.
+            </p>
 
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] p-4 mb-4">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">Exam usage (this month)</p>
+              <div className="flex flex-wrap items-baseline justify-between gap-2">
+                <div>
+                  <span className="text-2xl font-bold text-[var(--color-text)] tabular-nums">{user?.remaining ?? '—'}</span>
+                  <span className="text-xs text-[var(--color-text-muted)] ml-1">remaining</span>
+                </div>
+                <span className="text-xs text-[var(--color-text-muted)] tabular-nums">
+                  {user?.examsUsedThisMonth ?? 0} / {user?.monthlyLimit ?? '—'} used
+                </span>
+              </div>
+            </div>
+
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Organization mode</p>
+                <p className="text-sm font-semibold text-[var(--color-text)] mt-0.5 capitalize">{user?.enterprise?.mode || '—'}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">AI exams / month</p>
+                <p className="text-lg font-semibold text-[var(--color-text)] mt-0.5 tabular-nums">{user?.enterprise?.examsPerTeacherLimit ?? user?.monthlyLimit ?? '—'}</p>
+                <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Per-teacher allowance</p>
+              </div>
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Questions / exam</p>
+                <p className="text-lg font-semibold text-[var(--color-text)] mt-0.5 tabular-nums">Up to {user?.enterprise?.questionsPerExamLimit ?? '—'}</p>
+              </div>
+              <div className="rounded-xl border border-[var(--color-border)] p-3">
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">AI proctoring</p>
+                <p className="text-sm font-medium text-[var(--color-text)] mt-0.5">
+                  {user?.enterprise?.aiProctoringEnabled === false ? 'Not enabled for your organization' : 'Included (per org policy)'}
+                </p>
+              </div>
+              {(user?.enterprise?.orgPlanExpiresAt || user?.enterprise?.orgTrialEndsAt) && (
+                <div className="rounded-xl border border-[var(--color-border)] p-3 sm:col-span-2">
+                  <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase">Organization plan window</p>
+                  <div className="mt-2 flex flex-wrap gap-x-6 gap-y-1 text-sm text-[var(--color-text)]">
+                    {user?.enterprise?.orgPlanExpiresAt && (
+                      <span>
+                        <span className="text-[var(--color-text-muted)] text-xs">Access through </span>
+                        <span className="font-semibold">{fmtDate(user.enterprise.orgPlanExpiresAt)}</span>
+                        {user?.enterprise?.orgPlanDurationMonths ? (
+                          <span className="text-xs text-[var(--color-text-muted)]"> ({user.enterprise.orgPlanDurationMonths} mo term)</span>
+                        ) : null}
+                      </span>
+                    )}
+                    {user?.enterprise?.orgTrialEndsAt && new Date(user.enterprise.orgTrialEndsAt) > new Date() && (
+                      <span className="text-xs text-teal-700 dark:text-teal-400">
+                        Org trial until {fmtDate(user.enterprise.orgTrialEndsAt)}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
+              <div className="rounded-xl border border-[var(--color-border)] p-3 sm:col-span-2">
+                <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase mb-2">Organization AI features</p>
+                <ul className="text-[11px] text-[var(--color-text)] grid sm:grid-cols-2 gap-x-4 gap-y-1.5">
+                  <li>Listening / audio: {user?.enterprise?.aiListeningEnabled === false ? 'Not included' : 'Included'}</li>
+                  <li>Resource processing: {user?.enterprise?.aiResourceProcessingEnabled === false ? 'Not included' : 'Included'}</li>
+                  <li>Coding exams: {user?.enterprise?.codingExamsEnabled === false ? 'Not included' : 'Included'}</li>
+                  <li>AI exam generation: {user?.enterprise?.aiExamGenerationEnabled === false ? 'Not included' : 'Included'}</li>
+                </ul>
+              </div>
+              {(user?.enterprise?.renewalTimeline?.length > 0) && (
+                <div className="rounded-xl border border-[var(--color-border)] p-3 sm:col-span-2">
+                  <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase mb-2">Plan timeline (read-only)</p>
+                  <ul className="space-y-1.5 text-[11px] text-[var(--color-text-muted)]">
+                    {user.enterprise.renewalTimeline.map((seg, idx) => (
+                      <li key={idx}>
+                        <span className="font-medium text-[var(--color-text)]">{seg.title}</span>
+                        {seg.endsAt ? ` · through ${fmtDate(seg.endsAt)}` : ''}
+                        {seg.startsAt && seg.kind === 'queued' ? ` · starts ${fmtDate(seg.startsAt)}` : ''}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Performance tab ── */}
       {tab === 'performance' && (

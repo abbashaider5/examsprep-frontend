@@ -24,7 +24,7 @@ import FeedbackModal from '../components/FeedbackModal.jsx';
 import HelpSearch from '../components/HelpSearch.jsx';
 import NotificationDropdown from '../components/NotificationDropdown.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
-import { useAuth } from '../hooks/useAuth.js';
+import { useAuth, useMe } from '../hooks/useAuth.js';
 import { authApi, enterpriseApi, notificationApi } from '../services/api.js';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
@@ -101,6 +101,7 @@ function instructorGroupHasActiveChild(children, pathname) {
 
 const PRINCIPAL_NAV = [
   { to: '/enterprise-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+  { to: '/plan', icon: Zap, label: 'Plan & billing' },
   { to: '/enterprise/teachers/new', icon: Plus, label: 'Add teacher' },
   { to: '/enterprise/teachers', icon: Users, label: 'All teachers' },
   { to: '/enterprise/logs', icon: BarChart2, label: 'Activity logs' },
@@ -245,6 +246,7 @@ function AdminNavLink({ tab, label, icon: Icon, collapsed, onClick }) {
 // ── Layout ────────────────────────────────────────────────────────────────────
 export default function DashboardLayout() {
   const { user, setUser } = useAuthStore();
+  useMe();
   const { dark, toggle } = useThemeStore();
   const { logout } = useAuth();
   const qc = useQueryClient();
@@ -595,7 +597,9 @@ export default function DashboardLayout() {
               {userMenuOpen && (
                 <div className="absolute right-0 mt-2 w-48 rounded-xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl z-50 py-1">
                   <Link to="/profile" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">View Profile</Link>
-                  {!isStudent && !isPrincipalUser && !isEnterpriseTeacher && <Link to="/plan" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Plan</Link>}
+                  {!isStudent && !isEnterpriseTeacher && (user?.role === 'instructor' || user?.role === 'admin' || user?.role === 'principal') && (
+                    <Link to="/plan" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Plan & billing</Link>
+                  )}
                   <Link to="/settings" onClick={() => setUserMenuOpen(false)} className="block px-3 py-2 text-sm text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]">Settings</Link>
                   <button
                     type="button"

@@ -154,7 +154,10 @@ export const paymentApi = {
   createOrder: (data) => api.post('/payments/create-order', data),
   verify: (data) => api.post('/payments/verify', data),
   getSubscription: () => api.get('/payments/subscription'),
+  getBillingCatalog: () => api.get('/payments/billing-catalog'),
   getTransactions: () => api.get('/payments/transactions'),
+  downloadTransactionInvoice: (transactionId) =>
+    api.get(`/payments/transactions/${transactionId}/invoice`, { responseType: 'blob' }),
 };
 
 export const instructorApi = {

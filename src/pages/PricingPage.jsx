@@ -1,8 +1,9 @@
-import { Check, GraduationCap, Loader2, Shield, Sparkles } from 'lucide-react';
-import { useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { Check, GraduationCap, Loader2, Shield, Sparkles, Code2 } from 'lucide-react';
+import { useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
-import { paymentApi } from '../services/api.js';
+import { authApi, paymentApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 
@@ -10,18 +11,16 @@ export const PLANS = [
   {
     id: 'pro',
     name: 'Premium',
-    price: 149,
-    originalPrice: 999,
     period: 'month',
     icon: Shield,
     color: 'text-[var(--color-primary)]',
     bgColor: 'bg-blue-100 dark:bg-blue-900/30',
     borderColor: 'border-[var(--color-primary)]',
     badge: 'Most Popular',
-    testsPerMonth: 10,
+    testsPerMonth: 20,
     maxQuestions: 50,
     features: [
-      '10 AI-generated exams per month',
+      '20 AI-generated exams per month',
       'Up to 50 questions per exam',
       'AI proctoring with face detection',
       'Screenshot capture during exams',
@@ -70,6 +69,18 @@ export default function PricingPage() {
   const { user, setUser } = useAuthStore();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(null);
+  const [durationMonths, setDurationMonths] = useState(1);
+
+  const { data: subData } = useQuery({
+    queryKey: ['subscription'],
+    queryFn: () => paymentApi.getSubscription().then((r) => r.data),
+    enabled: !!user,
+  });
+  const durationOptions = useMemo(() => subData?.pricingCatalog?.durations || [], [subData?.pricingCatalog?.durations]);
+  const selectedTier = useMemo(
+    () => durationOptions.find((d) => d.months === durationMonths) || durationOptions[0],
+    [durationOptions, durationMonths],
+  );
 
   const handleSubscribe = async (plan) => {
     if (!user) {
@@ -77,8 +88,8 @@ export default function PricingPage() {
       return;
     }
     if (plan.id === 'free') return;
-    if (user.plan === plan.id) {
-      toast('You are already on this plan.');
+    if (user.plan === plan.id && user?.planExpiresAt && new Date(user.planExpiresAt) > new Date()) {
+      toast('You already have an active plan. Renew or queue additional terms from Plan & Billing.');
       return;
     }
 
@@ -91,29 +102,25 @@ export default function PricingPage() {
         return;
       }
 
-      const { data } = await paymentApi.createOrder({ plan: plan.id });
+      const { data } = await paymentApi.createOrder({ plan: plan.id, durationMonths });
+      const tierLabel = selectedTier?.label || `${durationMonths} month(s)`;
 
       const options = {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
         name: 'LikhitAI',
-        description: `${plan.name} Plan – 1 Month`,
+        description: `${plan.name} — ${tierLabel}`,
         order_id: data.orderId,
         handler: async (response) => {
           try {
-            const { data: verifyData } = await paymentApi.verify({
+            await paymentApi.verify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
-              plan: plan.id,
             });
-            setUser({
-              ...user,
-              plan: verifyData.plan,
-              planExpiresAt: verifyData.planExpiresAt,
-              remaining: verifyData.remaining,
-            });
+            const me = await authApi.getMe();
+            setUser(me.data.user);
             toast.success(`${plan.name} plan activated! Enjoy your new features.`);
             navigate(getDashboardPath(user?.role));
           } catch (verifyErr) {
@@ -213,6 +220,24 @@ export default function PricingPage() {
           </div>
         </div>
 
+        {durationOptions.length > 0 && user && (
+          <div className="max-w-2xl mx-auto mb-8">
+            <p className="text-center text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-3">Billing period</p>
+            <div className="flex flex-wrap justify-center gap-2">
+              {durationOptions.map((d) => (
+                <button
+                  key={d.months}
+                  type="button"
+                  onClick={() => setDurationMonths(d.months)}
+                  className={`px-3 py-2 rounded-xl text-xs font-medium border transition-all ${durationMonths === d.months ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/10 text-[var(--color-text)]' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/40'}`}
+                >
+                  {d.label} · {d.discountPercent > 0 ? `−${d.discountPercent}%` : 'standard'}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-6 mb-12 items-stretch">
           {instructorPlans.map((plan) => {
             const Icon = plan.icon;
@@ -250,17 +275,23 @@ export default function PricingPage() {
 
                 {/* Pricing */}
                 <div className="mb-6">
-                  {plan.originalPrice && (
-                    <div className="text-sm text-[var(--color-text-muted)] line-through mb-0.5">₹{plan.originalPrice}/month</div>
-                  )}
-                  <div className="flex items-end gap-1">
-                    <span className="text-4xl font-bold text-[var(--color-text)]">₹{plan.price}</span>
-                    <span className="text-[var(--color-text-muted)] text-sm mb-1.5">/month</span>
-                  </div>
-                  {plan.originalPrice && (
-                    <div className="mt-1 inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
-                      Save {Math.round((1 - plan.price / plan.originalPrice) * 100)}% — Limited time
-                    </div>
+                  {selectedTier ? (
+                    <>
+                      <div className="text-sm text-[var(--color-text-muted)] line-through mb-0.5">
+                        List ₹{(selectedTier.listTotalPaise / 100).toFixed(0)} / term
+                      </div>
+                      <div className="flex items-end gap-2 flex-wrap">
+                        <span className="text-4xl font-bold text-[var(--color-text)]">₹{(selectedTier.payableTotalPaise / 100).toFixed(0)}</span>
+                        <span className="text-[var(--color-text-muted)] text-sm mb-1.5">{selectedTier.label}</span>
+                      </div>
+                      <div className="mt-1 inline-flex items-center gap-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 text-xs font-semibold px-2 py-0.5 rounded-full">
+                        {selectedTier.discountPercent > 0
+                          ? `${selectedTier.discountPercent}% off · save ₹${(selectedTier.savingsPaise / 100).toFixed(0)}`
+                          : `Effective ~₹${((selectedTier.effectiveMonthlyPaise ?? selectedTier.payableTotalPaise / selectedTier.months) / 100).toFixed(0)}/mo`}
+                      </div>
+                    </>
+                  ) : (
+                    <p className="text-sm text-[var(--color-text-muted)]">Sign in to see live pricing for your account.</p>
                   )}
                 </div>
 

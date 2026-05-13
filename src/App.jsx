@@ -89,13 +89,17 @@ function InstructorDashboardRoute() {
   return <InstructorPage />;
 }
 
-const Guard = ({ children, adminOnly, instructorOnly, principalOnly }) => {
+/** Instructor workspace routes (tests, create exam, etc.) */
+const Guard = ({ children, adminOnly, instructorOnly, instructorPrincipalOrAdmin, principalOnly }) => {
   const { isAuthenticated, user } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
   if (adminOnly && user?.role !== 'admin') {
     return <Navigate to={getDashboardPath(user?.role)} replace />;
   }
   if (principalOnly && user?.role !== 'principal') {
+    return <Navigate to={getDashboardPath(user?.role)} replace />;
+  }
+  if (instructorPrincipalOrAdmin && !['instructor', 'admin', 'principal'].includes(user?.role)) {
     return <Navigate to={getDashboardPath(user?.role)} replace />;
   }
   if (instructorOnly && !['instructor', 'admin'].includes(user?.role)) {
@@ -156,7 +160,7 @@ export default function App() {
           <Route path="dashboard" element={<DashboardPageRoute />} />
           <Route path="create-exam" element={<Guard instructorOnly><CreateExamPage /></Guard>} />
           <Route path="profile" element={<ProfilePage />} />
-          <Route path="plan" element={<Guard instructorOnly><PlanPage /></Guard>} />
+          <Route path="plan" element={<Guard instructorPrincipalOrAdmin><PlanPage /></Guard>} />
           <Route path="settings" element={<SettingsPage />} />
           <Route path="certificates" element={<CertificatesPage />} />
           <Route path="leaderboard" element={<LeaderboardPage />} />
