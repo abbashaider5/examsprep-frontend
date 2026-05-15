@@ -71,6 +71,7 @@ function buildInstructorSidebarNav(enterprise) {
       INSTRUCTOR_CLASSES_GROUP,
       INSTRUCTOR_STUDENTS_GROUP,
       INSTRUCTOR_TESTS_GROUP,
+      { type: 'link', to: '/batches', icon: Users, label: 'Batches', badgeKey: 'batch' },
     );
   } else {
     nav.push(

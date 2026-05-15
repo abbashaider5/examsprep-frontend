@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Building2, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Brain, Building2, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, LifeBuoy, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
@@ -66,6 +66,7 @@ const FAILURE_STAGE_LABEL = {
   ocr: 'Running OCR',
   rasterize: 'Processing scanned pages',
   prepare: 'Preparing AI content',
+  convert: 'Improving PDF text',
   index: 'Saving your study index',
   upload: 'Finishing upload',
   other: 'Processing',
@@ -118,6 +119,21 @@ function getResourceFailurePresentation(payload) {
       title: 'This PDF couldn’t be opened',
       subtitle: 'We couldn’t process this file as a PDF.',
       tips: ['Save again from Word, Docs, or your scanner', 'Try a different export preset'],
+    },
+    PDF_CONVERSION_UNAVAILABLE: {
+      title: 'Automatic PDF improvement isn’t available',
+      subtitle: 'We read this PDF, but it needs a richer text layer than we could recover on the server.',
+      tips: ['Upload a DOCX export from Word or Google Docs', 'Ask your admin to enable PDF→DOCX conversion', 'Try a text-based PDF export'],
+    },
+    PDF_CONVERSION_FAILED: {
+      title: 'Couldn’t convert this PDF',
+      subtitle: 'We tried converting it for better extraction, but the conversion step didn’t succeed.',
+      tips: ['Upload DOCX if you can', 'Try a smaller or simpler PDF', 'Export again from the original app'],
+    },
+    PDF_CONVERSION_TIMEOUT: {
+      title: 'PDF conversion timed out',
+      subtitle: 'The conversion service took too long or was busy.',
+      tips: ['Try again in a moment', 'Use a smaller file', 'Upload DOCX for the fastest path'],
     },
     CHUNK_FAILED: {
       title: 'Couldn’t extract study-ready content',
@@ -178,6 +194,71 @@ function getResourceFailurePresentation(payload) {
     tips: ['Try Retry', 'Re-export the document', 'DOCX usually works best'],
     stageLine,
     code,
+  };
+}
+
+/** Human-friendly copy when exam AI generation fails (matches backend `code` on 502). */
+function getExamGenFailurePresentation(err) {
+  const code = err?.response?.data?.code || '';
+  const rawMsg = (err?.response?.data?.message || err?.message || '').trim();
+  const supportHint = err?.response?.data?.supportHint === true;
+
+  const ticketTip = 'Open Help & Tickets, raise a request with a screenshot of this screen, and our tech team will assist you.';
+
+  const catalog = {
+    AI_GENERATION_JSON_FAILED: {
+      title: 'Question generation didn’t finish',
+      subtitle: 'LikhitAI had trouble formatting all questions for this exam size. Large exams are built in smaller batches; something still went wrong on our side.',
+      tips: [
+        'Try again — it often succeeds on a second attempt',
+        'If you need 50+ questions, try creating in two exams and merging in the editor',
+        ticketTip,
+      ],
+    },
+    AI_GENERATION_EMPTY: {
+      title: 'No questions came back from AI',
+      subtitle: 'The AI service returned an empty set. This is usually temporary.',
+      tips: ['Wait a moment and try again', 'Reduce the question count slightly', ticketTip],
+    },
+    EXAM_LIMIT_REACHED: {
+      title: 'Monthly exam limit reached',
+      subtitle: rawMsg || 'You’ve used your exam generation allowance for this billing period.',
+      tips: ['Upgrade your plan or wait for the next cycle', 'Contact your organization admin if you’re on a school plan'],
+    },
+  };
+
+  const entry = catalog[code];
+  if (entry) {
+    return {
+      title: entry.title,
+      subtitle: (rawMsg && rawMsg.length <= 320 ? rawMsg : '') || entry.subtitle,
+      tips: entry.tips,
+      code,
+      showSupport: supportHint || code.startsWith('AI_GENERATION'),
+    };
+  }
+
+  const looksLikeJsonFail = /valid json|json for mcq/i.test(rawMsg);
+  if (looksLikeJsonFail || supportHint) {
+    return {
+      title: 'Question generation didn’t finish',
+      subtitle: 'LikhitAI couldn’t assemble every question for this exam. Very large exams can take longer and occasionally need a retry.',
+      tips: [
+        'Try again with the same settings',
+        'If it keeps failing, try slightly fewer questions',
+        ticketTip,
+      ],
+      code: code || 'AI_GENERATION_FAILED',
+      showSupport: true,
+    };
+  }
+
+  return {
+    title: 'Couldn’t create your exam',
+    subtitle: rawMsg || 'Something went wrong while generating your test.',
+    tips: ['Check your connection and try again', ticketTip],
+    code: code || 'FAILED',
+    showSupport: Boolean(supportHint),
   };
 }
 
@@ -755,6 +836,9 @@ export default function CreateExamPage() {
   const [showExamLimitModal, setShowExamLimitModal] = useState(false);
   const [listenGenTick, setListenGenTick] = useState(0);
   const [overlayListeningGen, setOverlayListeningGen] = useState(false);
+  /** @type {[{ title: string, subtitle: string, tips: string[], code: string, showSupport: boolean } | null, Function]} */
+  const [examGenFailure, setExamGenFailure] = useState(null);
+  const lastCreatePayloadRef = useRef(null);
 
   const createMut = useMutation({
     mutationFn: (data) => examApi.create(data),
@@ -787,8 +871,12 @@ export default function CreateExamPage() {
       setOverlayListeningGen(false);
       if (err.response?.status === 429 && err.response?.data?.code === 'EXAM_LIMIT_REACHED') {
         setShowExamLimitModal(true);
+        return;
       }
-      toast.error(err.response?.data?.message || 'Failed to create exam');
+      const presentation = getExamGenFailurePresentation(err);
+      setExamGenFailure(presentation);
+      const toastMsg = presentation.subtitle?.slice(0, 120) || 'Failed to create exam';
+      toast.error(toastMsg);
     },
   });
 
@@ -959,6 +1047,7 @@ export default function CreateExamPage() {
         }
       }
     }
+    lastCreatePayloadRef.current = payload;
     createMut.mutate(payload);
   };
 
@@ -2452,6 +2541,100 @@ export default function CreateExamPage() {
                       }}
                     />
                   ))}
+                </div>
+              </div>
+            </div>
+          </div>
+        ),
+        document.body,
+      )}
+
+      {examGenFailure && typeof document !== 'undefined' && createPortal(
+        (
+          <div
+            className="fixed inset-0 z-[10000] flex items-center justify-center p-4 sm:p-6"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="exam-gen-failure-title"
+          >
+            <div
+              className="absolute inset-0 bg-black/55"
+              onClick={() => setExamGenFailure(null)}
+              aria-hidden
+            />
+            <div className="relative z-10 w-full max-w-md rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl overflow-hidden">
+              <div className="px-6 py-6 sm:px-8 sm:py-7">
+                <div className="flex items-start gap-3">
+                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="h-6 w-6" aria-hidden />
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <h2 id="exam-gen-failure-title" className="text-lg font-bold text-[var(--color-text)]">
+                      {examGenFailure.title}
+                    </h2>
+                    <p className="text-sm text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
+                      {examGenFailure.subtitle}
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setExamGenFailure(null)}
+                    className="shrink-0 p-1 rounded-lg text-[var(--color-text-muted)] hover:bg-[var(--color-bg-alt)]"
+                    aria-label="Close"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+
+                <ul className="mt-5 space-y-2 text-sm text-[var(--color-text)]">
+                  {examGenFailure.tips.map((tip) => (
+                    <li key={tip} className="flex gap-2 leading-snug">
+                      <span className="text-[var(--color-primary)] mt-0.5">•</span>
+                      <span>{tip}</span>
+                    </li>
+                  ))}
+                </ul>
+
+                {examGenFailure.showSupport && (
+                  <div className="mt-5 rounded-xl border border-teal-200/60 dark:border-teal-800/40 bg-teal-50/80 dark:bg-teal-950/20 px-4 py-3">
+                    <p className="text-xs font-semibold text-teal-800 dark:text-teal-200 flex items-center gap-1.5">
+                      <LifeBuoy size={14} aria-hidden />
+                      Need help from LikhitAI?
+                    </p>
+                    <p className="text-xs text-teal-700/90 dark:text-teal-300/90 mt-1 leading-relaxed">
+                      Take a screenshot of this message, then open Help &amp; Tickets and submit a request — our tech team can investigate.
+                    </p>
+                    <Link
+                      to="/tickets"
+                      onClick={() => setExamGenFailure(null)}
+                      className="inline-flex items-center gap-1.5 mt-2.5 text-xs font-semibold text-teal-700 dark:text-teal-300 hover:underline"
+                    >
+                      Go to Help &amp; Tickets
+                      <ChevronRight size={14} aria-hidden />
+                    </Link>
+                  </div>
+                )}
+
+                <div className="mt-6 flex flex-col-reverse sm:flex-row gap-2 sm:justify-end">
+                  <button
+                    type="button"
+                    className="btn-secondary w-full sm:w-auto"
+                    onClick={() => setExamGenFailure(null)}
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-primary w-full sm:w-auto"
+                    onClick={() => {
+                      setExamGenFailure(null);
+                      const payload = lastCreatePayloadRef.current || createMut.variables;
+                      if (payload) createMut.mutate(payload);
+                    }}
+                    disabled={!lastCreatePayloadRef.current && !createMut.variables}
+                  >
+                    Try again
+                  </button>
                 </div>
               </div>
             </div>

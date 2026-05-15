@@ -15,6 +15,12 @@ import { useAuthStore } from '../store/index.js';
 // ── helpers ───────────────────────────────────────────────────────────────────
 const isPro            = (u) => ['pro', 'enterprise'].includes(u?.plan) || u?.role === 'admin';
 const isInstructorRole = (u) => u?.role === 'instructor' || u?.role === 'admin';
+/** Org-linked instructors: batches included with org; do not gate on personal Pro. */
+const isOrganizationInstructor = (u) =>
+  u?.role === 'instructor' &&
+  (u?.subscriptionBillingManagedByOrg === true ||
+    !!u?.enterpriseId ||
+    !!(u?.enterprise?.id || u?.enterprise?._id));
 
 function fmtTime(d) {
   const dt   = new Date(d);
@@ -2117,7 +2123,7 @@ export default function GroupsPage() {
   const [showDrawer,      setShowDrawer]      = useState(false);
   const [search,          setSearch]          = useState('');
   const [invitePopup,     setInvitePopup]     = useState(null); // holds the invite object
-  const canCreate = isInstructorRole(user) && isPro(user);
+  const canCreate = isInstructorRole(user) && (isPro(user) || isOrganizationInstructor(user));
 
   const joinId = new URLSearchParams(window.location.search).get('join');
 
