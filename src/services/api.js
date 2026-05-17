@@ -1,8 +1,9 @@
 import axios from 'axios';
+import { getApiBaseUrl } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL || '/api',
+  baseURL: getApiBaseUrl(),
   withCredentials: true,
 });
 
