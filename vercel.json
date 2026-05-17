@@ -2,6 +2,10 @@
   "version": 2,
   "routes": [
     {
+      "src": "/api/(.*)",
+      "dest": "https://examsprep-backend.vercel.app/api/$1"
+    },
+    {
       "src": "/assets/(.*)",
       "dest": "/assets/$1"
     },
