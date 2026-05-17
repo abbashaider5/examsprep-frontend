@@ -120,6 +120,15 @@ function getResourceFailurePresentation(payload) {
       subtitle: 'We couldn’t process this file as a PDF.',
       tips: ['Save again from Word, Docs, or your scanner', 'Try a different export preset'],
     },
+    PDF_SCANNED: {
+      title: 'Scanned or image-based PDF',
+      subtitle: 'We couldn’t find a readable text layer in this PDF. LikhitAI works best with text-based exports.',
+      tips: [
+        'Upload a Word (.docx) file if you have one',
+        'Re-export the PDF from Word, Google Docs, or your authoring tool (not a photo scan)',
+        'If this is a scan, convert it with OCR software first, then upload DOCX',
+      ],
+    },
     PDF_CONVERSION_UNAVAILABLE: {
       title: 'Automatic PDF improvement isn’t available',
       subtitle: 'We read this PDF, but it needs a richer text layer than we could recover on the server.',
