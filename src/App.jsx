@@ -62,6 +62,7 @@ import TermsPage from './pages/TermsPage.jsx';
 import TicketsPage from './pages/TicketsPage.jsx';
 import VerifyCertPage from './pages/VerifyCertPage.jsx';
 import { getDashboardPath } from './utils/dashboardPath.js';
+import RouteSeo from './components/RouteSeo.jsx';
 
 function DashboardPageRoute() {
   const { user } = useAuthStore();
@@ -116,6 +117,7 @@ export default function App() {
   return (
     <GoogleOAuthProvider clientId={googleClientId || 'missing-google-client-id'}>
       <BrowserRouter>
+        <RouteSeo />
         <Toaster position="top-right" toastOptions={{ duration: 3500, style: { borderRadius: '10px', fontSize: '14px', fontFamily: 'Inter, sans-serif' } }} />
 
       <Routes>

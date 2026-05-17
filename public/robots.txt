@@ -1,0 +1,36 @@
+# LikhitAI — https://likhitai.com
+User-agent: *
+Allow: /
+Allow: /pricing
+Allow: /about
+Allow: /contact
+Allow: /signup
+Allow: /help
+Allow: /leaderboard
+Allow: /privacy
+Allow: /terms
+Allow: /legal/
+
+Disallow: /dashboard
+Disallow: /create-exam
+Disallow: /exam/
+Disallow: /results/
+Disallow: /admin
+Disallow: /admin-dashboard
+Disallow: /instructor-dashboard
+Disallow: /instructor/
+Disallow: /enterprise
+Disallow: /school/
+Disallow: /groups/
+Disallow: /batches/
+Disallow: /settings
+Disallow: /profile
+Disallow: /plan
+Disallow: /certificates
+Disallow: /tests
+Disallow: /performance
+Disallow: /tickets
+Disallow: /notifications/
+Disallow: /api/
+
+Sitemap: https://likhitai.com/sitemap.xml

@@ -1,6 +1,7 @@
 import { ArrowLeft } from 'lucide-react';
 import { Link, useParams } from 'react-router-dom';
 import HelpArticleView from '../components/HelpArticleView.jsx';
+import PageSeo from '../components/PageSeo.jsx';
 import { useHelpTopic } from '../hooks/useHelpTopics.js';
 
 export default function HelpTopicPage() {
@@ -29,8 +30,15 @@ export default function HelpTopicPage() {
     );
   }
 
+  const summary = topic.summary || topic.description || `LikhitAI help article: ${topic.title}`;
+
   return (
     <article className="max-w-2xl mx-auto px-4 sm:px-6 py-8 sm:py-12 animate-fade-in">
+      <PageSeo
+        title={topic.title}
+        description={String(summary).slice(0, 160)}
+        keywords={`LikhitAI help, ${topic.title}, exam platform guide`}
+      />
       <Link
         to="/help"
         className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-primary)] hover:underline mb-8"

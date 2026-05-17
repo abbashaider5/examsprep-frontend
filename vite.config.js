@@ -7,17 +7,27 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.ico', 'robots.txt'],
+      includeAssets: [
+        'favicon.png',
+        'apple-touch-icon.png',
+        'og-image.png',
+        'robots.txt',
+        'sitemap.xml',
+        'site.webmanifest',
+      ],
       manifest: {
-        name: 'ExamPrep AI',
-        short_name: 'ExamPrep',
-        description: 'AI-Powered MCQ Exam Preparation Platform',
+        name: 'LikhitAI',
+        short_name: 'LikhitAI',
+        description:
+          'AI-powered exam generator, classroom platform, and secure assessment SaaS for teachers and schools.',
         theme_color: '#0366AC',
         background_color: '#ffffff',
         display: 'standalone',
+        start_url: '/',
+        lang: 'en',
         icons: [
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png' },
+          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' },
         ],
       },
       workbox: {

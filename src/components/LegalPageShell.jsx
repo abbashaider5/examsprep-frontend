@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { LEGAL_FOOTER_COMPACT } from '../config/legalLinks.js';
+import PageSeo from './PageSeo.jsx';
 
 export default function LegalPageShell({
   title,
@@ -8,25 +8,9 @@ export default function LegalPageShell({
   children,
   lastUpdated = 'May 2026',
 }) {
-  useEffect(() => {
-    const prevTitle = document.title;
-    document.title = `${title} · LikhitAI`;
-    let meta = document.querySelector('meta[name="description"]');
-    if (!meta) {
-      meta = document.createElement('meta');
-      meta.setAttribute('name', 'description');
-      document.head.appendChild(meta);
-    }
-    const prevDesc = meta.getAttribute('content') || '';
-    meta.setAttribute('content', description);
-    return () => {
-      document.title = prevTitle;
-      if (prevDesc) meta.setAttribute('content', prevDesc);
-    };
-  }, [title, description]);
-
   return (
     <div className="bg-[var(--color-bg)] animate-fade-in min-h-screen flex flex-col">
+      <PageSeo title={title} description={description} robots="index, follow" />
       <nav className="border-b border-[var(--color-border)] bg-[var(--color-surface)] shrink-0">
         <div className="max-w-3xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-2">
           <Link to="/" className="text-xs font-semibold text-[var(--color-primary)] hover:underline">
