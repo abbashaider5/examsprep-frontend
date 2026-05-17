@@ -179,6 +179,11 @@ function getResourceFailurePresentation(payload) {
       subtitle: 'The file didn’t attach correctly on our side.',
       tips: ['Upload again', 'Check your connection'],
     },
+    NO_STORED_FILE: {
+      title: 'Can’t retry this upload',
+      subtitle: 'The original file wasn’t saved, so we can’t run processing again.',
+      tips: ['Remove this entry and upload the file again', 'Use Retry only after a stored upload'],
+    },
     UNSUPPORTED_FILE: {
       title: 'This file type isn’t supported',
       subtitle: 'Use a format LikhitAI can read for resources.',
@@ -770,7 +775,19 @@ export default function CreateExamPage() {
       qc.invalidateQueries({ queryKey: ['myResourcesForCreate'] });
       qc.invalidateQueries({ queryKey: ['adminResourcesForCreate'] });
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Retry failed'),
+    onError: (err) => {
+      const code = err.response?.data?.code;
+      if (code === 'NO_STORED_FILE') {
+        setResourceFlow((prev) => ({
+          ...prev,
+          open: true,
+          phase: 'failed',
+          failurePresentation: getResourceFailurePresentation({ processingErrorCode: 'NO_STORED_FILE' }),
+        }));
+        return;
+      }
+      toast.error(err.response?.data?.message || 'Retry failed');
+    },
   });
 
   const deleteResourceMut = useMutation({
