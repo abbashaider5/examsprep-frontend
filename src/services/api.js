@@ -1,10 +1,24 @@
 import axios from 'axios';
-import { getApiBaseUrl } from '../config/apiBase.js';
+import { getApiBaseUrl, getDirectUploadApiBaseUrl } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
+import { getAccessToken, setAccessToken } from '../utils/authToken.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
   withCredentials: true,
+});
+
+api.interceptors.request.use((config) => {
+  if (config.directUpload) {
+    const direct = getDirectUploadApiBaseUrl();
+    if (direct) config.baseURL = direct;
+    const token = getAccessToken();
+    if (token) {
+      config.headers = config.headers || {};
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+  }
+  return config;
 });
 
 let isRefreshing = false;
@@ -32,7 +46,8 @@ api.interceptors.response.use(
       original._retry = true;
       isRefreshing = true;
       try {
-        await api.post('/auth/refresh');
+        const refreshRes = await api.post('/auth/refresh');
+        if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
         processQueue(null);
         return api(original);
       } catch (refreshErr) {
@@ -233,7 +248,10 @@ export const resourceApi = {
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
-    return api.post('/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/resources', form, {
+      directUpload: true,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: (file, title, groupId = null, opts = {}, onUploadProgress) => {
@@ -243,6 +261,7 @@ export const resourceApi = {
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
     return api.post('/resources', form, {
+      directUpload: true,
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: onUploadProgress
         ? (evt) => {
@@ -257,7 +276,10 @@ export const resourceApi = {
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
-    return api.post('/admin/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/admin/resources', form, {
+      directUpload: true,
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   },
   adminDelete: (id) => api.delete(`/admin/resources/${id}`),
   // Instructor: get admin resources for dropdown

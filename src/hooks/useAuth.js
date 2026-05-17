@@ -3,7 +3,12 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { authApi, enterpriseApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { setAccessToken } from '../utils/authToken.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
+
+function persistSessionToken(res) {
+  if (res?.data?.accessToken) setAccessToken(res.data.accessToken);
+}
 
 export const useAuth = () => {
   const { user, isAuthenticated, setUser, clearUser } = useAuthStore();
@@ -15,6 +20,7 @@ export const useAuth = () => {
     onSuccess: async (res) => {
       if (res.data.requiresOTP) return; // caller handles OTP step
       setUser(res.data.user);
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
       const pending = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('enterpriseInvite')
         : null;
@@ -23,6 +29,7 @@ export const useAuth = () => {
           const acc = await enterpriseApi.acceptInvite(pending);
           const me = await authApi.getMe();
           setUser(me.data.user);
+          persistSessionToken(me);
           navigate(acc.data?.redirectPath || getDashboardPath(me.data.user?.role));
           toast.success('Welcome back — you joined the organization.');
           return;
@@ -41,6 +48,7 @@ export const useAuth = () => {
     onSuccess: (res) => {
       if (res.data.requiresOTP) return; // caller handles OTP step
       setUser(res.data.user);
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
       if (res.data.redirectPath) navigate(res.data.redirectPath);
       else navigate(getDashboardPath(res.data.user?.role));
       toast.success('Account created!');
@@ -52,6 +60,7 @@ export const useAuth = () => {
     mutationFn: authApi.verifyOtp,
     onSuccess: (res) => {
       setUser(res.data.user);
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
       if (res.data.redirectPath) navigate(res.data.redirectPath);
       else navigate(getDashboardPath(res.data.user?.role));
       toast.success(res.data.message || 'Verified!');
@@ -69,6 +78,7 @@ export const useAuth = () => {
     onSuccess: async (res) => {
       if (res.data.requiresOTP) return;
       setUser(res.data.user);
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
       const pending = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('enterpriseInvite')
         : null;
@@ -77,6 +87,7 @@ export const useAuth = () => {
           const acc = await enterpriseApi.acceptInvite(pending);
           const me = await authApi.getMe();
           setUser(me.data.user);
+          persistSessionToken(me);
           navigate(acc.data?.redirectPath || res.data.redirectPath || getDashboardPath(me.data.user?.role));
           toast.success('Signed in with Google — you joined the organization.');
           return;
@@ -102,6 +113,7 @@ export const useMe = () => {
       try {
         const res = await authApi.getMe();
         setUser(res.data.user);
+        persistSessionToken(res);
         return res.data.user;
       } catch (err) {
         // Only clear user on definitive auth failures (not network errors)

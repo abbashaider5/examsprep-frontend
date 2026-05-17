@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { clearAccessToken } from '../utils/authToken.js';
 
 export const useAuthStore = create(
   persist(
@@ -7,7 +8,10 @@ export const useAuthStore = create(
       user: null,
       isAuthenticated: false,
       setUser: (user) => set({ user, isAuthenticated: !!user }),
-      clearUser: () => set({ user: null, isAuthenticated: false }),
+      clearUser: () => {
+        clearAccessToken();
+        set({ user: null, isAuthenticated: false });
+      },
     }),
     { name: 'auth-storage', partialize: (s) => ({ user: s.user, isAuthenticated: s.isAuthenticated }) }
   )
