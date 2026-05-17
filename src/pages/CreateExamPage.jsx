@@ -115,6 +115,21 @@ function getResourceFailurePresentation(payload) {
       subtitle: 'The file may be corrupted, password-locked, or an unusual export.',
       tips: ['Export the PDF again from the original app', 'Remove password protection', 'Try DOCX instead'],
     },
+    PDF_MALFORMED: {
+      title: 'PDF file could not be read',
+      subtitle: 'The upload may be corrupted, truncated, or not a valid PDF.',
+      tips: ['Upload the file again', 'Re-export from Word or Google Docs', 'Try DOCX instead'],
+    },
+    PDF_ENCRYPTED: {
+      title: 'Password-protected PDF',
+      subtitle: 'Remove the password before uploading, or use a Word (.docx) export.',
+      tips: ['Save an unprotected copy', 'Export as DOCX from the original app'],
+    },
+    PDF_RUNTIME: {
+      title: 'PDF processing failed on server',
+      subtitle: 'A temporary server issue prevented reading this PDF. Please retry or use DOCX.',
+      tips: ['Try again in a minute', 'Upload Word (.docx) for the most reliable results'],
+    },
     PDF_NOT_SUPPORTED: {
       title: 'This PDF couldn’t be opened',
       subtitle: 'We couldn’t process this file as a PDF.',
