@@ -299,14 +299,50 @@ function fileExtension(file) {
   return i > 0 ? n.slice(i + 1).toLowerCase() : '';
 }
 
+const PROD_RESOURCE_MAX_BYTES = Math.floor(4.5 * 1024 * 1024);
+
+function isProductionUploadHost() {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  return /^(www\.)?likhitai\.com$/i.test(host) || /\.vercel\.app$/i.test(host);
+}
+
 function uploadErrorFriendly(err) {
   const status = err?.response?.status;
   const msg = err?.response?.data?.message;
-  if (status === 413) return 'File is too large for upload.';
+  const code = err?.response?.data?.code;
+  if (status === 413 || code === 'FILE_TOO_LARGE') {
+    return isProductionUploadHost()
+      ? 'File is too large for production (max 4.5 MB). Try a smaller PDF or Word (.docx).'
+      : 'File is too large for upload.';
+  }
+  if (status === 503 || code === 'DB_UNAVAILABLE') {
+    return 'Database is temporarily unavailable. Please wait a few seconds and try again.';
+  }
   if (status === 403) return 'You don’t have permission to upload this resource.';
   if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';
   if (msg) return String(msg);
   return 'Upload didn’t complete. Check your connection and try again.';
+}
+
+function uploadErrorTitle(err) {
+  const status = err?.response?.status;
+  const code = err?.response?.data?.code;
+  if (status === 503 || code === 'DB_UNAVAILABLE') return 'Server busy';
+  if (status === 413 || code === 'FILE_TOO_LARGE') return 'File too large';
+  return 'Upload not sent';
+}
+
+function uploadErrorSubtitle(err) {
+  const status = err?.response?.status;
+  const code = err?.response?.data?.code;
+  if (status === 503 || code === 'DB_UNAVAILABLE') {
+    return 'The database could not be reached. Your file was not saved.';
+  }
+  if (status === 413 || code === 'FILE_TOO_LARGE') {
+    return 'Production uploads are limited to 4.5 MB per file.';
+  }
+  return 'Your chosen file did not reach the server';
 }
 
 function FileKindIcon({ ext, className = 'w-5 h-5' }) {
@@ -766,6 +802,10 @@ export default function CreateExamPage() {
       return;
     }
     const ext = fileExtension(file);
+    if (isProductionUploadHost() && file.size > PROD_RESOURCE_MAX_BYTES) {
+      toast.error('File is too large for production (max 4.5 MB). Try Word (.docx) or a smaller PDF.');
+      return;
+    }
     setUploadInFlight(true);
     setResourceFlow({
       ...INITIAL_RESOURCE_FLOW,
@@ -833,6 +873,8 @@ export default function CreateExamPage() {
         ...prev,
         phase: 'upload_error',
         errorFriendly: uploadErrorFriendly(err),
+        uploadErrorTitle: uploadErrorTitle(err),
+        uploadErrorSubtitle: uploadErrorSubtitle(err),
       }));
     } finally {
       setUploadInFlight(false);
@@ -2374,8 +2416,12 @@ export default function CreateExamPage() {
                             <AlertCircle className="w-8 h-8 text-amber-600 dark:text-amber-400" aria-hidden />
                           </div>
                         </div>
-                        <h2 id="resource-ai-title" className="text-center text-base font-bold text-amber-800 dark:text-amber-200">Upload not sent</h2>
-                        <p className="text-[10px] font-medium text-amber-700/85 dark:text-amber-300/90 text-center mt-1">Your chosen file did not reach the server</p>
+                        <h2 id="resource-ai-title" className="text-center text-base font-bold text-amber-800 dark:text-amber-200">
+                          {resourceFlow.uploadErrorTitle || 'Upload not sent'}
+                        </h2>
+                        <p className="text-[10px] font-medium text-amber-700/85 dark:text-amber-300/90 text-center mt-1">
+                          {resourceFlow.uploadErrorSubtitle || 'Your chosen file did not reach the server'}
+                        </p>
                         <p className="text-[11px] text-[var(--color-text-muted)] text-center mt-2 line-clamp-3 px-1">{resourceFlow.errorFriendly}</p>
                         <div className="mt-5 flex gap-2">
                           <button type="button" disabled={uploadInFlight} onClick={() => { void runMyResourceUpload(); }} className="btn-primary flex-1 text-xs py-2.5 rounded-xl">
