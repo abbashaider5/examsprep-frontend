@@ -1,15 +1,9 @@
 import axios from 'axios';
-import { getApiBaseUrl, getDirectUploadApiBaseUrl } from '../config/apiBase.js';
+import { getApiBaseUrl } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
-  withCredentials: true,
-});
-
-/** Multipart uploads hit the API directly in production (avoids proxy corrupting PDF bytes). */
-const uploadApi = axios.create({
-  baseURL: getDirectUploadApiBaseUrl() || getApiBaseUrl(),
   withCredentials: true,
 });
 
@@ -239,7 +233,7 @@ export const resourceApi = {
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
-    return uploadApi.post('/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: (file, title, groupId = null, opts = {}, onUploadProgress) => {
@@ -248,7 +242,7 @@ export const resourceApi = {
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
-    return uploadApi.post('/resources', form, {
+    return api.post('/resources', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: onUploadProgress
         ? (evt) => {
@@ -263,7 +257,7 @@ export const resourceApi = {
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
-    return uploadApi.post('/admin/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
+    return api.post('/admin/resources', form, { headers: { 'Content-Type': 'multipart/form-data' } });
   },
   adminDelete: (id) => api.delete(`/admin/resources/${id}`),
   // Instructor: get admin resources for dropdown

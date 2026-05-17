@@ -324,6 +324,9 @@ function uploadErrorFriendly(err) {
   if (status === 503 || code === 'DB_UNAVAILABLE') {
     return 'Database is temporarily unavailable. Please wait a few seconds and try again.';
   }
+  if (status === 401 || code === 'TOKEN_EXPIRED') {
+    return msg || 'Your session expired. Please log in again and retry the upload.';
+  }
   if (status === 403) return 'You don’t have permission to upload this resource.';
   if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';
   if (msg) return String(msg);
@@ -335,6 +338,7 @@ function uploadErrorTitle(err) {
   const code = err?.response?.data?.code;
   if (status === 503 || code === 'DB_UNAVAILABLE') return 'Server busy';
   if (status === 413 || code === 'FILE_TOO_LARGE') return 'File too large';
+  if (status === 401 || code === 'TOKEN_EXPIRED') return 'Session expired';
   return 'Upload not sent';
 }
 
@@ -346,6 +350,9 @@ function uploadErrorSubtitle(err) {
   }
   if (status === 413 || code === 'FILE_TOO_LARGE') {
     return 'Production uploads are limited to 4.5 MB per file.';
+  }
+  if (status === 401 || code === 'TOKEN_EXPIRED') {
+    return 'You need to be logged in for uploads to reach the server.';
   }
   return 'Your chosen file did not reach the server';
 }

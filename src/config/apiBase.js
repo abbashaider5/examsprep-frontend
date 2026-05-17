@@ -20,23 +20,3 @@ export function getApiBaseUrl() {
   return '/api';
 }
 
-/**
- * Direct backend URL for multipart uploads (bypasses frontend Vercel rewrite).
- * Binary bodies can be altered by edge rewrites; direct upload keeps PDF bytes intact.
- */
-export function getDirectUploadApiBaseUrl() {
-  const configured = import.meta.env.VITE_API_DIRECT_URL;
-  if (configured && String(configured).trim()) {
-    return String(configured).trim().replace(/\/$/, '');
-  }
-  if (typeof window !== 'undefined') {
-    const host = window.location.hostname;
-    if (/^(www\.)?likhitai\.com$/i.test(host)) {
-      return 'https://examsprep-backend.vercel.app/api';
-    }
-    if (/\.vercel\.app$/i.test(host) && !host.includes('examsprep-backend')) {
-      return 'https://examsprep-backend.vercel.app/api';
-    }
-  }
-  return null;
-}
