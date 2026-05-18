@@ -2,6 +2,7 @@ import axios from 'axios';
 import { getApiBaseUrl, getDirectUploadApiBaseUrl } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 import { getAccessToken, setAccessToken } from '../utils/authToken.js';
+import { readFileAsBase64 } from '../utils/fileBytes.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -312,7 +313,39 @@ export const resourceApi = {
     });
   },
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
-  uploadWithProgress: (file, title, groupId = null, opts = {}, onUploadProgress) => {
+  uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
+    const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
+    const useBase64Upload = isPdf && Boolean(getDirectUploadApiBaseUrl());
+
+    if (useBase64Upload) {
+      onUploadProgress?.({ loaded: 0, total: file.size, pct: 8 });
+      const fileBase64 = await readFileAsBase64(file);
+      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 35 });
+      const payload = {
+        fileBase64,
+        originalName: file.name,
+        mimetype: file.type || 'application/pdf',
+        size: file.size,
+        title,
+        ...(groupId ? { groupId } : {}),
+        ...(opts.subject ? { subject: opts.subject } : {}),
+      };
+      const res = await api.post('/resources/upload-bytes', payload, {
+        directUpload: true,
+        headers: { 'Content-Type': 'application/json' },
+        onUploadProgress: onUploadProgress
+          ? (evt) => {
+              if (evt.total) {
+                const pct = 35 + Math.round((evt.loaded / evt.total) * 65);
+                onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
+              }
+            }
+          : undefined,
+      });
+      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 100 });
+      return res;
+    }
+
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
