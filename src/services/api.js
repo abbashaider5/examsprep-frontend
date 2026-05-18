@@ -8,16 +8,52 @@ const api = axios.create({
   withCredentials: true,
 });
 
-api.interceptors.request.use((config) => {
-  if (config.directUpload) {
-    const direct = getDirectUploadApiBaseUrl();
-    if (direct) config.baseURL = direct;
-    const token = getAccessToken();
-    if (token) {
-      config.headers = config.headers || {};
-      config.headers.Authorization = `Bearer ${token}`;
-    }
+/** Fetch Bearer token for cross-origin uploads (existing cookie sessions may not have one yet). */
+let ensuringAccessToken = null;
+async function ensureAccessToken() {
+  const existing = getAccessToken();
+  if (existing) return existing;
+  if (!useAuthStore.getState().isAuthenticated) return null;
+
+  if (!ensuringAccessToken) {
+    ensuringAccessToken = api
+      .get('/auth/me')
+      .then((res) => {
+        if (res.data?.accessToken) setAccessToken(res.data.accessToken);
+        return getAccessToken();
+      })
+      .catch(async () => {
+        try {
+          const refreshRes = await api.post('/auth/refresh');
+          if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
+          return getAccessToken();
+        } catch {
+          return null;
+        }
+      })
+      .finally(() => {
+        ensuringAccessToken = null;
+      });
   }
+  return ensuringAccessToken;
+}
+
+api.interceptors.request.use(async (config) => {
+  if (!config.directUpload) return config;
+
+  const direct = getDirectUploadApiBaseUrl();
+  if (!direct) return config;
+
+  const token = await ensureAccessToken();
+  if (token) {
+    config.baseURL = direct;
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+    return config;
+  }
+
+  // Cookie session without Bearer yet — same-origin proxy sends cookies reliably.
+  config.baseURL = getApiBaseUrl();
   return config;
 });
 
@@ -36,6 +72,28 @@ api.interceptors.response.use(
     if (err.response?.status === 503 && err.response?.data?.maintenance) {
       window.location.href = '/maintenance';
       return Promise.reject(err);
+    }
+    if (
+      err.response?.status === 401
+      && original?.directUpload
+      && !original._uploadAuthRetry
+      && useAuthStore.getState().isAuthenticated
+    ) {
+      original._uploadAuthRetry = true;
+      try {
+        const token = await ensureAccessToken();
+        if (token) {
+          original.headers = original.headers || {};
+          original.headers.Authorization = `Bearer ${token}`;
+          original.baseURL = getDirectUploadApiBaseUrl() || getApiBaseUrl();
+          return api(original);
+        }
+        original.baseURL = getApiBaseUrl();
+        delete original.headers?.Authorization;
+        return api(original);
+      } catch {
+        /* fall through */
+      }
     }
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
       if (isRefreshing) {
