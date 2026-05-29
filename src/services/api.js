@@ -13,7 +13,6 @@ import {
 import { extractPdfTextFromFile } from '../utils/pdfClientExtract.js';
 
 const api = axios.create({
-  baseURL: getApiBaseUrl(),
   withCredentials: true,
 });
 
@@ -365,7 +364,7 @@ export const resourceApi = {
     });
   },
   /**
-   * Upload with progress. PDFs: extract text in the browser (pdf.js), then POST /resources/import-text.
+   * Upload with progress. PDFs: extract text in the browser (pdf.js), then POST /resources (JSON).
    * Other types: multipart POST /resources (same path as all other API calls).
    */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
@@ -398,7 +397,8 @@ export const resourceApi = {
         ...(opts.subject ? { subject: opts.subject } : {}),
       };
 
-      return postWithDbRetry(() => api.post('/resources/import-text', payload, {
+      return postWithDbRetry(() => api.post('/resources', payload, {
+        headers: { 'Content-Type': 'application/json' },
         onUploadProgress: onUploadProgress
           ? (evt) => {
               if (evt.total) {
