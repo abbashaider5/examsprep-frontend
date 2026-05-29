@@ -8,7 +8,11 @@ import {
   PRODUCTION_BACKEND_API,
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
-import { clearAccessToken, getAccessToken, setAccessToken } from '../utils/authToken.js';
+import {
+  clearAccessToken,
+  getValidAccessToken,
+  setAccessToken,
+} from '../utils/authToken.js';
 import { readFileAsBase64 } from '../utils/fileBytes.js';
 
 const api = axios.create({
@@ -20,7 +24,7 @@ const api = axios.create({
 let ensuringAccessToken = null;
 async function ensureAccessToken({ force = false } = {}) {
   if (!force) {
-    const existing = getAccessToken();
+    const existing = getValidAccessToken();
     if (existing) return existing;
   } else {
     clearAccessToken();
@@ -28,25 +32,35 @@ async function ensureAccessToken({ force = false } = {}) {
 
   if (!ensuringAccessToken) {
     ensuringAccessToken = (async () => {
-      try {
-        const res = await api.get('/auth/me');
-        if (res.data?.accessToken) {
-          setAccessToken(res.data.accessToken);
-          return res.data.accessToken;
+      const tryRefresh = async () => {
+        try {
+          const refreshRes = await api.post('/auth/refresh');
+          if (refreshRes.data?.accessToken) {
+            setAccessToken(refreshRes.data.accessToken);
+            return refreshRes.data.accessToken;
+          }
+        } catch {
+          clearAccessToken();
         }
-      } catch {
-        /* try refresh */
-      }
-      try {
-        const refreshRes = await api.post('/auth/refresh');
-        if (refreshRes.data?.accessToken) {
-          setAccessToken(refreshRes.data.accessToken);
-          return refreshRes.data.accessToken;
+        return null;
+      };
+      const tryMe = async () => {
+        try {
+          const res = await api.get('/auth/me');
+          if (res.data?.accessToken) {
+            setAccessToken(res.data.accessToken);
+            return res.data.accessToken;
+          }
+        } catch {
+          clearAccessToken();
         }
-      } catch {
-        /* no session */
-      }
-      return null;
+        return null;
+      };
+
+      // Refresh only needs refreshToken cookie; /auth/me needs a valid access cookie.
+      const fromRefresh = await tryRefresh();
+      if (fromRefresh) return fromRefresh;
+      return tryMe();
     })().finally(() => {
       ensuringAccessToken = null;
     });
@@ -116,13 +130,16 @@ api.interceptors.response.use(
         const refreshRes = await api.post('/auth/refresh');
         if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
 
-        if (original._uploadDirect && canUploadViaCookieProxy()) {
+        if (canUploadViaCookieProxy()) {
           const rel = original._resourceUploadRelPath || 'resources';
+          const proxyToken = refreshRes.data?.accessToken || (await ensureAccessToken());
           original.baseURL = typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl();
           original.url = resourceUploadApiPath(rel);
           original._uploadViaProxy = true;
           original._uploadDirect = false;
-          delete original.headers?.Authorization;
+          original.headers = original.headers || {};
+          if (proxyToken) original.headers.Authorization = `Bearer ${proxyToken}`;
+          else delete original.headers.Authorization;
           original.withCredentials = true;
           return api(original);
         }
@@ -396,9 +413,10 @@ async function postResourceUploadOnce(path, data, config = {}) {
     });
   };
 
-  const postProxy = () => {
+  const postProxy = (token) => {
     const h = { ...headers };
-    delete h.Authorization;
+    if (token) h.Authorization = `Bearer ${token}`;
+    else delete h.Authorization;
     return api.post(apiPath, data, {
       ...config,
       ...uploadMeta,
@@ -411,15 +429,25 @@ async function postResourceUploadOnce(path, data, config = {}) {
     });
   };
 
+  let token = await ensureAccessToken();
+
   if (canUploadViaCookieProxy()) {
     try {
-      return await postProxy();
+      return await postProxy(token);
     } catch (err) {
       if (err.response?.status !== 401 && err.response?.status !== 403) throw err;
+      token = await ensureAccessToken({ force: true });
+      if (token) {
+        try {
+          return await postProxy(token);
+        } catch (retryErr) {
+          if (retryErr.response?.status !== 401 && retryErr.response?.status !== 403) throw retryErr;
+        }
+      }
     }
   }
 
-  const token = await ensureAccessToken();
+  if (!token) token = await ensureAccessToken({ force: true });
   if (token) {
     try {
       return await postDirect(token);
@@ -432,7 +460,7 @@ async function postResourceUploadOnce(path, data, config = {}) {
   }
 
   if (canUploadViaCookieProxy()) {
-    return postProxy();
+    return postProxy(token);
   }
 
   const authErr = new Error('Not authenticated. Please log in.');
@@ -440,44 +468,95 @@ async function postResourceUploadOnce(path, data, config = {}) {
   throw authErr;
 }
 
-/** PDF bytes via JSON base64 → direct backend (avoids Vercel proxy corrupting multipart). */
+/**
+ * PDF base64 upload — same-origin /api with cookies + Bearer (Vercel proxy may not forward cookies).
+ * Direct backend + Bearer is fallback.
+ */
 async function postResourceUploadBytes(payload, config = {}) {
-  const token = await ensureAccessToken();
-  if (!token && !isLocalDevHost()) {
-    const authErr = new Error('Not authenticated. Please log in.');
-    authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
-    throw authErr;
-  }
   const headers = { 'Content-Type': 'application/json', ...(config.headers || {}) };
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const baseURL = isLocalDevHost()
-    ? getResourceUploadBaseUrl()
-    : (getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API);
-
-  const doPost = () => api.post('resources/upload-bytes', payload, {
+  const apiPath = resourceUploadApiPath('resources/upload-bytes');
+  const uploadMeta = {
     ...config,
-    baseURL,
+    _resourceUploadRelPath: 'resources/upload-bytes',
     directUpload: false,
     _fixedBaseURL: true,
+  };
+
+  const postProxy = (token) => {
+    const h = { ...headers };
+    if (token) h.Authorization = `Bearer ${token}`;
+    else delete h.Authorization;
+    return api.post(apiPath, payload, {
+      ...uploadMeta,
+      baseURL: typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl(),
+      _uploadViaProxy: true,
+      headers: h,
+      withCredentials: true,
+    });
+  };
+
+  const postDirect = (token) => api.post('resources/upload-bytes', payload, {
+    ...uploadMeta,
+    baseURL: getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API,
     _uploadDirect: true,
-    _resourceUploadRelPath: 'resources/upload-bytes',
-    headers,
-    withCredentials: Boolean(!token && isLocalDevHost()),
+    headers: { ...headers, Authorization: `Bearer ${token}` },
+    withCredentials: false,
   });
 
-  const maxAttempts = 4;
-  let lastErr;
-  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+  const runWithRetry = async (fn) => {
+    const maxAttempts = 4;
+    let lastErr;
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+      try {
+        return await fn();
+      } catch (err) {
+        lastErr = err;
+        if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
+        const sec = Number(err?.response?.data?.retryAfterSeconds) || 2;
+        await uploadSleep(Math.min(sec * 1000 * attempt, 10000));
+      }
+    }
+    throw lastErr;
+  };
+
+  let token = await ensureAccessToken();
+
+  if (canUploadViaCookieProxy()) {
     try {
-      return await doPost();
+      return await runWithRetry(() => postProxy(token));
     } catch (err) {
-      lastErr = err;
-      if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
-      const sec = Number(err?.response?.data?.retryAfterSeconds) || 2;
-      await uploadSleep(Math.min(sec * 1000 * attempt, 10000));
+      if (err.response?.status !== 401 && err.response?.status !== 403) throw err;
+      token = await ensureAccessToken({ force: true });
+      if (token) {
+        try {
+          return await runWithRetry(() => postProxy(token));
+        } catch (retryErr) {
+          if (retryErr.response?.status !== 401 && retryErr.response?.status !== 403) throw retryErr;
+        }
+      }
     }
   }
-  throw lastErr;
+
+  if (!token) token = await ensureAccessToken({ force: true });
+  if (token) {
+    try {
+      return await runWithRetry(() => postDirect(token));
+    } catch (err) {
+      if (err.response?.status === 401 && canUploadViaCookieProxy()) {
+        const proxyToken = await ensureAccessToken({ force: true });
+        if (proxyToken) return runWithRetry(() => postProxy(proxyToken));
+      }
+      throw err;
+    }
+  }
+
+  if (canUploadViaCookieProxy()) {
+    return runWithRetry(() => postProxy(null));
+  }
+
+  const authErr = new Error('Not authenticated. Please log in.');
+  authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
+  throw authErr;
 }
 
 async function postResourceUpload(path, data, config = {}) {
