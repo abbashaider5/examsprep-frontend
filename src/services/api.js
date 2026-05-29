@@ -4,11 +4,10 @@ import {
   getDirectUploadApiBaseUrl,
   getResourceUploadBaseUrl,
   isLocalDevHost,
-  usesSameOriginApiProxy,
+  PRODUCTION_BACKEND_API,
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 import { clearAccessToken, getAccessToken, setAccessToken } from '../utils/authToken.js';
-import { readFileAsBase64 } from '../utils/fileBytes.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -102,43 +101,17 @@ api.interceptors.response.use(
       try {
         const refreshRes = await api.post('/auth/refresh');
         if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
-        if (original._uploadViaProxy || usesSameOriginApiProxy()) {
-          original.baseURL = typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl();
-          original.url = resourceUploadApiPath(original._resourceUploadRelPath || 'resources/upload-bytes');
-          original._uploadViaProxy = true;
-          delete original.headers?.Authorization;
-          original.withCredentials = true;
-          return api(original);
-        }
         const token = await ensureAccessToken({ force: true });
         if (token) {
           original.headers = original.headers || {};
           original.headers.Authorization = `Bearer ${token}`;
-          original.baseURL = getDirectUploadApiBaseUrl() || getApiBaseUrl();
+          original.baseURL = getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API;
+          original._uploadDirect = true;
           original.withCredentials = false;
           return api(original);
         }
       } catch {
         /* fall through */
-      }
-    }
-    if (
-      err.response?.status === 404
-      && original?._fixedBaseURL
-      && !original._upload404Retry
-      && useAuthStore.getState().isAuthenticated
-    ) {
-      original._upload404Retry = true;
-      const token = await ensureAccessToken({ force: true });
-      const direct = getDirectUploadApiBaseUrl();
-      if (token && direct) {
-        original.baseURL = direct;
-        original.url = resourceUploadApiPath(original._resourceUploadRelPath || 'resources/upload-bytes').replace(/^\/api\//, '');
-        original.headers = original.headers || {};
-        original.headers.Authorization = `Bearer ${token}`;
-        original._uploadViaProxy = false;
-        original.withCredentials = false;
-        return api(original);
       }
     }
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
@@ -351,41 +324,45 @@ function resourceUploadApiPath(path) {
 }
 
 /**
- * Resource uploads on likhitai.com use same-origin `/api` + cookies (session works).
- * Other production hosts use direct backend URL + Bearer token.
+ * Production uploads go to the Vercel backend with Bearer auth.
+ * Cookie session is used only to obtain the token via same-origin /api/auth/me.
+ * (Avoids www.* / broken /api proxy hosts that return 404 for upload-bytes.)
  */
 async function postResourceUpload(path, data, config = {}) {
-  const viaProxy = usesSameOriginApiProxy();
   const headers = { ...(config.headers || {}) };
-  const apiPath = resourceUploadApiPath(path);
-
+  const relPath = resourceUploadApiPath(path).replace(/^\/api\//, '');
   const uploadMeta = { _resourceUploadRelPath: path.replace(/^\//, '') };
 
-  if (viaProxy) {
-    return api.post(apiPath, data, {
+  if (isLocalDevHost()) {
+    return api.post(relPath, data, {
       ...config,
       ...uploadMeta,
-      baseURL: typeof window !== 'undefined' ? window.location.origin : undefined,
+      baseURL: getResourceUploadBaseUrl(),
       directUpload: false,
       _fixedBaseURL: true,
-      _uploadViaProxy: true,
       headers,
       withCredentials: true,
     });
   }
 
   const token = await ensureAccessToken();
-  if (token) headers.Authorization = `Bearer ${token}`;
-  const baseURL = getResourceUploadBaseUrl();
-  const relPath = apiPath.replace(/^\/api\//, '');
+  if (!token) {
+    const err = new Error('Not authenticated. Please log in.');
+    err.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
+    throw err;
+  }
+  headers.Authorization = `Bearer ${token}`;
+
+  const baseURL = getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API;
   return api.post(relPath, data, {
     ...config,
     ...uploadMeta,
     baseURL,
     directUpload: false,
     _fixedBaseURL: true,
+    _uploadDirect: true,
     headers,
-    withCredentials: Boolean(token),
+    withCredentials: false,
   });
 }
 
@@ -404,38 +381,6 @@ export const resourceApi = {
   },
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
-    const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
-    // JSON base64 on production avoids multipart corruption and Vercel proxy body issues.
-    const useBase64Upload = isPdf && import.meta.env.PROD && !isLocalDevHost();
-
-    if (useBase64Upload) {
-      onUploadProgress?.({ loaded: 0, total: file.size, pct: 8 });
-      const fileBase64 = await readFileAsBase64(file);
-      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 35 });
-      const payload = {
-        fileBase64,
-        originalName: file.name,
-        mimetype: file.type || 'application/pdf',
-        size: file.size,
-        title,
-        ...(groupId ? { groupId } : {}),
-        ...(opts.subject ? { subject: opts.subject } : {}),
-      };
-      const res = await postResourceUpload('resources/upload-bytes', payload, {
-        headers: { 'Content-Type': 'application/json' },
-        onUploadProgress: onUploadProgress
-          ? (evt) => {
-              if (evt.total) {
-                const pct = 35 + Math.round((evt.loaded / evt.total) * 65);
-                onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
-              }
-            }
-          : undefined,
-      });
-      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 100 });
-      return res;
-    }
-
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
