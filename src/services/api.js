@@ -349,12 +349,20 @@ function resourceUploadApiPath(path) {
   return `/api/${clean}`;
 }
 
+const uploadSleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function isDbColdStartError(err) {
+  return err?.response?.status === 503
+    && (err?.response?.data?.code === 'DB_UNAVAILABLE'
+      || /database is temporarily unavailable/i.test(String(err?.response?.data?.message || '')));
+}
+
 /**
  * Upload strategy:
  * 1) likhitai.com (apex) / Vercel frontend → same-origin /api + session cookies (same as create exam).
  * 2) Else → direct backend + Bearer from /auth/me or /auth/refresh.
  */
-async function postResourceUpload(path, data, config = {}) {
+async function postResourceUploadOnce(path, data, config = {}) {
   const headers = prepareUploadHeaders(config.headers, data);
   const relPath = resourceUploadApiPath(path).replace(/^\/api\//, '');
   const apiPath = resourceUploadApiPath(path);
@@ -429,6 +437,22 @@ async function postResourceUpload(path, data, config = {}) {
   const authErr = new Error('Not authenticated. Please log in.');
   authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
   throw authErr;
+}
+
+async function postResourceUpload(path, data, config = {}) {
+  const maxAttempts = 4;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await postResourceUploadOnce(path, data, config);
+    } catch (err) {
+      lastErr = err;
+      if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
+      const sec = Number(err?.response?.data?.retryAfterSeconds) || 2;
+      await uploadSleep(Math.min(sec * 1000 * attempt, 10000));
+    }
+  }
+  throw lastErr;
 }
 
 export const resourceApi = {
