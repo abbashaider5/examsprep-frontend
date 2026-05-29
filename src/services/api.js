@@ -2,7 +2,8 @@ import axios from 'axios';
 import {
   getApiBaseUrl,
   getDirectUploadApiBaseUrl,
-  usesSameOriginApiProxy,
+  getResourceUploadBaseUrl,
+  isLocalDevHost,
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 import { getAccessToken, setAccessToken } from '../utils/authToken.js';
@@ -44,10 +45,18 @@ async function ensureAccessToken() {
 }
 
 api.interceptors.request.use(async (config) => {
-  if (!config.directUpload) return config;
+  if (config._fixedBaseURL) return config;
+
+  if (!config.directUpload) {
+    config.baseURL = getApiBaseUrl();
+    return config;
+  }
 
   const direct = getDirectUploadApiBaseUrl();
-  if (!direct) return config;
+  if (!direct) {
+    config.baseURL = getApiBaseUrl();
+    return config;
+  }
 
   const token = await ensureAccessToken();
   if (token) {
@@ -303,6 +312,22 @@ export const notificationApi = {
   delete:      (id) => api.delete(`/notifications/${id}`),
 };
 
+/** Production uploads must target `/api/resources/*` on the backend (bare `/resources/*` 404s on Vercel). */
+async function postResourceUpload(path, data, config = {}) {
+  const token = await ensureAccessToken();
+  const baseURL = getResourceUploadBaseUrl();
+  const headers = { ...(config.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  return api.post(path.replace(/^\//, ''), data, {
+    ...config,
+    baseURL,
+    directUpload: false,
+    _fixedBaseURL: true,
+    headers,
+    withCredentials: !token,
+  });
+}
+
 export const resourceApi = {
   // Upload (admin or instructor)
   upload: (file, title, groupId = null, opts = {}) => {
@@ -319,8 +344,8 @@ export const resourceApi = {
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
     const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
-    // JSON base64 avoids multipart corruption; same-origin /api proxy is enough (no cross-origin direct hop).
-    const useBase64Upload = isPdf && (usesSameOriginApiProxy() || Boolean(getDirectUploadApiBaseUrl()));
+    // JSON base64 on production avoids multipart corruption and Vercel proxy body issues.
+    const useBase64Upload = isPdf && import.meta.env.PROD && !isLocalDevHost();
 
     if (useBase64Upload) {
       onUploadProgress?.({ loaded: 0, total: file.size, pct: 8 });
@@ -335,8 +360,7 @@ export const resourceApi = {
         ...(groupId ? { groupId } : {}),
         ...(opts.subject ? { subject: opts.subject } : {}),
       };
-      const res = await api.post('/resources/upload-bytes', payload, {
-        directUpload: false,
+      const res = await postResourceUpload('resources/upload-bytes', payload, {
         headers: { 'Content-Type': 'application/json' },
         onUploadProgress: onUploadProgress
           ? (evt) => {
@@ -356,8 +380,7 @@ export const resourceApi = {
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
-    return api.post('/resources', form, {
-      directUpload: true,
+    return postResourceUpload('resources', form, {
       headers: { 'Content-Type': 'multipart/form-data' },
       onUploadProgress: onUploadProgress
         ? (evt) => {
