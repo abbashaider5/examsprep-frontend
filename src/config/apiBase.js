@@ -32,6 +32,17 @@ export function usesSameOriginApiProxy() {
     || /(^|\.)abbaslogic\.com$/i.test(host);
 }
 
+/** Hosts where /api is proxied and httpOnly session cookies work for uploads. */
+export function canUploadViaCookieProxy() {
+  if (typeof window === 'undefined') return false;
+  const host = window.location.hostname;
+  if (/^www\.likhitai\.com$/i.test(host)) return false;
+  return host === 'likhitai.com'
+    || /\.likhitai\.com$/i.test(host)
+    || (/\.vercel\.app$/i.test(host) && !host.includes('examsprep-backend'))
+    || /(^|\.)abbaslogic\.com$/i.test(host);
+}
+
 /**
  * Resolve API base URL for axios.
  * On production LikhitAI / Vercel hosts, always use same-origin /api (Vercel proxy → backend).
