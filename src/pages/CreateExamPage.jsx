@@ -327,8 +327,11 @@ function uploadErrorFriendly(err) {
   if (status === 401 || code === 'TOKEN_EXPIRED') {
     return msg || 'Your session expired. Please log in again and retry the upload.';
   }
-  if (status === 400 && /no file uploaded/i.test(String(msg || ''))) {
+  if (status === 400 && (/no file uploaded/i.test(String(msg || '')) || /document text is required/i.test(String(msg || '')))) {
     return 'The server did not accept the extracted PDF text. Hard-refresh (Ctrl+Shift+R) and try again.';
+  }
+  if (status === 404) {
+    return 'Upload API is out of date on the server. Hard-refresh (Ctrl+Shift+R); if it persists, try again in a few minutes after deploy finishes.';
   }
   if (status === 403) return 'You don’t have permission to upload this resource.';
   if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';

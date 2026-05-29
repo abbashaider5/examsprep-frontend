@@ -350,20 +350,17 @@ function clientError(message, status = 400) {
   return err;
 }
 
-const TEXT_IMPORT_HEADERS = {
-  'Content-Type': 'application/json',
-  'X-Resource-Import': 'text',
-};
-
-/** POST extracted PDF text — dedicated route, fallback to POST /resources. */
-async function postPdfTextImport(payload, config = {}) {
-  const reqConfig = { ...config, headers: { ...TEXT_IMPORT_HEADERS, ...(config.headers || {}) } };
-  try {
-    return await api.post('/resources/import-text', payload, reqConfig);
-  } catch (err) {
-    if (err.response?.status !== 404) throw err;
-    return api.post('/resources', payload, reqConfig);
+/**
+ * POST extracted PDF text via multipart form fields on POST /api/resources?import=text.
+ * Same route as file uploads; query flag is reliable through likhitai.com → Vercel proxy.
+ */
+function postPdfTextImport(fields, config = {}) {
+  const form = new FormData();
+  form.append('importMode', 'text');
+  for (const [key, value] of Object.entries(fields)) {
+    if (value != null && value !== '') form.append(key, String(value));
   }
+  return api.post('/resources?import=text', form, config);
 }
 
 export const resourceApi = {
@@ -402,8 +399,7 @@ export const resourceApi = {
       }
 
       onUploadProgress?.({ loaded: file.size, total: file.size, pct: 38 });
-      const payload = {
-        importMode: 'text',
+      return postWithDbRetry(() => postPdfTextImport({
         title,
         text: extracted.text,
         pageCount: extracted.pageCount,
@@ -412,9 +408,7 @@ export const resourceApi = {
         size: file.size,
         ...(groupId ? { groupId } : {}),
         ...(opts.subject ? { subject: opts.subject } : {}),
-      };
-
-      return postWithDbRetry(() => postPdfTextImport(payload, {
+      }, {
         onUploadProgress: onUploadProgress
           ? (evt) => {
               if (evt.total) {
