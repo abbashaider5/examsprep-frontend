@@ -351,16 +351,28 @@ function clientError(message, status = 400) {
 }
 
 /**
- * POST extracted PDF text via multipart form fields on POST /api/resources?import=text.
- * Same route as file uploads; query flag is reliable through likhitai.com → Vercel proxy.
+ * POST extracted PDF text as multipart form fields.
+ * Uses /resources/from-text (path survives Vercel proxy); falls back to /resources?import=text.
  */
-function postPdfTextImport(fields, config = {}) {
+async function postPdfTextImport(fields, config = {}) {
   const form = new FormData();
   form.append('importMode', 'text');
   for (const [key, value] of Object.entries(fields)) {
     if (value != null && value !== '') form.append(key, String(value));
   }
-  return api.post('/resources?import=text', form, config);
+  const reqConfig = {
+    ...config,
+    headers: { 'X-Resource-Import': 'text', ...(config.headers || {}) },
+  };
+  try {
+    return await api.post('/resources/from-text', form, reqConfig);
+  } catch (err) {
+    if (err.response?.status !== 404) throw err;
+    return api.post('/resources', form, {
+      ...reqConfig,
+      params: { import: 'text' },
+    });
+  }
 }
 
 export const resourceApi = {
