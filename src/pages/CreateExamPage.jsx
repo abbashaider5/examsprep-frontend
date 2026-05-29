@@ -330,8 +330,9 @@ function uploadErrorFriendly(err) {
   if (status === 403) return 'You don’t have permission to upload this resource.';
   if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';
   if (status === 404) {
-    return 'Upload endpoint was not found. Refresh the page and try again; if it persists, contact support.';
+    return 'Upload endpoint was not found. Hard-refresh the page (Ctrl+Shift+R) and try again.';
   }
+  if (!status && err?.message) return String(err.message);
   if (msg) return String(msg);
   return 'Upload didn’t complete. Check your connection and try again.';
 }

@@ -1,10 +1,7 @@
 import axios from 'axios';
 import {
-  canUploadViaCookieProxy,
   getApiBaseUrl,
   getDirectUploadApiBaseUrl,
-  getResourceUploadBaseUrl,
-  isLocalDevHost,
   PRODUCTION_BACKEND_API,
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
@@ -13,7 +10,7 @@ import {
   getValidAccessToken,
   setAccessToken,
 } from '../utils/authToken.js';
-import { readFileAsBase64 } from '../utils/fileBytes.js';
+import { extractPdfTextFromFile } from '../utils/pdfClientExtract.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -119,44 +116,6 @@ api.interceptors.response.use(
     if (err.response?.status === 503 && err.response?.data?.maintenance) {
       window.location.href = '/maintenance';
       return Promise.reject(err);
-    }
-    if (
-      err.response?.status === 401
-      && (original?.directUpload || original?._fixedBaseURL)
-      && !original._uploadAuthRetry
-    ) {
-      original._uploadAuthRetry = true;
-      try {
-        const refreshRes = await api.post('/auth/refresh');
-        if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
-
-        if (canUploadViaCookieProxy()) {
-          const rel = original._resourceUploadRelPath || 'resources';
-          const proxyToken = refreshRes.data?.accessToken || (await ensureAccessToken());
-          original.baseURL = typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl();
-          original.url = resourceUploadApiPath(rel);
-          original._uploadViaProxy = true;
-          original._uploadDirect = false;
-          original.headers = original.headers || {};
-          if (proxyToken) original.headers.Authorization = `Bearer ${proxyToken}`;
-          else delete original.headers.Authorization;
-          original.withCredentials = true;
-          return api(original);
-        }
-
-        const token = await ensureAccessToken({ force: true });
-        if (token) {
-          original.headers = original.headers || {};
-          original.headers.Authorization = `Bearer ${token}`;
-          original.baseURL = getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API;
-          original.url = resourceUploadApiPath(original._resourceUploadRelPath || 'resources').replace(/^\/api\//, '');
-          original._uploadDirect = true;
-          original.withCredentials = false;
-          return api(original);
-        }
-      } catch {
-        /* fall through */
-      }
     }
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
       if (isRefreshing) {
@@ -361,12 +320,6 @@ export const notificationApi = {
   delete:      (id) => api.delete(`/notifications/${id}`),
 };
 
-/** Always `/api/resources/...` — bare `/resources/...` returns 404 on production Vercel. */
-function resourceUploadApiPath(path) {
-  const clean = String(path).replace(/^\//, '').replace(/^api\//, '');
-  return `/api/${clean}`;
-}
-
 const uploadSleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function isDbColdStartError(err) {
@@ -375,196 +328,13 @@ function isDbColdStartError(err) {
       || /database is temporarily unavailable/i.test(String(err?.response?.data?.message || '')));
 }
 
-/**
- * Upload strategy:
- * 1) likhitai.com (apex) / Vercel frontend → same-origin /api + session cookies (same as create exam).
- * 2) Else → direct backend + Bearer from /auth/me or /auth/refresh.
- */
-async function postResourceUploadOnce(path, data, config = {}) {
-  const headers = prepareUploadHeaders(config.headers, data);
-  const relPath = resourceUploadApiPath(path).replace(/^\/api\//, '');
-  const apiPath = resourceUploadApiPath(path);
-  const uploadMeta = { _resourceUploadRelPath: path.replace(/^\//, '') };
-
-  if (isLocalDevHost()) {
-    return api.post(relPath, data, {
-      ...config,
-      ...uploadMeta,
-      baseURL: getResourceUploadBaseUrl(),
-      directUpload: false,
-      _fixedBaseURL: true,
-      headers,
-      withCredentials: true,
-    });
-  }
-
-  const postDirect = (token) => {
-    const h = { ...headers };
-    if (token) h.Authorization = `Bearer ${token}`;
-    return api.post(relPath, data, {
-      ...config,
-      ...uploadMeta,
-      baseURL: getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API,
-      directUpload: false,
-      _fixedBaseURL: true,
-      _uploadDirect: true,
-      headers: h,
-      withCredentials: false,
-    });
-  };
-
-  const postProxy = (token) => {
-    const h = { ...headers };
-    if (token) h.Authorization = `Bearer ${token}`;
-    else delete h.Authorization;
-    return api.post(apiPath, data, {
-      ...config,
-      ...uploadMeta,
-      baseURL: typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl(),
-      directUpload: false,
-      _fixedBaseURL: true,
-      _uploadViaProxy: true,
-      headers: h,
-      withCredentials: true,
-    });
-  };
-
-  let token = await ensureAccessToken();
-
-  if (canUploadViaCookieProxy()) {
-    try {
-      return await postProxy(token);
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) throw err;
-      token = await ensureAccessToken({ force: true });
-      if (token) {
-        try {
-          return await postProxy(token);
-        } catch (retryErr) {
-          if (retryErr.response?.status !== 401 && retryErr.response?.status !== 403) throw retryErr;
-        }
-      }
-    }
-  }
-
-  if (!token) token = await ensureAccessToken({ force: true });
-  if (token) {
-    try {
-      return await postDirect(token);
-    } catch (err) {
-      if (err.response?.status === 401 && canUploadViaCookieProxy()) {
-        return postProxy();
-      }
-      throw err;
-    }
-  }
-
-  if (canUploadViaCookieProxy()) {
-    return postProxy(token);
-  }
-
-  const authErr = new Error('Not authenticated. Please log in.');
-  authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
-  throw authErr;
-}
-
-/**
- * PDF base64 upload — same-origin /api with cookies + Bearer (Vercel proxy may not forward cookies).
- * Direct backend + Bearer is fallback.
- */
-async function postResourceUploadBytes(payload, config = {}) {
-  const headers = { 'Content-Type': 'application/json', ...(config.headers || {}) };
-  const apiPath = resourceUploadApiPath('resources/upload-bytes');
-  const uploadMeta = {
-    ...config,
-    _resourceUploadRelPath: 'resources/upload-bytes',
-    directUpload: false,
-    _fixedBaseURL: true,
-  };
-
-  const postProxy = (token) => {
-    const h = { ...headers };
-    if (token) h.Authorization = `Bearer ${token}`;
-    else delete h.Authorization;
-    return api.post(apiPath, payload, {
-      ...uploadMeta,
-      baseURL: typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl(),
-      _uploadViaProxy: true,
-      headers: h,
-      withCredentials: true,
-    });
-  };
-
-  const postDirect = (token) => api.post('resources/upload-bytes', payload, {
-    ...uploadMeta,
-    baseURL: getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API,
-    _uploadDirect: true,
-    headers: { ...headers, Authorization: `Bearer ${token}` },
-    withCredentials: false,
-  });
-
-  const runWithRetry = async (fn) => {
-    const maxAttempts = 4;
-    let lastErr;
-    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
-      try {
-        return await fn();
-      } catch (err) {
-        lastErr = err;
-        if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
-        const sec = Number(err?.response?.data?.retryAfterSeconds) || 2;
-        await uploadSleep(Math.min(sec * 1000 * attempt, 10000));
-      }
-    }
-    throw lastErr;
-  };
-
-  let token = await ensureAccessToken();
-
-  if (canUploadViaCookieProxy()) {
-    try {
-      return await runWithRetry(() => postProxy(token));
-    } catch (err) {
-      if (err.response?.status !== 401 && err.response?.status !== 403) throw err;
-      token = await ensureAccessToken({ force: true });
-      if (token) {
-        try {
-          return await runWithRetry(() => postProxy(token));
-        } catch (retryErr) {
-          if (retryErr.response?.status !== 401 && retryErr.response?.status !== 403) throw retryErr;
-        }
-      }
-    }
-  }
-
-  if (!token) token = await ensureAccessToken({ force: true });
-  if (token) {
-    try {
-      return await runWithRetry(() => postDirect(token));
-    } catch (err) {
-      if (err.response?.status === 401 && canUploadViaCookieProxy()) {
-        const proxyToken = await ensureAccessToken({ force: true });
-        if (proxyToken) return runWithRetry(() => postProxy(proxyToken));
-      }
-      throw err;
-    }
-  }
-
-  if (canUploadViaCookieProxy()) {
-    return runWithRetry(() => postProxy(null));
-  }
-
-  const authErr = new Error('Not authenticated. Please log in.');
-  authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
-  throw authErr;
-}
-
-async function postResourceUpload(path, data, config = {}) {
+/** Retry POST on Mongo cold-start (Vercel). */
+async function postWithDbRetry(requestFn) {
   const maxAttempts = 4;
   let lastErr;
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     try {
-      return await postResourceUploadOnce(path, data, config);
+      return await requestFn();
     } catch (err) {
       lastErr = err;
       if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
@@ -573,6 +343,12 @@ async function postResourceUpload(path, data, config = {}) {
     }
   }
   throw lastErr;
+}
+
+function clientError(message, status = 400) {
+  const err = new Error(message);
+  err.response = { status, data: { message } };
+  return err;
 }
 
 export const resourceApi = {
@@ -588,33 +364,50 @@ export const resourceApi = {
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
-  /** Same as upload with axios onUploadProgress (0–100% of request body). */
+  /**
+   * Upload with progress. PDFs: extract text in the browser (pdf.js), then POST /resources/import-text.
+   * Other types: multipart POST /resources (same path as all other API calls).
+   */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
     const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
 
-    if (isPdf && import.meta.env.PROD && !isLocalDevHost()) {
-      onUploadProgress?.({ loaded: 0, total: file.size, pct: 5 });
-      const fileBase64 = await readFileAsBase64(file);
-      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 35 });
+    if (isPdf) {
+      onUploadProgress?.({ loaded: 0, total: file.size, pct: 3 });
+      let extracted;
+      try {
+        extracted = await extractPdfTextFromFile(file, (pagePct) => {
+          onUploadProgress?.({
+            loaded: file.size,
+            total: file.size,
+            pct: 3 + Math.round(pagePct * 0.32),
+          });
+        });
+      } catch (e) {
+        throw clientError(e?.message || 'Could not read text from this PDF.', 400);
+      }
+
+      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 38 });
       const payload = {
-        fileBase64,
+        title,
+        text: extracted.text,
+        pageCount: extracted.pageCount,
         originalName: file.name,
         mimetype: file.type || 'application/pdf',
         size: file.size,
-        title,
         ...(groupId ? { groupId } : {}),
         ...(opts.subject ? { subject: opts.subject } : {}),
       };
-      return postResourceUploadBytes(payload, {
+
+      return postWithDbRetry(() => api.post('/resources/import-text', payload, {
         onUploadProgress: onUploadProgress
           ? (evt) => {
               if (evt.total) {
-                const pct = 35 + Math.round((evt.loaded / evt.total) * 65);
+                const pct = 38 + Math.round((evt.loaded / evt.total) * 62);
                 onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
               }
             }
           : undefined,
-      });
+      }));
     }
 
     const form = new FormData();
@@ -622,13 +415,15 @@ export const resourceApi = {
     form.append('title', title);
     if (groupId) form.append('groupId', groupId);
     if (opts.subject) form.append('subject', opts.subject);
-    return postResourceUpload('resources', form, {
+    const headers = prepareUploadHeaders({ 'Content-Type': 'multipart/form-data' }, form);
+    return postWithDbRetry(() => api.post('/resources', form, {
+      headers,
       onUploadProgress: onUploadProgress
         ? (evt) => {
             if (evt.total) onUploadProgress({ loaded: evt.loaded, total: evt.total, pct: Math.round((evt.loaded / evt.total) * 100) });
           }
         : undefined,
-    });
+    }));
   },
   // Admin: list + upload via admin panel
   adminList: () => api.get('/admin/resources'),
