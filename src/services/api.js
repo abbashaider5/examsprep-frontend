@@ -2,6 +2,7 @@ import axios from 'axios';
 import {
   getApiBaseUrl,
   getDirectUploadApiBaseUrl,
+  isLocalDevHost,
   PRODUCTION_BACKEND_API,
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
@@ -78,6 +79,13 @@ api.interceptors.request.use(async (config) => {
 
   if (!config.directUpload) {
     config.baseURL = getApiBaseUrl();
+    const token = getValidAccessToken();
+    if (token) {
+      config.headers = config.headers || {};
+      if (!config.headers.Authorization) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+    }
     return config;
   }
 
@@ -350,9 +358,27 @@ function clientError(message, status = 400) {
   return err;
 }
 
+function uploadRouteNotFound(err) {
+  const status = err?.response?.status;
+  const msg = String(err?.response?.data?.message || '');
+  return status === 404 || /route .* not found/i.test(msg);
+}
+
+function shouldFallbackToPdfFileUpload(err) {
+  const msg = String(err?.response?.data?.message || '');
+  return uploadRouteNotFound(err)
+    || /no file uploaded/i.test(msg)
+    || /document text is required/i.test(msg);
+}
+
+/** Same-origin /api (likhitai.com proxy → backend). */
+function sameOriginApiConfig(config = {}) {
+  if (typeof window === 'undefined') return config;
+  return { ...config, baseURL: `${window.location.origin}/api` };
+}
+
 /**
- * POST extracted PDF text as multipart form fields.
- * Uses /resources/from-text (path survives Vercel proxy); falls back to /resources?import=text.
+ * POST extracted PDF text (needs backend apiVersion 2026-05-29-pdf-text or newer).
  */
 async function postPdfTextImport(fields, config = {}) {
   const form = new FormData();
@@ -360,19 +386,41 @@ async function postPdfTextImport(fields, config = {}) {
   for (const [key, value] of Object.entries(fields)) {
     if (value != null && value !== '') form.append(key, String(value));
   }
-  const reqConfig = {
+  const reqConfig = sameOriginApiConfig({
     ...config,
     headers: { 'X-Resource-Import': 'text', ...(config.headers || {}) },
-  };
+  });
   try {
     return await api.post('/resources/from-text', form, reqConfig);
   } catch (err) {
-    if (err.response?.status !== 404) throw err;
+    if (!uploadRouteNotFound(err)) throw err;
     return api.post('/resources', form, {
       ...reqConfig,
       params: { import: 'text' },
     });
   }
+}
+
+/** Upload raw PDF to backend directly (works even when text-import routes are not deployed). */
+async function postPdfFileDirect(file, title, groupId, opts, config = {}) {
+  const token = await ensureAccessToken({ force: true });
+  if (!token) {
+    return Promise.reject(clientError('Not authenticated. Please log in.', 401));
+  }
+  const form = new FormData();
+  form.append('file', file);
+  form.append('title', title);
+  if (groupId) form.append('groupId', groupId);
+  if (opts.subject) form.append('subject', opts.subject);
+  const headers = prepareUploadHeaders(config.headers, form);
+  headers.Authorization = `Bearer ${token}`;
+  return api.post('resources', form, {
+    ...config,
+    baseURL: getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API,
+    _fixedBaseURL: true,
+    headers,
+    withCredentials: false,
+  });
 }
 
 export const resourceApi = {
@@ -395,38 +443,84 @@ export const resourceApi = {
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
     const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
 
-    if (isPdf) {
+    if (isPdf && !isLocalDevHost()) {
       onUploadProgress?.({ loaded: 0, total: file.size, pct: 3 });
-      let extracted;
+
+      const runDirectFileUpload = () => postWithDbRetry(() => postPdfFileDirect(
+        file,
+        title,
+        groupId,
+        opts,
+        {
+          onUploadProgress: onUploadProgress
+            ? (evt) => {
+                if (evt.total) {
+                  onUploadProgress({
+                    loaded: evt.loaded,
+                    total: evt.total,
+                    pct: Math.round((evt.loaded / evt.total) * 100),
+                  });
+                }
+              }
+            : undefined,
+        },
+      ));
+
       try {
-        extracted = await extractPdfTextFromFile(file, (pagePct) => {
+        const extracted = await extractPdfTextFromFile(file, (pagePct) => {
           onUploadProgress?.({
             loaded: file.size,
             total: file.size,
-            pct: 3 + Math.round(pagePct * 0.32),
+            pct: 3 + Math.round(pagePct * 0.3),
           });
         });
-      } catch (e) {
-        throw clientError(e?.message || 'Could not read text from this PDF.', 400);
+        onUploadProgress?.({ loaded: file.size, total: file.size, pct: 35 });
+        return postWithDbRetry(async () => {
+          try {
+            return await postPdfTextImport({
+              title,
+              text: extracted.text,
+              pageCount: extracted.pageCount,
+              originalName: file.name,
+              mimetype: file.type || 'application/pdf',
+              size: file.size,
+              ...(groupId ? { groupId } : {}),
+              ...(opts.subject ? { subject: opts.subject } : {}),
+            }, {
+              onUploadProgress: onUploadProgress
+                ? (evt) => {
+                    if (evt.total) {
+                      const pct = 35 + Math.round((evt.loaded / evt.total) * 65);
+                      onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
+                    }
+                  }
+                : undefined,
+            });
+          } catch (err) {
+            if (!shouldFallbackToPdfFileUpload(err)) throw err;
+            onUploadProgress?.({ loaded: 0, total: file.size, pct: 40 });
+            return runDirectFileUpload();
+          }
+        });
+      } catch (extractErr) {
+        if (extractErr?.response) throw extractErr;
+        onUploadProgress?.({ loaded: 0, total: file.size, pct: 10 });
+        return runDirectFileUpload();
       }
+    }
 
-      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 38 });
-      return postWithDbRetry(() => postPdfTextImport({
-        title,
-        text: extracted.text,
-        pageCount: extracted.pageCount,
-        originalName: file.name,
-        mimetype: file.type || 'application/pdf',
-        size: file.size,
-        ...(groupId ? { groupId } : {}),
-        ...(opts.subject ? { subject: opts.subject } : {}),
-      }, {
+    if (isPdf && isLocalDevHost()) {
+      const form = new FormData();
+      form.append('file', file);
+      form.append('title', title);
+      if (groupId) form.append('groupId', groupId);
+      if (opts.subject) form.append('subject', opts.subject);
+      const headers = prepareUploadHeaders({ 'Content-Type': 'multipart/form-data' }, form);
+      return postWithDbRetry(() => api.post('/resources', form, {
+        headers,
         onUploadProgress: onUploadProgress
           ? (evt) => {
-              if (evt.total) {
-                const pct = 38 + Math.round((evt.loaded / evt.total) * 62);
-                onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
-              }
+              if (evt.total) onUploadProgress({ loaded: evt.loaded, total: evt.total, pct: Math.round((evt.loaded / evt.total) * 100) });
             }
           : undefined,
       }));
