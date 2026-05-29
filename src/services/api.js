@@ -524,7 +524,7 @@ export const resourceApi = {
         size: file.size,
         title,
         ...(groupId ? { groupId } : {}),
-        ...(opts.subject ? { subject: opts.subject } : {} }),
+        ...(opts.subject ? { subject: opts.subject } : {}),
       };
       return postResourceUploadBytes(payload, {
         onUploadProgress: onUploadProgress
