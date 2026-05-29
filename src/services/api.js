@@ -350,6 +350,22 @@ function clientError(message, status = 400) {
   return err;
 }
 
+const TEXT_IMPORT_HEADERS = {
+  'Content-Type': 'application/json',
+  'X-Resource-Import': 'text',
+};
+
+/** POST extracted PDF text — dedicated route, fallback to POST /resources. */
+async function postPdfTextImport(payload, config = {}) {
+  const reqConfig = { ...config, headers: { ...TEXT_IMPORT_HEADERS, ...(config.headers || {}) } };
+  try {
+    return await api.post('/resources/import-text', payload, reqConfig);
+  } catch (err) {
+    if (err.response?.status !== 404) throw err;
+    return api.post('/resources', payload, reqConfig);
+  }
+}
+
 export const resourceApi = {
   // Upload (admin or instructor)
   upload: (file, title, groupId = null, opts = {}) => {
@@ -387,6 +403,7 @@ export const resourceApi = {
 
       onUploadProgress?.({ loaded: file.size, total: file.size, pct: 38 });
       const payload = {
+        importMode: 'text',
         title,
         text: extracted.text,
         pageCount: extracted.pageCount,
@@ -397,8 +414,7 @@ export const resourceApi = {
         ...(opts.subject ? { subject: opts.subject } : {}),
       };
 
-      return postWithDbRetry(() => api.post('/resources', payload, {
-        headers: { 'Content-Type': 'application/json' },
+      return postWithDbRetry(() => postPdfTextImport(payload, {
         onUploadProgress: onUploadProgress
           ? (evt) => {
               if (evt.total) {
