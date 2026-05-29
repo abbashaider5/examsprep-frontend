@@ -1,5 +1,9 @@
 import axios from 'axios';
-import { getApiBaseUrl, getDirectUploadApiBaseUrl } from '../config/apiBase.js';
+import {
+  getApiBaseUrl,
+  getDirectUploadApiBaseUrl,
+  usesSameOriginApiProxy,
+} from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 import { getAccessToken, setAccessToken } from '../utils/authToken.js';
 import { readFileAsBase64 } from '../utils/fileBytes.js';
@@ -315,7 +319,8 @@ export const resourceApi = {
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
     const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
-    const useBase64Upload = isPdf && Boolean(getDirectUploadApiBaseUrl());
+    // JSON base64 avoids multipart corruption; same-origin /api proxy is enough (no cross-origin direct hop).
+    const useBase64Upload = isPdf && (usesSameOriginApiProxy() || Boolean(getDirectUploadApiBaseUrl()));
 
     if (useBase64Upload) {
       onUploadProgress?.({ loaded: 0, total: file.size, pct: 8 });
@@ -331,7 +336,7 @@ export const resourceApi = {
         ...(opts.subject ? { subject: opts.subject } : {}),
       };
       const res = await api.post('/resources/upload-bytes', payload, {
-        directUpload: true,
+        directUpload: false,
         headers: { 'Content-Type': 'application/json' },
         onUploadProgress: onUploadProgress
           ? (evt) => {

@@ -329,6 +329,9 @@ function uploadErrorFriendly(err) {
   }
   if (status === 403) return 'You don’t have permission to upload this resource.';
   if (status === 502) return 'Storage is temporarily unavailable. Try again shortly.';
+  if (status === 404) {
+    return 'Upload endpoint was not found. Refresh the page and try again; if it persists, contact support.';
+  }
   if (msg) return String(msg);
   return 'Upload didn’t complete. Check your connection and try again.';
 }
@@ -339,6 +342,7 @@ function uploadErrorTitle(err) {
   if (status === 503 || code === 'DB_UNAVAILABLE') return 'Server busy';
   if (status === 413 || code === 'FILE_TOO_LARGE') return 'File too large';
   if (status === 401 || code === 'TOKEN_EXPIRED') return 'Session expired';
+  if (status === 404) return 'Upload endpoint missing';
   return 'Upload not sent';
 }
 
