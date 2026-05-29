@@ -29,7 +29,7 @@ export function usesSameOriginApiProxy() {
   return /^(www\.)?likhitai\.com$/i.test(host)
     || /\.likhitai\.com$/i.test(host)
     || /\.vercel\.app$/i.test(host)
-    || /abbaslogic\.com$/i.test(host);
+    || /(^|\.)abbaslogic\.com$/i.test(host);
 }
 
 /**
@@ -73,8 +73,10 @@ export function getDirectUploadApiBaseUrl() {
 
 /**
  * Base URL for resource uploads — guaranteed to hit `/api/resources/*` on production.
+ * Prefer same-origin `/api` when the host has a Vercel proxy so session cookies work.
  */
 export function getResourceUploadBaseUrl() {
+  if (usesSameOriginApiProxy()) return getApiBaseUrl();
   if (isLocalDevHost()) {
     const configured = import.meta.env.VITE_API_URL;
     if (configured && String(configured).trim()) {
