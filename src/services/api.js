@@ -100,10 +100,11 @@ api.interceptors.response.use(
     ) {
       original._uploadAuthRetry = true;
       try {
+        const refreshRes = await api.post('/auth/refresh');
+        if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
         if (original._uploadViaProxy || usesSameOriginApiProxy()) {
-          const refreshRes = await api.post('/auth/refresh');
-          if (refreshRes.data?.accessToken) setAccessToken(refreshRes.data.accessToken);
-          original.baseURL = getApiBaseUrl();
+          original.baseURL = typeof window !== 'undefined' ? window.location.origin : getApiBaseUrl();
+          original.url = resourceUploadApiPath(original._resourceUploadRelPath || 'resources/upload-bytes');
           original._uploadViaProxy = true;
           delete original.headers?.Authorization;
           original.withCredentials = true;
@@ -117,15 +118,27 @@ api.interceptors.response.use(
           original.withCredentials = false;
           return api(original);
         }
-        if (usesSameOriginApiProxy()) {
-          original.baseURL = getApiBaseUrl();
-          original._uploadViaProxy = true;
-          delete original.headers?.Authorization;
-          original.withCredentials = true;
-          return api(original);
-        }
       } catch {
         /* fall through */
+      }
+    }
+    if (
+      err.response?.status === 404
+      && original?._fixedBaseURL
+      && !original._upload404Retry
+      && useAuthStore.getState().isAuthenticated
+    ) {
+      original._upload404Retry = true;
+      const token = await ensureAccessToken({ force: true });
+      const direct = getDirectUploadApiBaseUrl();
+      if (token && direct) {
+        original.baseURL = direct;
+        original.url = resourceUploadApiPath(original._resourceUploadRelPath || 'resources/upload-bytes').replace(/^\/api\//, '');
+        original.headers = original.headers || {};
+        original.headers.Authorization = `Bearer ${token}`;
+        original._uploadViaProxy = false;
+        original.withCredentials = false;
+        return api(original);
       }
     }
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
@@ -331,20 +344,28 @@ export const notificationApi = {
   delete:      (id) => api.delete(`/notifications/${id}`),
 };
 
+/** Always `/api/resources/...` — bare `/resources/...` returns 404 on production Vercel. */
+function resourceUploadApiPath(path) {
+  const clean = String(path).replace(/^\//, '').replace(/^api\//, '');
+  return `/api/${clean}`;
+}
+
 /**
  * Resource uploads on likhitai.com use same-origin `/api` + cookies (session works).
  * Other production hosts use direct backend URL + Bearer token.
  */
 async function postResourceUpload(path, data, config = {}) {
   const viaProxy = usesSameOriginApiProxy();
-  const baseURL = getResourceUploadBaseUrl();
   const headers = { ...(config.headers || {}) };
-  const relPath = path.replace(/^\//, '');
+  const apiPath = resourceUploadApiPath(path);
+
+  const uploadMeta = { _resourceUploadRelPath: path.replace(/^\//, '') };
 
   if (viaProxy) {
-    return api.post(relPath, data, {
+    return api.post(apiPath, data, {
       ...config,
-      baseURL,
+      ...uploadMeta,
+      baseURL: typeof window !== 'undefined' ? window.location.origin : undefined,
       directUpload: false,
       _fixedBaseURL: true,
       _uploadViaProxy: true,
@@ -355,8 +376,11 @@ async function postResourceUpload(path, data, config = {}) {
 
   const token = await ensureAccessToken();
   if (token) headers.Authorization = `Bearer ${token}`;
+  const baseURL = getResourceUploadBaseUrl();
+  const relPath = apiPath.replace(/^\/api\//, '');
   return api.post(relPath, data, {
     ...config,
+    ...uploadMeta,
     baseURL,
     directUpload: false,
     _fixedBaseURL: true,
