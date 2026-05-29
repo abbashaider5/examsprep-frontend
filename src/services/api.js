@@ -9,6 +9,7 @@ import {
 } from '../config/apiBase.js';
 import { useAuthStore } from '../store/index.js';
 import { clearAccessToken, getAccessToken, setAccessToken } from '../utils/authToken.js';
+import { readFileAsBase64 } from '../utils/fileBytes.js';
 
 const api = axios.create({
   baseURL: getApiBaseUrl(),
@@ -439,6 +440,46 @@ async function postResourceUploadOnce(path, data, config = {}) {
   throw authErr;
 }
 
+/** PDF bytes via JSON base64 → direct backend (avoids Vercel proxy corrupting multipart). */
+async function postResourceUploadBytes(payload, config = {}) {
+  const token = await ensureAccessToken();
+  if (!token && !isLocalDevHost()) {
+    const authErr = new Error('Not authenticated. Please log in.');
+    authErr.response = { status: 401, data: { message: 'Not authenticated. Please log in.' } };
+    throw authErr;
+  }
+  const headers = { 'Content-Type': 'application/json', ...(config.headers || {}) };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const baseURL = isLocalDevHost()
+    ? getResourceUploadBaseUrl()
+    : (getDirectUploadApiBaseUrl() || PRODUCTION_BACKEND_API);
+
+  const doPost = () => api.post('resources/upload-bytes', payload, {
+    ...config,
+    baseURL,
+    directUpload: false,
+    _fixedBaseURL: true,
+    _uploadDirect: true,
+    _resourceUploadRelPath: 'resources/upload-bytes',
+    headers,
+    withCredentials: Boolean(!token && isLocalDevHost()),
+  });
+
+  const maxAttempts = 4;
+  let lastErr;
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await doPost();
+    } catch (err) {
+      lastErr = err;
+      if (!isDbColdStartError(err) || attempt >= maxAttempts) throw err;
+      const sec = Number(err?.response?.data?.retryAfterSeconds) || 2;
+      await uploadSleep(Math.min(sec * 1000 * attempt, 10000));
+    }
+  }
+  throw lastErr;
+}
+
 async function postResourceUpload(path, data, config = {}) {
   const maxAttempts = 4;
   let lastErr;
@@ -470,6 +511,33 @@ export const resourceApi = {
   },
   /** Same as upload with axios onUploadProgress (0–100% of request body). */
   uploadWithProgress: async (file, title, groupId = null, opts = {}, onUploadProgress) => {
+    const isPdf = /\.pdf$/i.test(file?.name || '') || (file?.type || '').toLowerCase().includes('pdf');
+
+    if (isPdf && import.meta.env.PROD && !isLocalDevHost()) {
+      onUploadProgress?.({ loaded: 0, total: file.size, pct: 5 });
+      const fileBase64 = await readFileAsBase64(file);
+      onUploadProgress?.({ loaded: file.size, total: file.size, pct: 35 });
+      const payload = {
+        fileBase64,
+        originalName: file.name,
+        mimetype: file.type || 'application/pdf',
+        size: file.size,
+        title,
+        ...(groupId ? { groupId } : {}),
+        ...(opts.subject ? { subject: opts.subject } : {} }),
+      };
+      return postResourceUploadBytes(payload, {
+        onUploadProgress: onUploadProgress
+          ? (evt) => {
+              if (evt.total) {
+                const pct = 35 + Math.round((evt.loaded / evt.total) * 65);
+                onUploadProgress({ loaded: evt.loaded, total: evt.total, pct });
+              }
+            }
+          : undefined,
+      });
+    }
+
     const form = new FormData();
     form.append('file', file);
     form.append('title', title);
