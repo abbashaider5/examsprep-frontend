@@ -22,6 +22,7 @@ export const PLANS = [
     features: [
       '20 AI-generated exams per month',
       'Up to 50 questions per exam',
+      'Coding questions with optional code execution',
       'AI proctoring with face detection',
       'Screenshot capture during exams',
       'Advanced analytics and insights',

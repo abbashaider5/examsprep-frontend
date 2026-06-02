@@ -9,6 +9,8 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { examApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { getAiErrorPresentation } from '../utils/aiErrorPresentation.js';
+import AiServiceUnavailableModal from './AiServiceUnavailableModal.jsx';
 import Modal from './Modal.jsx';
 
 function ToggleSwitch({ checked, onChange, disabled = false }) {
@@ -26,6 +28,8 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
   const navigate = useNavigate();
   const isEnterprise = user?.plan === 'enterprise';
   const enterpriseProctoringDisabled = user?.role === 'instructor' && Boolean(user?.enterprise) && user?.enterprise?.aiProctoringEnabled === false;
+
+  const [aiErrorModal, setAiErrorModal] = useState(null);
 
   const [form, setForm] = useState({
     title: exam.title || '',
@@ -64,7 +68,15 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
       qc.invalidateQueries({ queryKey: [invalidateKey || 'instructorAnalytics'] });
       qc.invalidateQueries({ queryKey: ['myExams'] });
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Regeneration failed'),
+    onError: (err) => {
+      const aiPres = getAiErrorPresentation(err, { isAdmin: user?.role === 'admin' });
+      if (aiPres) {
+        setAiErrorModal(aiPres);
+        toast.error(aiPres.kind === 'admin' ? 'AI service failure' : aiPres.title);
+        return;
+      }
+      toast.error(err.response?.data?.message || 'Regeneration failed');
+    },
   });
 
   const f = (key) => (val) => setForm(s => ({ ...s, [key]: val }));
@@ -76,13 +88,14 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
     { key: 'certificateEnabled', icon: Award, label: 'Generate Certificate', iconCls: 'text-amber-600 dark:text-amber-400', bgCls: 'bg-amber-100 dark:bg-amber-900/30' },
     { key: 'proctored', icon: Shield, label: 'AI Proctoring', disabled: enterpriseProctoringDisabled, iconCls: 'text-blue-600 dark:text-blue-400', bgCls: 'bg-blue-100 dark:bg-blue-900/30' },
     { key: 'screenshotEnabled', icon: Camera, label: 'Screenshot Capture', disabled: !form.proctored || enterpriseProctoringDisabled, iconCls: 'text-rose-600 dark:text-rose-400', bgCls: 'bg-rose-100 dark:bg-rose-900/30' },
-    { key: 'enableCoding', icon: Code2, label: 'Coding Questions', disabled: !isEnterprise, iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
-    { key: 'allowCodeExecution', icon: Zap, label: 'Code Execution', disabled: !isEnterprise || !form.enableCoding, iconCls: 'text-slate-600 dark:text-slate-400', bgCls: 'bg-slate-100 dark:bg-slate-800' },
+    { key: 'enableCoding', icon: Code2, label: 'Coding Questions', iconCls: 'text-purple-600 dark:text-purple-400', bgCls: 'bg-purple-100 dark:bg-purple-900/30' },
+    { key: 'allowCodeExecution', icon: Zap, label: 'Code Execution', disabled: !form.enableCoding, iconCls: 'text-slate-600 dark:text-slate-400', bgCls: 'bg-slate-100 dark:bg-slate-800' },
     { key: 'showResultToUser', icon: Eye, label: 'Show Result to Candidate', iconCls: 'text-indigo-600 dark:text-indigo-400', bgCls: 'bg-indigo-100 dark:bg-indigo-900/30' },
     { key: 'showAnswersToUser', icon: EyeOff, label: 'Show Answer Review (Post-exam)', iconCls: 'text-teal-600 dark:text-teal-400', bgCls: 'bg-teal-100 dark:bg-teal-900/30' },
   ];
 
   return (
+    <>
     <Modal onClose={onClose}>
       <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-2xl flex flex-col" style={{ maxHeight: '90vh' }}>
 
@@ -233,5 +246,15 @@ export default function EditExamModal({ exam, onClose, invalidateKey }) {
         </div>
       </div>
     </Modal>
+    <AiServiceUnavailableModal
+      open={!!aiErrorModal}
+      presentation={aiErrorModal}
+      onClose={() => setAiErrorModal(null)}
+      onRetry={() => {
+        setAiErrorModal(null);
+        regenMut.mutate();
+      }}
+    />
+    </>
   );
 }

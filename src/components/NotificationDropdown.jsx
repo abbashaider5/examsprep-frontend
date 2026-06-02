@@ -13,12 +13,15 @@ const TYPE_DOT = {
   general:     'bg-gray-400',
 };
 
-function getNotifIcon(type) {
+function getNotifIcon(type, severity) {
+  if (type === 'ai_service_alert') return <AlertCircle size={13} className="text-red-500" />;
+  if (type === 'ai_service_restored') return <Check size={13} className="text-green-500" />;
   if (type === 'exam_shared')  return <BookOpen size={13} className="text-[var(--color-primary)]" />;
   if (type === 'group_invite') return <Users size={13} className="text-green-500" />;
+  if (severity === 'critical') return <AlertCircle size={13} className="text-red-500" />;
   if (type === 'warning')      return <AlertTriangle size={13} className="text-amber-500" />;
   if (type === 'error')        return <AlertCircle size={13} className="text-red-500" />;
-  if (type === 'success')      return <Check size={13} className="text-green-500" />;
+  if (type === 'success' || severity === 'success') return <Check size={13} className="text-green-500" />;
   return <Info size={13} className="text-blue-500" />;
 }
 
@@ -185,7 +188,7 @@ export default function NotificationDropdown() {
                     <div className="flex items-start gap-2.5">
                       {/* Type icon */}
                       <div className="mt-0.5 shrink-0">
-                        {getNotifIcon(item.type)}
+                        {getNotifIcon(item.type, item.severity)}
                       </div>
 
                       {/* Content */}

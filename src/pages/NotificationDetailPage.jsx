@@ -34,6 +34,8 @@ const SEVERITY_CONFIG = {
 };
 
 function getTypeIcon(type) {
+  if (type === 'ai_service_alert') return AlertCircle;
+  if (type === 'ai_service_restored') return CheckCircle;
   if (['exam_shared', 'exam_invite', 'exam_invite_accepted', 'exam_result'].includes(type)) return BookOpen;
   if (type === 'group_invite') return Users;
   if (type === 'exam_terminated') return Shield;
@@ -137,6 +139,33 @@ export default function NotificationDetailPage() {
         {notification.details && (
           <div className="p-3.5 bg-[var(--color-bg-alt)] rounded-xl border border-[var(--color-border)] text-sm text-[var(--color-text-muted)] leading-relaxed whitespace-pre-line">
             {notification.details}
+          </div>
+        )}
+
+        {notification.meta?.aiDiagnostics && (
+          <div className="p-3.5 rounded-xl border border-red-200 dark:border-red-800 bg-red-50/50 dark:bg-red-950/20 text-sm space-y-2">
+            <p className="font-semibold text-red-800 dark:text-red-200">Technical diagnostics</p>
+            <dl className="grid grid-cols-[110px_1fr] gap-1.5 text-xs">
+              <dt className="text-[var(--color-text-muted)]">Provider</dt>
+              <dd>{notification.meta.aiDiagnostics.providerDisplayName || notification.meta.provider || '—'}</dd>
+              <dt className="text-[var(--color-text-muted)]">Error type</dt>
+              <dd>{notification.meta.aiDiagnostics.errorType || notification.meta.errorType || '—'}</dd>
+              <dt className="text-[var(--color-text-muted)]">Error code</dt>
+              <dd>{notification.meta.aiDiagnostics.errorCode || '—'}</dd>
+              <dt className="text-[var(--color-text-muted)]">Model</dt>
+              <dd className="break-all">{notification.meta.aiDiagnostics.model || notification.meta.model || '—'}</dd>
+              {notification.meta.affectedUserCount != null && (
+                <>
+                  <dt className="text-[var(--color-text-muted)]">Affected users</dt>
+                  <dd>{notification.meta.affectedUserCount}</dd>
+                </>
+              )}
+            </dl>
+            {notification.meta.aiDiagnostics.rawResponse && (
+              <pre className="text-xs mt-2 p-2 rounded-lg bg-[var(--color-bg)] border border-[var(--color-border)] overflow-x-auto max-h-56 whitespace-pre-wrap">
+                {String(notification.meta.aiDiagnostics.rawResponse).slice(0, 5000)}
+              </pre>
+            )}
           </div>
         )}
 
