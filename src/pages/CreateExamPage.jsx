@@ -1,8 +1,10 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertCircle, Award, BookOpen, Brain, Building2, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, LifeBuoy, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
+import { AlertCircle, Award, BookOpen, Brain, Building2, Camera, CheckCircle, CheckCircle2, ChevronDown, ChevronRight, Clock, Code2, Edit3, Eye, EyeOff, File as FileIcon, FileText, FlipHorizontal, FolderOpen, Globe, Headphones, Info, Layers, LifeBuoy, Loader2, Lock, Mail, Mic, Percent, Plus, Presentation, RefreshCw, Search, Settings2, Shield, Sparkles, Timer, Trash2, Upload, Users, Wand2, X } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
+import AiServiceUnavailableModal from '../components/AiServiceUnavailableModal.jsx';
+import { getAiErrorPresentation } from '../utils/aiErrorPresentation.js';
 import { Link, useNavigate } from 'react-router-dom';
 import { z } from 'zod';
 import ExamLimitReachedModal from '../components/ExamLimitReachedModal.jsx';
@@ -10,6 +12,7 @@ import FeedbackModal, { shouldShowFeedback, trackFeedbackInteraction } from '../
 import HelpTooltip from '../components/HelpTooltip.jsx';
 import Modal from '../components/Modal.jsx';
 import { FEATURE_AI_LISTENING } from '../config/featureFlags.js';
+import { BOARDS, CLASS_LEVELS } from '../constants/curriculum.js';
 import { authApi, examApi, instructorApi, resourceApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
@@ -620,18 +623,25 @@ export default function CreateExamPage() {
   const qc = useQueryClient();
   const { user, setUser } = useAuthStore();
 
+  const isInstructor = Boolean(user?.isInstructor) || ['instructor', 'admin', 'principal'].includes(user?.role);
   const isEnterpriseInstructor = user?.role === 'instructor' && Boolean(user?.enterprise);
+  const isSchoolInstructor = isEnterpriseInstructor && user?.enterprise?.mode === 'school';
+  const isInstituteInstructor = isEnterpriseInstructor && user?.enterprise?.mode === 'institute';
+  const isIndividualInstructor = user?.role === 'instructor' && !user?.enterpriseId && !user?.enterprise?.id && !user?.enterprise?._id;
+  /** School + individual: board/class/subject dropdowns from admin curriculum. */
+  const usesCurriculumWorkflow = isSchoolInstructor || isIndividualInstructor;
+  const enterpriseBoard = user?.enterprise?.board || 'CBSE';
   /** Org-linked instructors: billing and upgrades are handled by the organization. */
   const orgManagedBilling = user?.subscriptionBillingManagedByOrg === true;
   const enterpriseQuestionsLimit = user?.enterprise?.questionsPerExamLimit;
   const planMaxQ = isEnterpriseInstructor
-    ? (enterpriseQuestionsLimit || 100)
-    : (user?.plan === 'enterprise' ? 100 : user?.plan === 'pro' ? 50 : 20);
+    ? (enterpriseQuestionsLimit ?? user?.maxQuestionsPerExam ?? user?.planLimits?.questionsPerExam ?? 0)
+    : (user?.maxQuestionsPerExam ?? user?.planLimits?.questionsPerExam ?? 0);
   const isFreePlan = !user?.plan || user.plan === 'free';
   const isEnterprise = user?.plan === 'enterprise';
   const enterpriseProctoringDisabled = isEnterpriseInstructor && user?.enterprise?.aiProctoringEnabled === false;
-  const isInstructor = Boolean(user?.isInstructor) || ['instructor', 'admin', 'principal'].includes(user?.role);
-  const usageCap = user?.monthlyLimit ?? 3;
+  const canUseProctoring = user?.canUseProctoring === true;
+  const usageCap = user?.monthlyLimit ?? user?.planLimits?.examsPerMonth ?? 0;
   const usageRemaining =
     typeof user?.remaining === 'number'
       ? user.remaining
@@ -640,9 +650,13 @@ export default function CreateExamPage() {
   const remaining = typeof user?.remaining === 'number' ? user.remaining : (user?.monthlyLimit != null ? usageRemaining : null);
   const usageUsed = user?.examsUsedThisMonth ?? Math.max(0, usageCap - usageRemaining);
   const usagePct = usageCap > 0 ? Math.min(100, (usageUsed / usageCap) * 100) : 0;
+  const planDisplayLabel = orgManagedBilling
+    ? (user?.enterprise?.name || 'Organization')
+    : (user?.planDisplayName || (isFreePlan ? 'Free' : user?.individualPlanCode || 'Plan'));
 
   const [form, setForm] = useState({
-    title: '', subject: '', numQuestions: 10, topics: '',
+    title: '', subject: '', board: 'CBSE', classLevel: '', numQuestions: 10, topics: '',
+    additionalAiInstructions: '',
     proctored: false, examType: 'mcq', timePerQuestionInput: '',
     mixedMcqPercent: 50,
     multipleSets: false,
@@ -690,12 +704,45 @@ export default function CreateExamPage() {
   const [showFeedback, setShowFeedback] = useState(false);
   /** Advanced listening controls: open when enabling listening, or via chevron (preview/configure before enable). */
   const [listeningSettingsExpanded, setListeningSettingsExpanded] = useState(false);
+  const [showAdvancedAi, setShowAdvancedAi] = useState(false);
+
+  const curriculumBoard = isSchoolInstructor ? enterpriseBoard : form.board;
+
+  const adminResourceParams = useMemo(() => {
+    if (!usesCurriculumWorkflow) return undefined;
+    const board = isSchoolInstructor ? enterpriseBoard : form.board;
+    if (!board) return undefined;
+    if (form.classLevel && form.subject) {
+      return { board, classLevel: form.classLevel, subject: form.subject };
+    }
+    return { board };
+  }, [usesCurriculumWorkflow, isSchoolInstructor, enterpriseBoard, form.board, form.classLevel, form.subject]);
+
+  const { data: curriculumData } = useQuery({
+    queryKey: ['curriculumMappings', curriculumBoard],
+    queryFn: () => resourceApi.getCurriculumMappings({ board: curriculumBoard }).then((r) => r.data),
+    enabled: usesCurriculumWorkflow && Boolean(curriculumBoard),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const subjectOptions = useMemo(() => {
+    if (!usesCurriculumWorkflow || !form.classLevel) return [];
+    return curriculumData?.mappings?.[form.classLevel] || [];
+  }, [usesCurriculumWorkflow, form.classLevel, curriculumData]);
+
+  useEffect(() => {
+    if (!usesCurriculumWorkflow) return;
+    setSelectedResourceId('');
+  }, [usesCurriculumWorkflow, form.board, form.classLevel, form.subject]);
 
   // Queries for resource dropdowns
   const { data: adminResourcesData, isLoading: adminResLoading } = useQuery({
-    queryKey: ['adminResourcesForCreate'],
-    queryFn: () => resourceApi.getAdminResources().then(r => r.data),
-    enabled: isInstructor && source === 'examprep',
+    queryKey: ['adminResourcesForCreate', adminResourceParams],
+    queryFn: () => resourceApi.getAdminResources(adminResourceParams).then(r => r.data),
+    enabled: isInstructor && source === 'examprep' && (
+      !usesCurriculumWorkflow
+      || Boolean((isSchoolInstructor || form.board) && form.classLevel && form.subject)
+    ),
     staleTime: 2 * 60 * 1000,
   });
   const { data: myResourcesData, isLoading: myResLoading } = useQuery({
@@ -939,6 +986,7 @@ export default function CreateExamPage() {
   const [overlayListeningGen, setOverlayListeningGen] = useState(false);
   /** @type {[{ title: string, subtitle: string, tips: string[], code: string, showSupport: boolean } | null, Function]} */
   const [examGenFailure, setExamGenFailure] = useState(null);
+  const [aiErrorModal, setAiErrorModal] = useState(null);
   const lastCreatePayloadRef = useRef(null);
 
   const createMut = useMutation({
@@ -974,8 +1022,16 @@ export default function CreateExamPage() {
         setShowExamLimitModal(true);
         return;
       }
+      const aiPres = getAiErrorPresentation(err, { isAdmin: user?.role === 'admin' });
+      if (aiPres) {
+        setAiErrorModal(aiPres);
+        setExamGenFailure(null);
+        toast.error(aiPres.kind === 'admin' ? 'AI service failure (see details)' : aiPres.title);
+        return;
+      }
       const presentation = getExamGenFailurePresentation(err);
       setExamGenFailure(presentation);
+      setAiErrorModal(null);
       const toastMsg = presentation.subtitle?.slice(0, 120) || 'Failed to create exam';
       toast.error(toastMsg);
     },
@@ -1056,10 +1112,21 @@ export default function CreateExamPage() {
 
   const handleSubmit = (e) => {
     e.preventDefault();
-    const result = schema.safeParse({ ...form, numQuestions: Number(form.numQuestions) });
+    const numQuestionsParsed = Number(form.numQuestions);
+    const baseSchema = z.object({
+      title: z.string().min(3, 'Title too short'),
+      numQuestions: z.number().int().min(5),
+    });
+    const fullSchema = usesCurriculumWorkflow || isInstituteInstructor
+      ? baseSchema
+      : schema;
+    const parseInput = usesCurriculumWorkflow || isInstituteInstructor
+      ? { title: form.title, numQuestions: numQuestionsParsed }
+      : { ...form, numQuestions: numQuestionsParsed };
+    const result = fullSchema.safeParse(parseInput);
     if (!result.success) {
       const fe = {};
-      result.error.errors.forEach(e => { fe[e.path[0]] = e.message; });
+      result.error.errors.forEach(err => { fe[err.path[0]] = err.message; });
       setErrors(fe);
       return;
     }
@@ -1085,7 +1152,7 @@ export default function CreateExamPage() {
     }
     const numQ = Number(form.numQuestions);
     if (numQ > planMaxQ) {
-      setErrors({ numQuestions: `${isEnterpriseInstructor ? 'Your enterprise configuration' : `Your ${user?.plan || 'free'} plan`} allows up to ${planMaxQ} questions.` });
+      setErrors({ numQuestions: `${isEnterpriseInstructor ? 'Your enterprise configuration' : `Your ${planDisplayLabel} plan`} allows up to ${planMaxQ} questions.` });
       return;
     }
     const pp = Number(advanced.passingPercentage);
@@ -1102,6 +1169,24 @@ export default function CreateExamPage() {
       setErrors({ time: 'Minimum time is 10 seconds' });
       return;
     }
+    if (usesCurriculumWorkflow) {
+      if (isIndividualInstructor && !form.board) {
+        setErrors({ board: 'Select a board (CBSE or ICSE)' });
+        return;
+      }
+      if (!form.classLevel) {
+        setErrors({ classLevel: 'Select a class' });
+        return;
+      }
+      if (!form.subject) {
+        setErrors({ subject: 'Select a subject' });
+        return;
+      }
+    }
+    if (isInstituteInstructor && !form.subject?.trim()) {
+      setErrors({ subject: 'Subject is required' });
+      return;
+    }
     setErrors({});
     const topics = form.topics.split(',').map(t => t.trim()).filter(Boolean);
     const examType = advanced.enableCoding ? 'coding' : form.examType;
@@ -1114,6 +1199,11 @@ export default function CreateExamPage() {
       examType,
       timePerQuestion,
       ...((source === 'examprep' || source === 'myresources') && selectedResourceId ? { resourceId: selectedResourceId } : {}),
+      ...(form.additionalAiInstructions?.trim() ? { additionalAiInstructions: form.additionalAiInstructions.trim() } : {}),
+      ...(usesCurriculumWorkflow ? {
+        classLevel: form.classLevel,
+        board: isSchoolInstructor ? enterpriseBoard : form.board,
+      } : {}),
     };
     if (isInstructor && examType === 'mixed') {
       const mp = Number(form.mixedMcqPercent);
@@ -1188,7 +1278,7 @@ export default function CreateExamPage() {
     { value: 'mcq', label: 'MCQ', desc: 'Multiple choice', icon: '☑' },
     { value: 'descriptive', label: 'Descriptive', desc: 'Open-ended written', icon: '✍' },
     { value: 'mixed', label: 'Mixed', desc: 'MCQ + Descriptive', icon: '⚡' },
-    { value: 'coding', label: 'Coding', desc: 'Code challenges', icon: '</>', enterpriseOnly: true },
+    { value: 'coding', label: 'Coding', desc: 'Code challenges', icon: '</>' },
   ];
 
   return (
@@ -1197,7 +1287,14 @@ export default function CreateExamPage() {
       <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-teal-500 to-blue-600 px-6 py-5 mb-8 shadow-md">
         <div className="absolute -top-8 -right-8 w-40 h-40 bg-white/10 rounded-full blur-3xl pointer-events-none" />
         <div className="relative">
-          <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles size={20} /> Create New Exam</h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+            <h1 className="text-2xl font-bold text-white flex items-center gap-2"><Sparkles size={20} /> Create New Exam</h1>
+            {isSchoolInstructor && (
+              <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-white/15 text-white border border-white/25 tracking-wide">
+                {enterpriseBoard} Board
+              </span>
+            )}
+          </div>
           <p className="text-teal-100 text-sm mt-1">Build a test with questions generated for your topic and settings.</p>
           {orgManagedBilling && (
             <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1 text-teal-50/95 text-[11px] sm:text-xs">
@@ -1228,7 +1325,7 @@ export default function CreateExamPage() {
                   {isInstructor && (
                     <FieldHint
                       placement="bottom"
-                      text="MCQ: all multiple choice. Descriptive: written answers. Mixed: both types in one exam. Coding: programming tasks (Enterprise)."
+                      text="MCQ: all multiple choice. Descriptive: written answers. Mixed: both types in one exam. Coding: programming tasks with optional code execution."
                     />
                   )}
                 </label>
@@ -1238,25 +1335,15 @@ export default function CreateExamPage() {
                       key={et.value}
                       type="button"
                       onClick={() => {
-                        if (et.enterpriseOnly && !isEnterprise) {
-                          toast('Coding exams require an Enterprise plan.', { icon: '🔒' });
-                          if (!orgManagedBilling) navigate('/plan');
-                          return;
-                        }
                         setF('examType')(et.value);
                         if (et.value === 'coding') adv('enableCoding')(true);
                         else adv('enableCoding')(false);
                       }}
-                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${et.enterpriseOnly && !isEnterprise ? 'opacity-60 cursor-not-allowed' : ''} ${(form.examType === et.value && !advanced.enableCoding) || (et.value === 'coding' && advanced.enableCoding) ? 'border-[var(--color-primary)] bg-blue-50/50 dark:bg-blue-900/10' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/50'}`}
+                      className={`flex flex-col items-center gap-1 p-3 rounded-xl border-2 text-center transition-all ${(form.examType === et.value && !advanced.enableCoding) || (et.value === 'coding' && advanced.enableCoding) ? 'border-[var(--color-primary)] bg-blue-50/50 dark:bg-blue-900/10' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/50'}`}
                     >
                       <span className="text-lg">{et.icon}</span>
-                      <span className="text-xs font-semibold text-[var(--color-text)] flex items-center gap-1">
-                        {et.label}
-                        {et.enterpriseOnly && !isEnterprise && <Lock size={11} className="text-[var(--color-text-muted)]" />}
-                      </span>
-                      <span className="text-[10px] text-[var(--color-text-muted)]">
-                        {et.enterpriseOnly && !isEnterprise ? 'Enterprise only' : et.desc}
-                      </span>
+                      <span className="text-xs font-semibold text-[var(--color-text)]">{et.label}</span>
+                      <span className="text-[10px] text-[var(--color-text-muted)]">{et.desc}</span>
                     </button>
                   ))}
                 </div>
@@ -1483,28 +1570,154 @@ export default function CreateExamPage() {
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-              <div>
-                <label className="label flex items-center gap-1.5">
-                  Exam Title
-                  {isInstructor && (
+            {isSchoolInstructor ? (
+              <div className="space-y-5">
+                <div>
+                  <label className="label flex items-center gap-1.5">
+                    Exam Title
                     <FieldHint placement="bottom" text="Shown to you and to candidates in invites, dashboards, and the exam header." />
-                  )}
-                </label>
-                <input className="input" placeholder="e.g., Python Fundamentals Quiz" value={form.title} onChange={e => setF('title')(e.target.value)} />
-                {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+                  </label>
+                  <input className="input w-full" placeholder="e.g., Class 10 Science — Term 1 Assessment" value={form.title} onChange={e => setF('title')(e.target.value)} />
+                  {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                  <div>
+                    <label className="label">Class</label>
+                    <select
+                      className="input w-full"
+                      value={form.classLevel}
+                      onChange={(e) => setForm((p) => ({ ...p, classLevel: e.target.value, subject: '' }))}
+                    >
+                      <option value="">Select class</option>
+                      {CLASS_LEVELS.map((c) => (
+                        <option key={c} value={c}>Class {c}</option>
+                      ))}
+                    </select>
+                    {errors.classLevel && <p className="text-red-500 text-xs mt-1">{errors.classLevel}</p>}
+                  </div>
+                  <div>
+                    <label className="label flex items-center gap-1.5">
+                      Subject
+                      <FieldHint placement="bottom" text="Subjects available for your school curriculum and selected class." />
+                    </label>
+                    <select
+                      className="input w-full"
+                      value={form.subject}
+                      disabled={!form.classLevel}
+                      onChange={(e) => setF('subject')(e.target.value)}
+                    >
+                      <option value="">
+                        {!form.classLevel
+                          ? 'Select class first'
+                          : subjectOptions.length
+                            ? 'Select subject'
+                            : 'No subjects available for the selected class.'}
+                      </option>
+                      {subjectOptions.map((s) => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
+                    {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+                    
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="label flex items-center gap-1.5">
-                  Subject
-                  {isInstructor && (
-                    <FieldHint placement="bottom" text="Helps the AI focus question generation on the right domain (e.g. Biology, Python)." />
-                  )}
-                </label>
-                <input className="input" placeholder="e.g., Python, Biology, History" value={form.subject} onChange={e => setF('subject')(e.target.value)} />
-                {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
+                <div>
+                  <label className="label flex items-center gap-1.5">
+                    Exam Title
+                    {isInstructor && (
+                      <FieldHint placement="bottom" text="Shown to you and to candidates in invites, dashboards, and the exam header." />
+                    )}
+                  </label>
+                  <input className="input" placeholder="e.g., Python Fundamentals Quiz" value={form.title} onChange={e => setF('title')(e.target.value)} />
+                  {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
+                </div>
+                {usesCurriculumWorkflow && isIndividualInstructor ? (
+                  <>
+                    <div>
+                      <label className="label flex items-center gap-1.5">
+                        Board
+                        <FieldHint placement="bottom" text="Select CBSE or ICSE. Class and subject options follow from admin curriculum mappings." />
+                      </label>
+                      <select
+                        className="input w-full"
+                        value={form.board}
+                        onChange={(e) => setForm((p) => ({ ...p, board: e.target.value, classLevel: '', subject: '' }))}
+                      >
+                        {BOARDS.map((b) => (
+                          <option key={b} value={b}>{b}</option>
+                        ))}
+                      </select>
+                      {errors.board && <p className="text-red-500 text-xs mt-1">{errors.board}</p>}
+                    </div>
+                    <div>
+                      <label className="label">Class</label>
+                      <select
+                        className="input w-full"
+                        value={form.classLevel}
+                        disabled={!form.board}
+                        onChange={(e) => setForm((p) => ({ ...p, classLevel: e.target.value, subject: '' }))}
+                      >
+                        <option value="">{form.board ? 'Select class' : 'Select board first'}</option>
+                        {CLASS_LEVELS.map((c) => (
+                          <option key={c} value={c}>Class {c}</option>
+                        ))}
+                      </select>
+                      {errors.classLevel && <p className="text-red-500 text-xs mt-1">{errors.classLevel}</p>}
+                    </div>
+                    <div>
+                      <label className="label flex items-center gap-1.5">
+                        Subject
+                        <FieldHint placement="bottom" text="Subjects are defined when your admin uploads curriculum resources for each board and class." />
+                      </label>
+                      <select
+                        className="input w-full"
+                        value={form.subject}
+                        disabled={!form.classLevel}
+                        onChange={(e) => setF('subject')(e.target.value)}
+                      >
+                        <option value="">
+                          {!form.classLevel
+                            ? 'Select class first'
+                            : subjectOptions.length
+                              ? 'Select subject'
+                              : 'No subjects available for the selected class.'}
+                        </option>
+                        {subjectOptions.map((s) => (
+                          <option key={s} value={s}>{s}</option>
+                        ))}
+                      </select>
+                      {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+                      
+                    </div>
+                  </>
+                ) : isInstituteInstructor ? (
+                  <div>
+                    <label className="label flex items-center gap-1.5">
+                      Subject
+                      {isInstructor && (
+                        <FieldHint placement="bottom" text="Helps the AI focus question generation on the right domain (e.g. Biology, Python)." />
+                      )}
+                    </label>
+                    <input className="input" placeholder="e.g., Python, Biology, History" value={form.subject} onChange={e => setF('subject')(e.target.value)} />
+                    {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+                  </div>
+                ) : (
+                  <div>
+                    <label className="label flex items-center gap-1.5">
+                      Subject
+                      {isInstructor && (
+                        <FieldHint placement="bottom" text="Helps the AI focus question generation on the right domain (e.g. Biology, Python)." />
+                      )}
+                    </label>
+                    <input className="input" placeholder="e.g., Python, Biology, History" value={form.subject} onChange={e => setF('subject')(e.target.value)} />
+                    {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
+                  </div>
+                )}
               </div>
-            </div>
+            )}
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
               <div>
@@ -1865,11 +2078,11 @@ export default function CreateExamPage() {
 
             {/* AI Proctoring toggle */}
             <div className={`rounded-xl border ${form.proctored ? 'border-[var(--color-primary)] bg-blue-50/40 dark:bg-blue-900/10' : 'border-[var(--color-border)] bg-[var(--color-bg-alt)]'} transition-all`}>
-              <div className={`flex items-center gap-3 p-4 ${isFreePlan || enterpriseProctoringDisabled ? 'opacity-60' : ''}`}>
+              <div className={`flex items-center gap-3 p-4 ${!canUseProctoring || enterpriseProctoringDisabled ? 'opacity-60' : ''}`}>
                 <ToggleSwitch
                   checked={enterpriseProctoringDisabled ? false : form.proctored}
-                  disabled={isFreePlan || enterpriseProctoringDisabled}
-                  onChange={e => !isFreePlan && !enterpriseProctoringDisabled && setF('proctored')(e.target.checked)}
+                  disabled={!canUseProctoring || enterpriseProctoringDisabled}
+                  onChange={e => canUseProctoring && !enterpriseProctoringDisabled && setF('proctored')(e.target.checked)}
                 />
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium text-[var(--color-text)] flex items-center gap-2 flex-wrap">
@@ -1880,25 +2093,58 @@ export default function CreateExamPage() {
                       text={
                         enterpriseProctoringDisabled
                           ? 'AI Proctoring is disabled by your enterprise administrator for this organization.'
-                          : isFreePlan
-                          ? 'AI Proctoring is available on paid plans. It uses camera and microphone checks, detects tab and window changes, and requires fullscreen during the exam.'
+                          : !canUseProctoring
+                          ? 'AI Proctoring is available on plans that include it. It uses camera and microphone checks, detects tab and window changes, and requires fullscreen during the exam.'
                           : 'Monitors camera and microphone, detects tab switches and leaving fullscreen, and records violations. You can turn on occasional screenshots under Advanced Settings when proctoring is enabled.'
                       }
                     />
-                    {(isFreePlan || enterpriseProctoringDisabled) && <Lock size={13} className="text-[var(--color-text-muted)] shrink-0" />}
+                    {(!canUseProctoring || enterpriseProctoringDisabled) && <Lock size={13} className="text-[var(--color-text-muted)] shrink-0" />}
                   </div>
                   <div className="text-xs text-[var(--color-text-muted)]">
                     {enterpriseProctoringDisabled
                       ? 'AI Proctoring is not enabled in your plan. Please contact your administrator.'
-                      : isFreePlan
+                      : !canUseProctoring
                       ? orgManagedBilling
                         ? 'AI Proctoring follows your organization policy. Contact your administrator if you need it enabled.'
-                        : <><Link to="/plan" className="text-[var(--color-primary)] hover:underline font-medium">Upgrade to Premium</Link> to unlock AI Proctoring.</>
+                        : <><Link to="/plan" className="text-[var(--color-primary)] hover:underline font-medium">Upgrade your plan</Link> to unlock AI Proctoring.</>
                       : 'Webcam monitoring, tab-switch detection, violation tracking.'
                     }
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="border border-[var(--color-border)] rounded-xl overflow-hidden">
+              <button
+                type="button"
+                onClick={() => setShowAdvancedAi((v) => !v)}
+                className="w-full flex items-center justify-between gap-2 px-4 py-3 text-sm font-medium text-[var(--color-text)] bg-[var(--color-bg-alt)] hover:bg-[var(--color-surface-hover)] transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Settings2 size={16} className="text-[var(--color-primary)]" />
+                  Advanced AI options
+                </span>
+                {showAdvancedAi ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+              </button>
+              {showAdvancedAi && (
+                <div className="p-4 border-t border-[var(--color-border)] space-y-2">
+                  <label className="label flex items-center gap-1.5">
+                    Additional AI Instructions (Optional)
+                    <FieldHint
+                      placement="top"
+                      text="Provide additional guidance for AI question generation. You can specify what should be included, excluded, preferred difficulty, question style, or any custom requirements."
+                    />
+                  </label>
+                  <textarea
+                    className="input min-h-[88px] text-sm resize-y"
+                    placeholder="e.g. Include case-study questions; avoid numerical questions; focus on conceptual understanding…"
+                    value={form.additionalAiInstructions}
+                    onChange={(e) => setF('additionalAiInstructions')(e.target.value)}
+                    maxLength={4000}
+                  />
+                  <p className="text-[10px] text-[var(--color-text-muted)] text-right tabular-nums">{form.additionalAiInstructions.length}/4000</p>
+                </div>
+              )}
             </div>
 
             <button
@@ -2018,27 +2264,6 @@ export default function CreateExamPage() {
                   <ToggleSwitch checked={advanced.screenshotEnabled && form.proctored} disabled={!form.proctored} onChange={e => adv('screenshotEnabled')(e.target.checked)} />
                 </div>
 
-                {!isEnterprise && (
-                  <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)] opacity-60">
-                    <div className="flex items-center gap-2">
-                      <div className="w-7 h-7 rounded-lg bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center shrink-0">
-                        <Code2 size={12} className="text-purple-600 dark:text-purple-400" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-1">
-                          <p className="text-xs font-medium text-[var(--color-text)]">Coding Questions</p>
-                          <Lock size={10} className="text-[var(--color-text-muted)]" />
-                          <FieldHint placement="left" text="Code-based questions with execution checks are limited to Enterprise. Pick the Coding exam type when available." />
-                        </div>
-                        <p className="text-[10px] text-[var(--color-text-muted)]">
-                          {orgManagedBilling ? 'Enterprise feature — ask your organization.' : <Link to="/plan" className="text-[var(--color-primary)] hover:underline">Enterprise only</Link>}
-                        </p>
-                      </div>
-                    </div>
-                    <ToggleSwitch checked={false} disabled={true} onChange={() => {}} />
-                  </div>
-                )}
-
                 <div className="flex items-center justify-between py-2 border-b border-[var(--color-border)]">
                   <div className="flex items-center gap-2">
                     <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center shrink-0">
@@ -2136,7 +2361,7 @@ export default function CreateExamPage() {
                   <div className="w-full bg-[var(--color-bg-alt)] rounded-full h-1.5 mb-3">
                     <div className={`h-1.5 rounded-full transition-all ${usageRemaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${usagePct}%` }} />
                   </div>
-                  <p className="text-xs text-[var(--color-text-muted)] mb-3 capitalize">{user?.plan || 'free'} plan</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mb-3">{planDisplayLabel} plan</p>
                   {(user?.examsBonusSlots ?? 0) > 0 && (
                     <p className="text-[10px] text-[var(--color-text-muted)] mb-2">Includes {user.examsBonusSlots} add-on credit{user.examsBonusSlots === 1 ? '' : 's'} (expire with your paid plan).</p>
                   )}
@@ -2187,7 +2412,7 @@ export default function CreateExamPage() {
               <div className="w-full bg-[var(--color-bg-alt)] rounded-full h-1.5 mb-3">
                 <div className={`h-1.5 rounded-full transition-all ${usageRemaining === 0 ? 'bg-red-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${usagePct}%` }} />
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] capitalize">{user?.plan || 'free'} plan</p>
+              <p className="text-xs text-[var(--color-text-muted)]">{planDisplayLabel} plan</p>
               {(user?.examsBonusSlots ?? 0) > 0 && (
                 <p className="text-[10px] text-[var(--color-text-muted)] mt-1">+{user.examsBonusSlots} add-on credit{user.examsBonusSlots === 1 ? '' : 's'} (with paid plan).</p>
               )}
@@ -2747,6 +2972,17 @@ export default function CreateExamPage() {
         ),
         document.body,
       )}
+
+      <AiServiceUnavailableModal
+        open={!!aiErrorModal}
+        presentation={aiErrorModal}
+        onClose={() => setAiErrorModal(null)}
+        onRetry={() => {
+          setAiErrorModal(null);
+          const payload = lastCreatePayloadRef.current || createMut.variables;
+          if (payload) createMut.mutate(payload);
+        }}
+      />
     </div>
   );
 }

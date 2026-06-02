@@ -55,7 +55,7 @@ export default function MainLayout() {
                 <div className="hidden md:flex items-center gap-2">
                   {user?.plan && user.plan !== 'free' && (
                     <Link to="/pricing" className={`text-xs font-bold px-2.5 py-1 rounded-full ${user.plan === 'enterprise' ? 'bg-purple-100 text-purple-700' : 'bg-blue-100 text-blue-700'}`}>
-                      {user.plan.toUpperCase()}
+                      {(user.planDisplayName || user.plan || '').toUpperCase()}
                     </Link>
                   )}
                   <Link to={dashPath} className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">

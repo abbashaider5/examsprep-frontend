@@ -80,6 +80,7 @@ export default function ProfilePage() {
   const plan = user?.plan || 'free';
   const planInfo = PLAN_INFO[plan] || PLAN_INFO.free;
   const PlanIcon = planInfo.icon;
+  const planName = user?.planDisplayName || planInfo.label;
   const isFreePlan = plan === 'free';
   const isInstructor = user?.role === 'instructor' || user?.role === 'admin';
   const isStudent = user?.role === 'user';
@@ -176,7 +177,7 @@ export default function ProfilePage() {
             <h2 className="text-lg font-bold text-[var(--color-text)]">{user?.name}</h2>
             {!isStudent && (
               <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${planInfo.color}`}>
-                <PlanIcon size={10} className="inline mr-1" />{planInfo.label}
+                <PlanIcon size={10} className="inline mr-1" />{planName}
               </span>
             )}
             <span className="text-xs font-medium px-2.5 py-0.5 rounded-full bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] capitalize">

@@ -553,7 +553,7 @@ export default function DashboardLayout() {
                 }`}
               >
                 <Zap size={11} />
-                {user?.plan?.toUpperCase()}
+                {(user?.planDisplayName || user?.plan || '').toUpperCase()}
               </Link>
             )}
             <button

@@ -1,28 +1,25 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  Building2, Calculator, Check, ChevronDown, CreditCard, Download, LayoutDashboard, Layers, Loader2, Receipt, Shield, Users, X, Zap,
+  Building2, Calculator, Check, ChevronDown, CreditCard, Download,
+  Layers,
+  LayoutDashboard,
+  Loader2, Receipt, Shield, Users, X, Zap
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
-import { authApi, paymentApi, profileApi } from '../services/api.js';
+import { authApi, paymentApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { filterPlansAboveSortOrder, resolveFeatureList } from '../utils/planFeatures.js';
+import CurrentPlanHero from '../components/billing/CurrentPlanHero.jsx';
+import PlanFeaturesModal from '../components/billing/PlanFeaturesModal.jsx';
+import UpgradePlanCard from '../components/billing/UpgradePlanCard.jsx';
 
 const PLAN_INFO = {
   free: { label: 'Free', color: 'bg-slate-100 text-slate-700 dark:bg-slate-700 dark:text-slate-300', border: 'border-slate-200 dark:border-slate-700', icon: Zap },
   pro: { label: 'Premium', color: 'bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300', border: 'border-blue-200 dark:border-blue-800', icon: Shield },
   enterprise: { label: 'Enterprise', color: 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/40 dark:text-indigo-200', border: 'border-indigo-200 dark:border-indigo-800', icon: Building2 },
 };
-
-const SUBSCRIPTION_PLANS = [
-  {
-    id: 'pro',
-    name: 'Premium',
-    monthlyLimit: 20,
-    maxQuestions: 50,
-    desc: 'Full instructor toolkit: AI exams, proctoring, analytics, and classroom-ready limits.',
-  },
-];
 
 /** Fallback if API omits enterprise renewal meta — must match server ENTERPRISE_RENEWAL_DURATION_TIERS. */
 const DEFAULT_ENTERPRISE_RENEWAL_META = [
@@ -105,11 +102,11 @@ function UpcomingAutomaticRenewalsCard({ queue, fmtDate, variant }) {
           <Layers size={18} className="text-teal-600 dark:text-teal-400" />
         </div>
         <div className="min-w-0 flex-1">
-          <h3 className="text-sm font-semibold text-[var(--color-text)] tracking-tight">Upcoming renewals (automatic)</h3>
+          <h3 className="text-sm font-semibold text-[var(--color-text)] tracking-tight">Upcoming renewals</h3>
           <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">
             {variant === 'enterprise'
-              ? 'These organization terms are paid and queued. Each one starts when the previous period ends — no action needed at rollover.'
-              : 'These Premium terms are paid and queued. Each one starts when the previous period ends — no action needed at rollover.'}
+              ? 'These paid organization terms activate automatically one after another.'
+              : 'These paid Premium terms activate automatically one after another.'}
           </p>
         </div>
       </div>
@@ -143,7 +140,7 @@ function UpcomingAutomaticRenewalsCard({ queue, fmtDate, variant }) {
                     Ends <span className="text-[var(--color-text)] font-medium">{fmtDate(end)}</span>
                   </p>
                 ) : (
-                  <p className="mt-1">Activation dates will appear once the queue is finalized.</p>
+                  <p className="mt-1">Activation dates will appear once processing completes.</p>
                 )}
               </div>
             </li>
@@ -262,6 +259,8 @@ function PaymentConfirmModal({
   termStart,
   termEnd,
   fmtDate,
+  quote,
+  autoPayActive,
 }) {
   if (!open || typeof document === 'undefined') return null;
 
@@ -316,6 +315,27 @@ function PaymentConfirmModal({
             </div>
           ) : null}
 
+          {quote?.newPlan ? (
+            <div className="pt-1 border-t border-[var(--color-border)]/70 text-xs text-[var(--color-text-muted)] space-y-2">
+              <p className="text-[11px] font-medium uppercase tracking-wider text-[var(--color-text-muted)]">Upgrade summary</p>
+              <p>New plan: <span className="font-medium text-[var(--color-text)] capitalize">{quote.newPlan}</span></p>
+              {(quote.creditAppliedPaise || 0) > 0 ? (
+                <>
+                  <p>Plan price: <span className="font-medium text-[var(--color-text)] tabular-nums">{fmtAmount(quote.planCostPaise || 0)}</span></p>
+                  <p>Credit applied: <span className="font-medium text-emerald-600 dark:text-emerald-400 tabular-nums">− {fmtAmount(quote.creditAppliedPaise)}</span></p>
+                </>
+              ) : (
+                <p>Plan price: <span className="font-medium text-[var(--color-text)] tabular-nums">{fmtAmount(quote.planCostPaise || quote.payablePaise || amountPaise || 0)}</span></p>
+              )}
+            </div>
+          ) : null}
+
+          {autoPayActive ? (
+            <div className="rounded-lg border border-blue-200 bg-blue-50 dark:bg-blue-950/30 dark:border-blue-900 px-3 py-2 text-xs text-blue-800 dark:text-blue-200">
+              Your existing AutoPay subscription will be migrated automatically to the new plan. No action is required from you.
+            </div>
+          ) : null}
+
           {willQueue ? (
             <p className="text-[13px] text-[var(--color-text-muted)] leading-snug">
               Starts automatically after your current plan ends.
@@ -355,21 +375,21 @@ function PaymentConfirmModal({
 
 function ChosenTermScheduleCallout({ start, end, fmtDate }) {
   if (!start || !end) return null;
-  const queued = start.getTime() > Date.now() + CHOSEN_TERM_QUEUE_SLACK_MS;
+  const deferredStart = start.getTime() > Date.now() + CHOSEN_TERM_QUEUE_SLACK_MS;
   return (
     <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 px-3.5 py-3 mb-6">
       <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-1.5">
         Billing period (this purchase)
       </p>
       <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">
-        {queued ? (
+        {deferredStart ? (
           <>
             <span className="tabular-nums font-medium text-[var(--color-text)]">{fmtDate(start)}</span>
             {' · '}
             <span className="tabular-nums font-medium text-[var(--color-text)]">{fmtDate(end)}</span>
             <span className="text-[var(--color-text-muted)]">
               {' '}
-              — begins after your current access ends, including any renewals already queued.
+              — starts after your current active term ends.
             </span>
           </>
         ) : (
@@ -395,11 +415,11 @@ const loadRazorpay = () =>
     document.body.appendChild(script);
   });
 
-const TAB = { overview: 'overview', plan: 'plan', transactions: 'transactions' };
+const TAB = { overview: 'overview', upgrade: 'upgrade', plan: 'upgrade', transactions: 'transactions' };
 
 const PLAN_TABS = [
   { id: TAB.overview, label: 'Overview', icon: LayoutDashboard },
-  { id: TAB.plan, label: 'Upgrade & renew', icon: CreditCard },
+  { id: TAB.upgrade, label: 'Upgrade plans', icon: CreditCard },
   { id: TAB.transactions, label: 'Transactions', icon: Receipt },
 ];
 
@@ -408,6 +428,78 @@ const PRINCIPAL_TABS = [
   { id: TAB.plan, label: 'Renew organization', icon: Building2 },
   { id: TAB.transactions, label: 'Payments', icon: Receipt },
 ];
+
+function AutoPayProgressModal({ state, fmtDate, onClose }) {
+  if (!state?.open || typeof document === 'undefined') return null;
+  const stepIndex = Number(state.stepIndex || 0);
+  const steps = state.steps || [];
+  const done = state.mode === 'success';
+  const failed = state.mode === 'error';
+
+  return createPortal(
+    <div className="fixed inset-0 z-[120000] bg-black/55 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="w-full max-w-lg rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl overflow-hidden">
+        <div className="px-6 py-5 border-b border-[var(--color-border)]">
+          <h3 className="text-lg font-semibold text-[var(--color-text)]">
+            {failed ? 'Unable to Enable AutoPay' : done ? 'AutoPay Enabled Successfully' : 'Setting up AutoPay'}
+          </h3>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">
+            {failed
+              ? 'We could not complete the subscription setup at this time. Please try again in a few minutes.'
+              : done
+                ? 'Your subscription will renew automatically through Razorpay.'
+                : 'Please wait while we securely activate your subscription and verify recurring setup. This usually takes a few seconds.'}
+          </p>
+        </div>
+
+        <div className="px-6 py-5 space-y-3">
+          {steps.map((s, idx) => {
+            const complete = done || idx < stepIndex;
+            const active = !done && !failed && idx === stepIndex;
+            const pending = !complete && !active;
+            return (
+              <div key={s} className="flex items-center gap-3 text-sm">
+                {complete ? (
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-500/15 text-emerald-600">
+                    <Check size={13} />
+                  </span>
+                ) : active ? (
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-primary)]/15 text-[var(--color-primary)]">
+                    <Loader2 size={13} className="animate-spin" />
+                  </span>
+                ) : (
+                  <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-[var(--color-border)] text-[var(--color-text-muted)]">
+                    {pending ? '•' : ''}
+                  </span>
+                )}
+                <span className={`${complete ? 'text-[var(--color-text)] font-medium' : 'text-[var(--color-text-muted)]'}`}>{s}</span>
+              </div>
+            );
+          })}
+
+          {done && state.subscription ? (
+            <div className="mt-4 rounded-xl border border-emerald-500/25 bg-emerald-500/[0.07] p-3 text-sm space-y-1">
+              <p><span className="font-medium text-[var(--color-text)]">AutoPay:</span> Enabled</p>
+              <p><span className="font-medium text-[var(--color-text)]">Status:</span> {state.subscription.subscriptionStatus || 'Active'}</p>
+              {state.subscription.nextBillingDate ? (
+                <p><span className="font-medium text-[var(--color-text)]">Next payment:</span> {fmtDate(state.subscription.nextBillingDate)}</p>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+
+        <div className="px-6 py-4 border-t border-[var(--color-border)] flex justify-end">
+          {done || failed ? (
+            <button type="button" className="btn-primary px-4 py-2 rounded-xl text-sm" onClick={onClose}>
+              Continue
+            </button>
+          ) : null}
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
 
 /** Organization owner: custom enterprise billing only (no individual Premium SKUs). */
 function PrincipalBillingView({
@@ -517,7 +609,7 @@ function PrincipalBillingView({
               <p className="text-sm font-semibold text-[var(--color-text)] mt-1.5 tabular-nums">
                 {org.orgPlanExpiresAt ? fmtDate(org.orgPlanExpiresAt) : org.orgTrialEndsAt ? `Trial · ${fmtDate(org.orgTrialEndsAt)}` : '—'}
               </p>
-              <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Renew or queue a term before expiry</p>
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-1">Renew before expiry to avoid interruption</p>
             </div>
           </div>
 
@@ -710,7 +802,7 @@ function PrincipalBillingView({
                 Pricing is based on <span className="font-medium text-[var(--color-text)]">your organization&apos;s custom monthly rate</span> (admin limits and contract), not instructor Premium list prices. Longer terms include a loyalty discount on the subtotal.
               </p>
               <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mt-2 max-w-2xl">
-                Pay before the current term ends and the new period is <span className="font-medium text-[var(--color-text)]">queued</span> — it starts when access would otherwise lapse; remaining days on the active term are preserved.
+                Pay before the current term ends and your next paid period is scheduled automatically from the next cycle; remaining days on the active term are preserved.
               </p>
             </div>
             <div className="p-5 sm:p-6">
@@ -839,13 +931,28 @@ export default function PlanPage() {
   const managedByOrganization = !!(subData?.managedByOrganization || user?.subscriptionBillingManagedByOrg);
   const org = subData?.enterprise ?? user?.enterprise;
   const selfServeInstructor = !managedByOrganization && ['instructor', 'principal', 'admin'].includes(user?.role || '');
+  const currentPlanDef = subData?.currentIndividualPlan || null;
+  const currentPlanSortOrder = subData?.currentPlanSortOrder ?? currentPlanDef?.sortOrder ?? -1;
+  const currentPlanCode = subData?.currentPlanCode || currentPlanDef?.code || user?.individualPlanCode || '';
+  const currentPlanName = subData?.planDisplayName || currentPlanDef?.name || (planInfo?.label || 'Plan');
+  const currentMonthlyPricePaise = currentPlanDef?.pricing?.monthlyPricePaise || subData?.pricingCatalog?.planPricePro || 99900;
+  const individualPlans = useMemo(
+    () => [...(subData?.availableIndividualPlans || [])].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
+    [subData?.availableIndividualPlans],
+  );
+  const planLimits = subData?.planLimits || currentPlanDef?.limits || null;
+  const featureList = useMemo(
+    () => resolveFeatureList(subData, currentPlanDef),
+    [subData, currentPlanDef],
+  );
+  const dynamicUpgradePlans = useMemo(() => {
+    const source = Array.isArray(subData?.upgradeEligiblePlans)
+      ? subData.upgradeEligiblePlans
+      : individualPlans;
+    return filterPlansAboveSortOrder(source, currentPlanDef, currentPlanSortOrder);
+  }, [subData?.upgradeEligiblePlans, individualPlans, currentPlanDef, currentPlanSortOrder]);
 
   const catalog = subData?.pricingCatalog;
-  const durationOptions = useMemo(() => catalog?.durations || [], [catalog?.durations]);
-  const selectedTier = useMemo(
-    () => durationOptions.find((d) => d.months === durationMonths) || durationOptions[0],
-    [durationOptions, durationMonths],
-  );
 
   const { data: txnData, isLoading: loadingTxn } = useQuery({
     queryKey: ['transactions'],
@@ -854,23 +961,53 @@ export default function PlanPage() {
   });
   const transactions = txnData?.transactions || [];
 
-  const updateMut = useMutation({
-    mutationFn: (data) => profileApi.update(data),
-    onSuccess: (res) => {
-      if (res?.data?.user) setUser(res.data.user);
-      qc.invalidateQueries({ queryKey: ['me'] });
-      toast.success('Plan preferences updated');
-    },
-    onError: () => toast.error('Update failed'),
-  });
-
   const planExpiryDays = user?.planExpiresAt ? Math.ceil((new Date(user.planExpiresAt).getTime() - Date.now()) / 86400000) : null;
   const expiringSoon = !isFreePlan && typeof planExpiryDays === 'number' && planExpiryDays >= 0 && planExpiryDays <= 7;
-  const cap = user?.monthlyLimit || 3;
-  const usedExams = user?.examsUsedThisMonth ?? Math.max(0, cap - (user?.remaining ?? cap));
+  const planExpired = !isFreePlan && typeof planExpiryDays === 'number' && planExpiryDays < 0;
+  const cap = subData?.monthlyLimit ?? user?.monthlyLimit ?? planLimits?.examsPerMonth ?? 0;
+  const usedExams = subData?.examsCreatedThisMonth ?? user?.examsUsedThisMonth ?? Math.max(0, cap - (subData?.remaining ?? user?.remaining ?? cap));
+  const planStatusLabel = subData?.planStatus === 'trial'
+    ? 'Trial'
+    : subData?.planStatus === 'expired'
+      ? 'Expired'
+      : isFreePlan
+        ? 'Free'
+        : 'Active';
+  const statusTone = planStatusLabel === 'Active' || planStatusLabel === 'Trial'
+    ? 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-400'
+    : planStatusLabel === 'Expired'
+      ? 'bg-red-500/15 text-red-700 dark:text-red-400'
+      : 'bg-slate-500/15 text-slate-600 dark:text-slate-400';
+
+  const openFeaturesModal = (planRecord) => {
+    const record = planRecord || currentPlanDef;
+    const list = resolveFeatureList(
+      record?.features ? { planFeatures: record.features } : subData,
+      record,
+    );
+    setFeaturesModal({
+      open: true,
+      plan: record,
+      limits: record?.limits || planLimits,
+      featureList: list.length ? list : featureList,
+    });
+  };
   const usagePct = cap > 0 ? Math.min(100, (usedExams / cap) * 100) : 0;
   const fmtDate = (d) => new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
   const fmtAmount = (paise) => `₹${(paise / 100).toFixed(0)}`;
+  const { data: upgradeQuoteData, isLoading: loadingUpgradeQuotes } = useQuery({
+    queryKey: ['upgrade-quotes', 1, currentPlanCode, dynamicUpgradePlans.map((p) => p.code).join(',')],
+    enabled: selfServeInstructor && tab === TAB.upgrade && dynamicUpgradePlans.length > 0,
+    queryFn: async () => {
+      const rows = await Promise.all(
+        dynamicUpgradePlans.map(async (p) => {
+          const { data } = await paymentApi.upgradeQuote({ targetPlan: p.code, durationMonths: 1 });
+          return [p.code, data];
+        }),
+      );
+      return Object.fromEntries(rows);
+    },
+  });
 
   const orgBillingMonthlyPaise =
     org?.billingMonthlyBasePaise ?? org?.estimatedMonthlyCostPaise ?? org?.estimatedMonthlyCost ?? 0;
@@ -902,23 +1039,6 @@ export default function PlanPage() {
 
   const enterpriseCheckoutPaise = selectedPrincipalTier?.payableTotalPaise ?? null;
 
-  const pendingPersonalRenewals = useMemo(
-    () => sortPendingRenewalQueue(subData?.personalRenewalQueue),
-    [subData?.personalRenewalQueue],
-  );
-  const personalTimelineForDisplay = useMemo(() => {
-    const segs = subData?.personalRenewalTimeline || [];
-    if (!pendingPersonalRenewals.length) return segs;
-    return segs.filter((s) => s.kind !== 'queued');
-  }, [subData?.personalRenewalTimeline, pendingPersonalRenewals.length]);
-
-  const personalChosenTermWindow = useMemo(() => {
-    const m = Number(durationMonths);
-    if (![1, 3, 6].includes(m) || !subData) return null;
-    const anchor = getPersonalRenewalChainAnchorClient(user, subData);
-    return computeAppendedQueueTermWindow(anchor, subData.personalRenewalQueue, m);
-  }, [user, subData, durationMonths]);
-
   const principalChosenTermWindow = useMemo(() => {
     const m = Number(durationMonths);
     if (![1, 3, 6].includes(m) || !org?.id) return null;
@@ -926,17 +1046,133 @@ export default function PlanPage() {
     return computeAppendedQueueTermWindow(anchor, org.subscriptionRenewalQueue, m);
   }, [org, durationMonths]);
 
-  const proCatalogLimit = subData?.pricingCatalog?.planExamLimits?.pro ?? SUBSCRIPTION_PLANS[0].monthlyLimit;
-  const proCatalogMaxQ = subData?.pricingCatalog?.planMaxQuestions?.pro ?? SUBSCRIPTION_PLANS[0].maxQuestions;
-
   const [checkoutIntent, setCheckoutIntent] = useState(null);
+  const [featuresModal, setFeaturesModal] = useState({ open: false, plan: null, limits: null, featureList: [] });
+  const [autoPaySetup, setAutoPaySetup] = useState({
+    open: false,
+    mode: 'progress',
+    stepIndex: 0,
+    steps: ['Payment received', 'Verifying subscription', 'Activating AutoPay', 'Syncing billing details', 'Finalizing setup'],
+    subscription: null,
+  });
+
+  const autoRenewState = subData?.autoRenew || {};
+  const isAutoPayBusy = autoPaySetup.open && autoPaySetup.mode === 'progress';
+  const allowManualRenew = !autoRenewState?.enabled && !isFreePlan && (expiringSoon || planExpired);
+  const autopayTargetPlan = currentPlanCode || currentPlanDef?.code || '';
+  const nextPaymentDate = autoRenewState?.enabled
+    ? (autoRenewState?.nextBillingDate || user?.planExpiresAt || null)
+    : null;
+
+  const toggleAutoRenew = async () => {
+    if (!user || isFreePlan) return;
+    if (loadingKey === 'autopay-toggle' || isAutoPayBusy) return;
+    setLoadingKey('autopay-toggle');
+    try {
+      if (autoRenewState?.enabled) {
+        await paymentApi.disableAutoRenew({
+          razorpaySubscriptionId: autoRenewState.razorpaySubscriptionId || undefined,
+        });
+        toast.success('AutoPay disabled. Future recurring charges are cancelled.');
+      } else {
+        if (!autopayTargetPlan) {
+          toast.error('No active plan found for AutoPay. Refresh the page or contact support.');
+          setLoadingKey('');
+          return;
+        }
+        const ready = await loadRazorpay();
+        if (!ready) {
+          toast.error('Payment gateway failed to load.');
+          setLoadingKey('');
+          return;
+        }
+        const { data } = await paymentApi.createSubscription({ plan: autopayTargetPlan, autoRenewEnabled: true });
+        setAutoPaySetup((s) => ({ ...s, open: true, mode: 'progress', stepIndex: 0, subscription: null }));
+        const options = {
+          key: data.keyId,
+          subscription_id: data.subscriptionId,
+          name: 'LikhitAI',
+          description: `Enable AutoPay for ${currentPlanName} monthly renewal`,
+          prefill: { name: user?.name, email: user?.email },
+          theme: { color: '#0d9488' },
+          handler: async () => {
+            try {
+              setAutoPaySetup((s) => ({ ...s, stepIndex: 1 }));
+              const enableRes = await paymentApi.enableAutoRenew({ razorpaySubscriptionId: data.subscriptionId });
+              setAutoPaySetup((s) => ({ ...s, stepIndex: 2 }));
+              await qc.invalidateQueries({ queryKey: ['subscription'] });
+              await qc.invalidateQueries({ queryKey: ['me'] });
+              const [subRes, me] = await Promise.all([
+                paymentApi.getSubscription().then((r) => r.data),
+                authApi.getMe(),
+              ]);
+              setUser(me.data.user);
+              setAutoPaySetup((s) => ({ ...s, stepIndex: 3 }));
+              await new Promise((r) => setTimeout(r, 350));
+              const mergedAutoRenew = {
+                ...(subRes?.autoRenew || {}),
+                enabled: true,
+                nextBillingDate: enableRes.data?.nextBillingDate
+                  || subRes?.autoRenew?.nextBillingDate
+                  || subRes?.planExpiresAt
+                  || null,
+                subscriptionStatus: enableRes.data?.subscriptionStatus || subRes?.autoRenew?.subscriptionStatus,
+              };
+              setAutoPaySetup((s) => ({ ...s, stepIndex: 4, mode: 'success', subscription: mergedAutoRenew }));
+              toast.success('AutoPay enabled successfully.');
+            } catch {
+              setAutoPaySetup((s) => ({ ...s, mode: 'error' }));
+              toast.error('Unable to enable AutoPay');
+            }
+          },
+          modal: {
+            ondismiss: () => {
+              setLoadingKey('');
+              setAutoPaySetup((s) => ({ ...s, open: false }));
+            },
+          },
+        };
+        const rzp = new window.Razorpay(options);
+        rzp.on('payment.failed', () => {
+          setAutoPaySetup((s) => ({ ...s, open: true, mode: 'error' }));
+          toast.error('Unable to enable AutoPay');
+          setLoadingKey('');
+        });
+        rzp.open();
+        setLoadingKey('');
+        return;
+      }
+      qc.invalidateQueries({ queryKey: ['subscription'] });
+      qc.invalidateQueries({ queryKey: ['me'] });
+      const me = await authApi.getMe();
+      setUser(me.data.user);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Unable to update AutoPay setting.');
+    } finally {
+      setLoadingKey('');
+    }
+  };
 
   const handleSubscribe = (planId, opts = {}) => {
+    if (isAutoPayBusy) return;
     if (user?.role === 'user') {
       toast.error('Upgrades are available on instructor or admin accounts.');
       return;
     }
-    setCheckoutIntent({ planId, opts: opts || {} });
+    const loadQuote = async () => {
+      try {
+        const quote = upgradeQuoteData?.[planId]
+          || (await paymentApi.upgradeQuote({ targetPlan: planId, durationMonths: 1 })).data;
+        if (quote?.downgradeDeferred) {
+          toast('Downgrade will apply after current billing period ends.');
+          return;
+        }
+        setCheckoutIntent({ planId, opts: opts || {}, quote });
+      } catch (err) {
+        toast.error(err?.response?.data?.message || 'Unable to prepare upgrade summary.');
+      }
+    };
+    loadQuote();
   };
 
   const closeCheckoutModal = () => {
@@ -945,11 +1181,12 @@ export default function PlanPage() {
   };
 
   const confirmAndPay = async () => {
+    if (isAutoPayBusy) return;
     if (!checkoutIntent) return;
     const { planId, opts } = checkoutIntent;
     const billingScope = opts.billingScope || 'personal';
     const enterpriseId = opts.enterpriseId || undefined;
-    const loadKey = `${planId}-${durationMonths}-${billingScope}`;
+      const loadKey = `${planId}-${billingScope === 'enterprise' ? durationMonths : 1}-${billingScope}`;
     setLoadingKey(loadKey);
     try {
       const ready = await loadRazorpay();
@@ -959,22 +1196,23 @@ export default function PlanPage() {
         return;
       }
       const { data } = await paymentApi.createOrder({
-        plan: planId,
-        durationMonths,
+        plan: planId || currentPlanCode,
+        durationMonths: billingScope === 'enterprise' ? durationMonths : 1,
         billingScope,
         enterpriseId,
+        upgrade: checkoutIntent?.quote ? { creditAppliedPaise: checkoutIntent.quote.creditAppliedPaise || 0 } : undefined,
       });
       setCheckoutIntent(null);
       const tierLabel =
         billingScope === 'enterprise'
           ? (selectedPrincipalTier?.label || `${durationMonths} month(s)`)
-          : (selectedTier?.label || `${durationMonths} month(s)`);
+          : '1 month';
       const options = {
         key: data.keyId,
         amount: data.amount,
         currency: data.currency,
         name: 'LikhitAI',
-        description: billingScope === 'enterprise' ? `Organization renewal · ${tierLabel}` : `Premium upgrade · ${tierLabel}`,
+        description: billingScope === 'enterprise' ? `Organization renewal · ${tierLabel}` : `${checkoutIntent?.quote?.newPlan || 'Plan'} renewal · ${tierLabel}`,
         order_id: data.orderId,
         handler: async (response) => {
           try {
@@ -1019,13 +1257,15 @@ export default function PlanPage() {
   const enterpriseWillQueueNext =
     billingScopeFromIntent === 'enterprise' && !!org?.checkoutWillQueueEnterpriseTerm;
   const modalWillQueue = billingScopeFromIntent === 'enterprise' ? enterpriseWillQueueNext : personalWillQueueNext;
-  const modalTermWindow = billingScopeFromIntent === 'enterprise' ? principalChosenTermWindow : personalChosenTermWindow;
+  const modalTermWindow = billingScopeFromIntent === 'enterprise' ? principalChosenTermWindow : null;
   const modalAmountPaise =
-    billingScopeFromIntent === 'enterprise' ? enterpriseCheckoutPaise : selectedTier?.payableTotalPaise;
+    billingScopeFromIntent === 'enterprise'
+      ? enterpriseCheckoutPaise
+      : (checkoutIntent?.quote?.payablePaise ?? currentMonthlyPricePaise);
 
   const paymentConfirmModalEl = (
     <PaymentConfirmModal
-      open={!!checkoutIntent}
+      open={!!checkoutIntent && !isAutoPayBusy}
       onClose={closeCheckoutModal}
       onConfirm={confirmAndPay}
       busy={!!loadingKey}
@@ -1035,12 +1275,14 @@ export default function PlanPage() {
       termStart={modalTermWindow?.start}
       termEnd={modalTermWindow?.end}
       fmtDate={fmtDate}
+      quote={checkoutIntent?.quote || null}
+      autoPayActive={!!autoRenewState?.enabled}
     />
   );
 
   /** Enterprise teachers: read-only org entitlement, no billing UI. */
   if (managedByOrganization) {
-    const maxQ = org?.questionsPerExamLimit ?? subData?.maxQuestions ?? 50;
+    const maxQ = org?.questionsPerExamLimit ?? subData?.maxQuestions ?? planLimits?.questionsPerExam ?? 0;
     const examsMo = org?.examsPerTeacherLimit ?? cap;
     return (
       <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in max-w-4xl">
@@ -1140,20 +1382,12 @@ export default function PlanPage() {
     );
   }
 
-  const onInstructorTrial = subData?.instructorTrialEndsAt && new Date(subData.instructorTrialEndsAt) > new Date();
-  const hasActivePremiumForQueue =
-    user?.plan === 'pro'
-    && user?.planExpiresAt
-    && new Date(user.planExpiresAt) > new Date()
-    && !onInstructorTrial;
-  const showQueueRenewalHint = hasActivePremiumForQueue && ['instructor', 'admin'].includes(user?.role || '');
-
   return (
-    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in max-w-4xl">
-      <div className="mb-6">
-        <h1 className="text-2xl font-semibold text-[var(--color-text)] tracking-tight">Plan &amp; billing</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1">
-          Usage, upgrades, renewal queue, and invoices — in one place.
+    <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+      <div className="mb-8">
+        <h1 className="text-2xl sm:text-3xl font-semibold text-[var(--color-text)] tracking-tight">Plan &amp; billing</h1>
+        <p className="text-sm text-[var(--color-text-muted)] mt-1.5 max-w-2xl">
+          Subscription overview, usage, and upgrades — built for quick scanning.
         </p>
         {subData?.instructorTrialEndsAt && new Date(subData.instructorTrialEndsAt) > new Date() && (
           <p className="text-xs text-teal-700 dark:text-teal-400 mt-2 rounded-lg border border-teal-500/30 bg-teal-500/10 px-3 py-2">
@@ -1169,12 +1403,13 @@ export default function PlanPage() {
             <button
               key={t.id}
               type="button"
-              onClick={() => setTab(t.id)}
+              onClick={() => !isAutoPayBusy && setTab(t.id)}
+              disabled={isAutoPayBusy}
               className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 whitespace-nowrap transition-colors ${
                 tab === t.id
                   ? 'border-[var(--color-primary)] text-[var(--color-primary)]'
                   : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text)]'
-              }`}
+              } ${isAutoPayBusy ? 'opacity-50 cursor-not-allowed' : ''}`}
             >
               <Icon size={15} /> {t.label}
             </button>
@@ -1184,202 +1419,141 @@ export default function PlanPage() {
 
       {tab === TAB.overview && (
         <div className="space-y-5 animate-fade-in">
-          {showQueueRenewalHint && (
-            <div className="card border border-teal-500/25 bg-gradient-to-br from-teal-500/[0.06] to-transparent">
-              <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Renewal queue</h3>
-              <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-3">
-                Premium is active through{' '}
-                <span className="font-semibold text-[var(--color-text)]">{fmtDate(user.planExpiresAt)}</span>.
-                Purchase another 1-, 3-, or 6-month term anytime; it lines up in your queue and starts when this period ends. Unused time is not lost.
-              </p>
-              <button type="button" className="btn-primary text-sm font-medium py-2 px-4 rounded-xl" onClick={() => setTab(TAB.plan)}>
-                Select term &amp; renew
-              </button>
+          <CurrentPlanHero
+            planName={subData?.planDisplayName || currentPlanName}
+            statusLabel={planStatusLabel}
+            statusTone={statusTone}
+            expiresAt={user?.planExpiresAt}
+            autoPayEnabled={!!autoRenewState?.enabled}
+            nextBillingDate={nextPaymentDate}
+            usedExams={usedExams}
+            cap={cap}
+            usagePct={usagePct}
+            fmtDate={fmtDate}
+            planIcon={PlanIcon}
+            onViewFeatures={featureList.length ? () => openFeaturesModal(currentPlanDef || { name: currentPlanName, limits: planLimits, features: subData?.planFeatures }) : null}
+          />
+
+          {expiringSoon && (
+            <div className="p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-xs">
+              Access ends soon. Open <span className="font-medium">Upgrade plans</span> or enable AutoPay to continue.
             </div>
           )}
 
-          <div className={`card border-2 ${planInfo.border}`}>
-            <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Current plan</p>
-            <div className="flex items-center justify-between gap-4 mb-4">
-              <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-sm font-bold ${planInfo.color}`}>
-                <PlanIcon size={13} /> {planInfo.label}
-              </div>
-              {!isFreePlan && user?.planExpiresAt && (
-                <span className="text-xs text-[var(--color-text-muted)] tabular-nums">Active through {fmtDate(user.planExpiresAt)}</span>
-              )}
-            </div>
-            {expiringSoon && (
-              <div className="mb-4 p-3 rounded-xl border border-amber-300 bg-amber-50 dark:bg-amber-900/20 text-amber-800 dark:text-amber-300 text-xs">
-                Access ends soon. Open <span className="font-medium">Upgrade &amp; renew</span> to queue your next term.
-              </div>
-            )}
-            <div className="text-xs text-[var(--color-text-muted)] mb-2">
-              Exam usage this month: <span className="font-bold text-[var(--color-text)]">{usedExams} / {cap}</span>
-            </div>
-            <div className="bg-[var(--color-border)] rounded-full h-2 overflow-hidden">
-              <div className={`h-2 rounded-full ${usagePct >= 90 ? 'bg-red-500' : usagePct >= 70 ? 'bg-amber-500' : 'bg-[var(--color-primary)]'}`} style={{ width: `${usagePct}%` }} />
-            </div>
-            {(user?.examsBonusSlots ?? 0) > 0 && (
-              <p className="text-[10px] text-[var(--color-text-muted)] mt-2">
-                Includes {user.examsBonusSlots} purchased add-on credit{user.examsBonusSlots === 1 ? '' : 's'} (expire with your paid plan).
-              </p>
-            )}
-            {!isFreePlan && (
-              <div className="pt-4 mt-4 border-t border-[var(--color-border)] flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-medium text-[var(--color-text)]">Auto-renew preference</p>
-                  <p className="text-xs text-[var(--color-text-muted)]">Stored on your profile for reminders.</p>
+          {(user?.examsBonusSlots ?? subData?.bonusExamCredits ?? 0) > 0 && (
+            <p className="text-xs text-[var(--color-text-muted)] px-1">
+              Includes {user?.examsBonusSlots ?? subData?.bonusExamCredits} purchased add-on exam credit{(user?.examsBonusSlots ?? subData?.bonusExamCredits) === 1 ? '' : 's'}.
+            </p>
+          )}
+
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
+              <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Plan limits</p>
+              <dl className="space-y-2 text-sm">
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--color-text-muted)]">Exams / month</dt>
+                  <dd className="font-medium text-[var(--color-text)] tabular-nums">{planLimits?.examsPerMonth ?? cap}</dd>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => updateMut.mutate({ autoRenew: !user?.autoRenew })}
-                  className={`relative inline-flex h-6 w-11 items-center rounded-full ${user?.autoRenew ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
-                >
-                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white ${user?.autoRenew ? 'translate-x-6' : 'translate-x-1'}`} />
+                <div className="flex justify-between gap-2">
+                  <dt className="text-[var(--color-text-muted)]">Questions / exam</dt>
+                  <dd className="font-medium text-[var(--color-text)] tabular-nums">{planLimits?.questionsPerExam ?? subData?.maxQuestions ?? '—'}</dd>
+                </div>
+                {planLimits?.studentsAllowed > 0 ? (
+                  <div className="flex justify-between gap-2">
+                    <dt className="text-[var(--color-text-muted)]">Students</dt>
+                    <dd className="font-medium text-[var(--color-text)] tabular-nums">{planLimits.studentsAllowed}</dd>
+                  </div>
+                ) : null}
+              </dl>
+            </div>
+
+            {!isFreePlan ? (
+              <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-5 shadow-sm">
+                <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-3">Billing controls</p>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-xs text-[var(--color-text-muted)]">AutoPay via Razorpay</p>
+                  <button
+                    type="button"
+                    onClick={toggleAutoRenew}
+                    disabled={loadingKey === 'autopay-toggle'}
+                    className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full ${autoRenewState?.enabled ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'} ${loadingKey === 'autopay-toggle' ? 'opacity-60 cursor-not-allowed' : ''}`}
+                  >
+                    <span className={`inline-block h-4 w-4 transform rounded-full bg-white ${autoRenewState?.enabled ? 'translate-x-6' : 'translate-x-1'}`} />
+                  </button>
+                </div>
+                {autoRenewState?.enabled && nextPaymentDate ? (
+                  <p className="text-xs text-[var(--color-text-muted)] mt-3">
+                    Next payment: <span className="font-medium text-[var(--color-text)] tabular-nums">{fmtDate(nextPaymentDate)}</span>
+                  </p>
+                ) : null}
+                {autoRenewState?.gracePeriodEndsAt ? (
+                  <p className="text-[11px] text-amber-600 mt-2">Grace period until {fmtDate(autoRenewState.gracePeriodEndsAt)}.</p>
+                ) : null}
+                {allowManualRenew && (
+                  <button
+                    type="button"
+                    className="mt-4 w-full btn-secondary text-sm py-2 rounded-xl"
+                    disabled={isAutoPayBusy || loadingKey === `${currentPlanCode}-1-personal`}
+                    onClick={() => handleSubscribe(currentPlanCode)}
+                  >
+                    Pay manually · {fmtAmount(currentMonthlyPricePaise)}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-5 flex flex-col justify-center">
+                <p className="text-sm font-medium text-[var(--color-text)]">Ready to unlock more?</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-1">Compare paid plans on the Upgrade tab.</p>
+                <button type="button" className="mt-3 btn-primary text-sm py-2 rounded-xl w-full sm:w-auto" onClick={() => setTab(TAB.upgrade)}>
+                  View upgrade plans
                 </button>
               </div>
             )}
           </div>
-
-          {pendingPersonalRenewals.length > 0 ? (
-            <UpcomingAutomaticRenewalsCard queue={subData?.personalRenewalQueue} fmtDate={fmtDate} variant="personal" />
-          ) : null}
-
-          {(personalTimelineForDisplay?.length > 0) && (
-            <div className="card text-sm border border-[var(--color-border)]">
-              <p className="font-semibold text-[var(--color-text)] mb-1">Schedule</p>
-              <p className="text-[11px] text-[var(--color-text-muted)] mb-3 leading-relaxed">
-                {pendingPersonalRenewals.length > 0
-                  ? <>Trial and active access only. Paid terms in your queue appear in <span className="font-medium text-[var(--color-text)]">Upcoming renewals</span> (above).</>
-                  : 'Trial and active Premium access.'}
-              </p>
-              <ul className="space-y-0">
-                {personalTimelineForDisplay.map((seg, idx) => (
-                  <li key={idx} className="flex gap-3">
-                    <div className="flex flex-col items-center w-2.5 shrink-0 pt-0.5">
-                      <span className="w-2 h-2 rounded-full bg-[var(--color-primary)]" />
-                      {idx < personalTimelineForDisplay.length - 1 ? <span className="w-px flex-1 min-h-[24px] bg-[var(--color-border)]" /> : null}
-                    </div>
-                    <div className="pb-3 last:pb-0 flex-1">
-                      <p className="text-xs font-medium text-[var(--color-text)]">{seg.title}</p>
-                      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
-                        {seg.endsAt ? `Through ${fmtDate(seg.endsAt)}` : '—'}
-                      </p>
-                    </div>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
         </div>
       )}
 
-      {tab === TAB.plan && (
-        <div className="space-y-6 animate-fade-in">
-          <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-sm overflow-hidden">
-            <div className="px-5 sm:px-6 pt-5 pb-4 border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/25">
-              <h2 className="text-base font-semibold text-[var(--color-text)] tracking-tight flex items-center gap-2">
-                <CreditCard size={17} className="text-[var(--color-primary)] shrink-0" />
-                Premium
-              </h2>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed max-w-2xl">
-                Choose a billing period, then upgrade or queue your next term. Longer commitments reduce the total versus list price.
+      {tab === TAB.upgrade && (
+        <div className="space-y-5 animate-fade-in">
+          <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-[var(--color-text)] tracking-tight">Upgrade plans</h2>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">
+                {currentPlanDef
+                  ? <>From <span className="font-medium text-[var(--color-text)]">{currentPlanName}</span> — only what improves is listed.</>
+                  : 'Choose a plan that fits your teaching volume.'}
               </p>
             </div>
-
-            <div className="p-5 sm:p-6">
-              {durationOptions.length > 0 && (
-                <div className="mb-2">
-                  <p className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2.5">Billing period</p>
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                    {durationOptions.map((d) => {
-                      const active = durationMonths === d.months;
-                      return (
-                        <button
-                          key={d.months}
-                          type="button"
-                          onClick={() => setDurationMonths(d.months)}
-                          className={`rounded-xl border px-3.5 py-3 text-left transition-all ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/8 ring-1 ring-[var(--color-primary)]/20 shadow-sm' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/35'}`}
-                        >
-                          <div className="text-xs font-semibold text-[var(--color-text)]">{d.label}</div>
-                          <div className="text-[10px] text-[var(--color-text-muted)] line-through mt-1 tabular-nums">₹{(d.listTotalPaise / 100).toFixed(0)} list</div>
-                          <div className="text-sm font-bold text-[var(--color-text)] tabular-nums mt-0.5">₹{(d.payableTotalPaise / 100).toFixed(0)}</div>
-                          <div className="text-[10px] text-[var(--color-text-muted)] mt-1 tabular-nums">
-                            ~₹{((d.effectiveMonthlyPaise ?? d.payableTotalPaise / d.months) / 100).toFixed(0)} / mo
-                          </div>
-                          {d.discountPercent > 0 ? (
-                            <div className="inline-flex mt-1.5 text-[9px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded-md">{d.discountPercent}% off</div>
-                          ) : (
-                            <div className="inline-flex mt-1.5 text-[9px] font-medium text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-1.5 py-0.5 rounded-md">List price</div>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  {selectedTier && selectedTier.savingsPaise > 0 && (
-                    <p className="text-[11px] text-[var(--color-text-muted)] mt-3">
-                      Save <span className="font-semibold text-[var(--color-text)] tabular-nums">₹{(selectedTier.savingsPaise / 100).toFixed(0)}</span> vs list for this period.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {personalChosenTermWindow && durationOptions.length > 0 ? (
-                <ChosenTermScheduleCallout
-                  start={personalChosenTermWindow.start}
-                  end={personalChosenTermWindow.end}
-                  fmtDate={fmtDate}
-                />
-              ) : null}
-
-              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4 sm:p-5">
-                {SUBSCRIPTION_PLANS.map((p) => {
-                  const isCurrent = plan === p.id && !isFreePlan;
-                  const busy = loadingKey === `${p.id}-${durationMonths}-personal`;
-                  const ctaLabel = busy
-                    ? 'Processing…'
-                    : isCurrent
-                      ? `Queue renewal — ${selectedTier?.label || 'Premium'}`
-                      : `Upgrade — ${selectedTier?.label || 'Premium'}`;
-                  return (
-                    <div key={p.id} className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 mb-1">
-                          <h3 className="text-sm font-semibold text-[var(--color-text)]">{p.name}</h3>
-                          {isCurrent ? (
-                            <span className="text-[10px] font-medium uppercase tracking-wide text-[var(--color-primary)]">Current plan</span>
-                          ) : null}
-                        </div>
-                        <p className="text-xs text-[var(--color-text-muted)] leading-relaxed mb-4">{p.desc}</p>
-                        <ul className="text-[11px] text-[var(--color-text-muted)] space-y-1.5">
-                          <li className="flex gap-2"><Check size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />{proCatalogLimit} AI exams / month (calendar month)</li>
-                          <li className="flex gap-2"><Check size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />Up to {proCatalogMaxQ} questions per exam</li>
-                          <li className="flex gap-2"><Check size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />Proctoring and analytics</li>
-                          <li className="flex gap-2"><Check size={13} className="text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />Listening, resources, coding, AI generation</li>
-                        </ul>
-                      </div>
-                      <div className="shrink-0 w-full sm:w-auto sm:min-w-[200px] flex flex-col items-stretch sm:items-end gap-2 pt-1 sm:pt-0 border-t border-[var(--color-border)] sm:border-0 sm:pl-4">
-                        {selectedTier ? (
-                          <p className="text-right w-full sm:w-auto">
-                            <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide block mb-0.5">Due today</span>
-                            <span className="text-lg font-bold text-[var(--color-text)] tabular-nums">₹{(selectedTier.payableTotalPaise / 100).toFixed(0)}</span>
-                          </p>
-                        ) : null}
-                        <button
-                          type="button"
-                          className={`w-full sm:w-auto min-h-[40px] px-5 rounded-xl text-sm font-medium transition-colors ${isCurrent ? 'border border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] hover:bg-[var(--color-bg-alt)]' : 'btn-primary'}`}
-                          disabled={busy || !selectedTier}
-                          onClick={() => handleSubscribe(p.id)}
-                        >
-                          {busy ? <span className="inline-flex items-center justify-center gap-2"><Loader2 size={14} className="animate-spin" /> Processing…</span> : ctaLabel}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           </div>
+
+          {loadingUpgradeQuotes && dynamicUpgradePlans.length > 0 ? (
+            <p className="text-xs text-[var(--color-text-muted)]">Calculating pricing…</p>
+          ) : null}
+
+          {dynamicUpgradePlans.length > 0 ? (
+            <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch max-w-6xl">
+              {dynamicUpgradePlans.map((p) => (
+                <UpgradePlanCard
+                  key={p.code}
+                  plan={p}
+                  quote={upgradeQuoteData?.[p.code]}
+                  currentPlan={currentPlanDef}
+                  fmtAmount={fmtAmount}
+                  busy={loadingKey === `${p.code}-1-personal`}
+                  disabled={isAutoPayBusy}
+                  onUpgrade={handleSubscribe}
+                  onViewFeatures={openFeaturesModal}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] p-8 max-w-lg">
+              <p className="text-sm font-medium text-[var(--color-text)]">No higher plans available</p>
+              <p className="text-sm text-[var(--color-text-muted)] mt-1">
+                You are currently on the highest available plan{currentPlanName ? ` (${currentPlanName})` : ''}.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -1393,7 +1567,19 @@ export default function PlanPage() {
           description="Order and payment IDs, amounts, and downloadable HTML receipts."
         />
       )}
+      <AutoPayProgressModal
+        state={autoPaySetup}
+        fmtDate={fmtDate}
+        onClose={() => setAutoPaySetup((s) => ({ ...s, open: false }))}
+      />
       {paymentConfirmModalEl}
+      <PlanFeaturesModal
+        open={featuresModal.open}
+        onClose={() => setFeaturesModal((s) => ({ ...s, open: false }))}
+        planName={featuresModal.plan?.name || currentPlanName}
+        limits={featuresModal.limits}
+        featureList={featuresModal.featureList}
+      />
     </div>
   );
 }

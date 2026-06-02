@@ -50,6 +50,7 @@ import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import Modal from '../components/Modal.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
 import { adminApi, announcementApi, contactApi, enterpriseApi, feedbackApi, groupApi, logsApi, resourceApi, settingsApi } from '../services/api.js';
+import { BOARDS, CLASS_LEVELS } from '../constants/curriculum.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, BarElement, ArcElement, Tooltip, Legend, Filler);
 
@@ -67,7 +68,7 @@ const ADMIN_TAB_PAGE = {
   settings: { title: 'System settings', description: 'Control feature flags, limits, and global platform configuration.' },
   payments: { title: 'Payments & revenue', description: 'Track transactions, subscriptions, and payment history across Razorpay.' },
   feedback: { title: 'User feedback', description: 'Read product feedback, triage issues, and follow up on quality.' },
-  resources: { title: 'Resource library', description: 'Manage shared PDFs and files available for exam generation.' },
+  resources: { title: 'Resource Management', description: 'Upload curriculum resources mapped to board, class, and subject for school exam generation.' },
   help: { title: 'Help center content', description: 'Create and edit role-specific help articles shown in search and the Help center.' },
   enterprises: { title: 'Enterprise organizations', description: 'Create schools and institutes, assign principals, and set teacher limits. Mode cannot be changed after creation.' },
 };
@@ -190,8 +191,42 @@ function OverviewTab({ stats, onSetTab }) {
 
   const plans = stats.plans || { free: 0, pro: 0, enterprise: 0 };
 
+  const ai = stats.aiHealth;
+
   return (
     <div className="space-y-8">
+      {ai && (
+        <div className="rounded-xl border-2 border-red-500/60 bg-red-50 dark:bg-red-950/30 px-4 py-4 sm:px-5">
+          <p className="text-sm font-bold text-red-700 dark:text-red-300 flex items-center gap-2">
+            <span aria-hidden>🔴</span>
+            Critical AI Service Alert
+          </p>
+          <p className="text-sm text-red-800/90 dark:text-red-200/90 mt-1">
+            AI exam generation is currently unavailable for some users.
+          </p>
+          <dl className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+            <div>
+              <dt className="text-red-600/80 dark:text-red-300/70 font-medium">Affected users</dt>
+              <dd className="font-semibold text-red-900 dark:text-red-100">{ai.affectedUserCount ?? 0}</dd>
+            </div>
+            <div>
+              <dt className="text-red-600/80 dark:text-red-300/70 font-medium">Provider</dt>
+              <dd className="font-semibold text-red-900 dark:text-red-100">{ai.provider || '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-red-600/80 dark:text-red-300/70 font-medium">Error</dt>
+              <dd className="font-semibold text-red-900 dark:text-red-100">{ai.errorType || '—'}</dd>
+            </div>
+            <div>
+              <dt className="text-red-600/80 dark:text-red-300/70 font-medium">Model</dt>
+              <dd className="font-semibold text-red-900 dark:text-red-100 truncate">{ai.model || '—'}</dd>
+            </div>
+          </dl>
+          <p className="text-xs text-red-700/80 dark:text-red-300/80 mt-2">
+            Check your notification bell for full diagnostics.
+          </p>
+        </div>
+      )}
       <div>
         <h2 className="text-sm font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-3">Platform snapshot</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-4">
@@ -247,6 +282,9 @@ function UsersTab() {
   const [showCreateUser, setShowCreateUser] = useState(false);
   const [newUser, setNewUser] = useState({ name: '', email: '', password: '', role: 'user', notifyEmail: true });
   const [deleteUserTarget, setDeleteUserTarget] = useState(null);
+  const [assignTarget, setAssignTarget] = useState(null);
+  const [assignMode, setAssignMode] = useState('duration');
+  const [assignForm, setAssignForm] = useState({ planCode: 'free', months: 1, customExpiryDate: '' });
 
   const { data: usersData, isLoading } = useQuery({
     queryKey: ['adminUsers', page, search],
@@ -273,6 +311,10 @@ function UsersTab() {
     },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed to create user'),
   });
+  const { data: plansCatalogData } = useQuery({
+    queryKey: ['adminPlansCatalogForUsers'],
+    queryFn: () => adminApi.plans().then((r) => r.data),
+  });
 
   const roleMut = useMutation({
     mutationFn: ({ id, role }) => adminApi.updateRole(id, role),
@@ -289,9 +331,28 @@ function UsersTab() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); toast.success('User deleted'); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
+  const assignPlanMut = useMutation({
+    mutationFn: ({ id, payload }) => adminApi.updatePlan(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminUsers'] });
+      toast.success('Subscription updated');
+      setAssignTarget(null);
+    },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update subscription'),
+  });
 
   const users = usersData?.users || [];
+  const plansCatalog = plansCatalogData?.plans || [];
   const totalPages = usersData?.pages || 1;
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+  const nextExpiryPreview = (() => {
+    if (!assignTarget) return null;
+    if (assignForm.planCode === 'free') return null;
+    if (assignMode === 'custom' && assignForm.customExpiryDate) return new Date(assignForm.customExpiryDate);
+    const d = new Date();
+    d.setMonth(d.getMonth() + Number(assignForm.months || 1));
+    return d;
+  })();
 
   const submitCreateUser = (e) => {
     e.preventDefault();
@@ -331,9 +392,12 @@ function UsersTab() {
                 <tr className="text-left text-xs text-[var(--color-text-muted)] border-b border-[var(--color-border)]">
                   <th className="pb-3 font-semibold">User</th>
                   <th className="pb-3 font-semibold">Role</th>
-                  <th className="pb-3 font-semibold">Level</th>
-                  <th className="pb-3 font-semibold">XP / Exams</th>
-                  <th className="pb-3 font-semibold">Status</th>
+                  <th className="pb-3 font-semibold">Current Plan</th>
+                  <th className="pb-3 font-semibold">AutoPay</th>
+                  <th className="pb-3 font-semibold">Subscription</th>
+                  <th className="pb-3 font-semibold">Expiry</th>
+                  <th className="pb-3 font-semibold">Level / XP</th>
+                  <th className="pb-3 font-semibold">Access</th>
                   <th className="pb-3 font-semibold">Actions</th>
                 </tr>
               </thead>
@@ -356,18 +420,53 @@ function UsersTab() {
                           <select value={u.role} onChange={e => roleMut.mutate({ id: u._id, role: e.target.value })} className="input py-1 text-xs w-24">
                             <option value="user">user</option>
                             <option value="instructor">instructor</option>
+                            <option value="principal">principal</option>
                             <option value="admin">admin</option>
                           </select>
                         )}
                       </div>
                     </td>
-                    <td className="py-3 pr-4"><span className="badge bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">{u.level}</span></td>
-                    <td className="py-3 pr-4 text-xs text-[var(--color-text-muted)]"><span className="font-semibold text-[var(--color-text)]">{u.xp}</span> XP · {u.totalExams} exams</td>
+                    <td className="py-3 pr-4">
+                      <span className="badge text-xs bg-blue-100 text-blue-700">
+                        {u.individualPlanCode || u.plan || 'free'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className={`badge text-xs ${u.autoRenew ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {u.autoRenew ? 'Enabled' : 'Disabled'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4">
+                      <span className="badge text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]">
+                        {u.subscriptionStatus || u.planStatus || 'free'}
+                      </span>
+                    </td>
+                    <td className="py-3 pr-4 text-xs text-[var(--color-text-muted)]">{fmtDate(u.planExpiresAt)}</td>
+                    <td className="py-3 pr-4 text-xs text-[var(--color-text-muted)]">
+                      <span className="font-medium text-[var(--color-text)]">{u.level}</span>
+                      {' · '}
+                      <span className="font-semibold text-[var(--color-text)]">{u.xp}</span> XP
+                    </td>
                     <td className="py-3 pr-4">{u.isBlocked ? <span className="badge bg-red-100 text-red-700">Blocked</span> : <span className="badge bg-green-100 text-green-700">Active</span>}</td>
                     <td className="py-3">
                       <div className="flex items-center gap-1">
                         {u.role !== 'admin' && (
                           <>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssignTarget(u);
+                                setAssignMode('duration');
+                                setAssignForm({
+                                  planCode: u.individualPlanCode || (u.plan === 'free' ? 'free' : 'premium'),
+                                  months: 1,
+                                  customExpiryDate: '',
+                                });
+                              }}
+                              className="text-xs px-2 py-1 rounded border border-blue-400 text-blue-600 hover:bg-blue-50"
+                            >
+                              {u.individualPlanCode || (u.plan && u.plan !== 'free') ? 'Change / Extend' : 'Assign Plan'}
+                            </button>
                             <button onClick={() => blockMut.mutate(u._id)} className={`text-xs px-2 py-1 rounded border transition-colors ${u.isBlocked ? 'border-green-400 text-green-600 hover:bg-green-50' : 'border-orange-400 text-orange-600 hover:bg-orange-50'}`}>
                               {u.isBlocked ? 'Unblock' : 'Block'}
                             </button>
@@ -454,6 +553,75 @@ function UsersTab() {
         confirmLabel="Delete user"
         isPending={deleteMut.isPending}
       />
+      {assignTarget && (
+        <Modal onClose={() => !assignPlanMut.isPending && setAssignTarget(null)}>
+          <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden">
+            <div className="p-5 border-b border-[var(--color-border)]">
+              <h3 className="text-lg font-bold text-[var(--color-text)]">Assign Subscription</h3>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">{assignTarget.name} ({assignTarget.email})</p>
+            </div>
+            <div className="p-5 space-y-4">
+              <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 p-3 text-xs text-[var(--color-text-muted)]">
+                <p>Current Plan: <span className="font-medium text-[var(--color-text)]">{assignTarget.individualPlanCode || assignTarget.plan || 'free'}</span></p>
+                <p>Current Expiry: <span className="font-medium text-[var(--color-text)]">{fmtDate(assignTarget.planExpiresAt)}</span></p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Plan</label>
+                <select
+                  className="input w-full mt-1"
+                  value={assignForm.planCode}
+                  onChange={(e) => setAssignForm((s) => ({ ...s, planCode: e.target.value }))}
+                >
+                  <option value="free">free</option>
+                  {plansCatalog.map((p) => <option key={p._id} value={p.code}>{p.name} ({p.code})</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-[var(--color-text-muted)]">Duration Mode</label>
+                <div className="mt-1 flex gap-2">
+                  <button type="button" className={`btn-secondary text-xs ${assignMode === 'duration' ? '!bg-[var(--color-primary)] !text-white' : ''}`} onClick={() => setAssignMode('duration')}>Preset</button>
+                  <button type="button" className={`btn-secondary text-xs ${assignMode === 'custom' ? '!bg-[var(--color-primary)] !text-white' : ''}`} onClick={() => setAssignMode('custom')}>Custom Expiry</button>
+                </div>
+              </div>
+              {assignMode === 'duration' ? (
+                <div>
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Duration</label>
+                  <select className="input w-full mt-1" value={assignForm.months} onChange={(e) => setAssignForm((s) => ({ ...s, months: Number(e.target.value) }))}>
+                    {[1, 3, 6, 12].map((m) => <option key={m} value={m}>{m} month{m === 1 ? '' : 's'}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div>
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Custom Expiry Date</label>
+                  <input type="date" className="input w-full mt-1" value={assignForm.customExpiryDate} onChange={(e) => setAssignForm((s) => ({ ...s, customExpiryDate: e.target.value }))} />
+                </div>
+              )}
+              <div className="rounded-lg border border-amber-300 bg-amber-50 dark:bg-amber-900/20 p-3 text-xs">
+                <p>New Plan: <span className="font-medium">{assignForm.planCode}</span></p>
+                <p>New Expiry: <span className="font-medium">{fmtDate(nextExpiryPreview)}</span></p>
+              </div>
+            </div>
+            <div className="px-5 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 flex justify-end gap-2">
+              <button type="button" className="btn-secondary text-sm" onClick={() => setAssignTarget(null)}>Cancel</button>
+              <button
+                type="button"
+                className="btn-primary text-sm"
+                disabled={assignPlanMut.isPending}
+                onClick={() => {
+                  assignPlanMut.mutate({
+                    id: assignTarget._id,
+                    payload: assignMode === 'custom'
+                      ? { plan: assignForm.planCode, customExpiryDate: assignForm.customExpiryDate }
+                      : { plan: assignForm.planCode, months: assignForm.months },
+                  });
+                }}
+              >
+                {assignPlanMut.isPending ? 'Applying…' : 'Confirm & Apply'}
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -877,7 +1045,7 @@ function PaymentsTab() {
   });
 
   const planMut = useMutation({
-    mutationFn: ({ id, plan }) => adminApi.updatePlan(id, plan),
+    mutationFn: ({ id, plan }) => adminApi.updatePlan(id, { plan }),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminSubs'] }); qc.invalidateQueries({ queryKey: ['adminUsers'] }); toast.success('Plan updated'); setChangingPlan(null); },
     onError: () => toast.error('Failed to update plan'),
   });
@@ -1021,181 +1189,268 @@ const STATUS_COLORS = {
 };
 
 function PlansTab() {
-  const [search, setSearch] = useState('');
-  const [planFilter, setPlanFilter] = useState('');
-  const [page, setPage] = useState(1);
   const [editingId, setEditingId] = useState(null);
-  const [editForm, setEditForm] = useState({ plan: 'free', months: 1 });
+  const [showCreate, setShowCreate] = useState(false);
+  const emptyForm = {
+    code: '',
+    name: '',
+    sortOrder: 100,
+    description: '',
+    pricing: { monthlyPricePaise: 999, quarterlyPricePaise: '', halfYearlyPricePaise: '', yearlyPricePaise: '' },
+    limits: { examsPerMonth: 20, questionsPerExam: 50, studentsAllowed: 0, resourceUploadLimit: 20, storageLimitGb: 5 },
+    billing: { autoPayAllowed: true, manualPaymentAllowed: true, trialDays: 0, gracePeriodDays: 7 },
+    isRecommended: false,
+    isActive: true,
+  };
+  const [form, setForm] = useState(emptyForm);
   const qc = useQueryClient();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['adminPlanUsers', page, search, planFilter],
-    queryFn: () => adminApi.users(page, search, planFilter).then(r => r.data),
-    keepPreviousData: true,
+    queryKey: ['adminPlansCatalog'],
+    queryFn: () => adminApi.plans().then(r => r.data),
   });
 
-  const planMut = useMutation({
-    mutationFn: ({ id, plan, months }) => adminApi.updatePlan(id, plan, months),
+  const createMut = useMutation({
+    mutationFn: (payload) => adminApi.createPlan(payload),
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['adminPlanUsers'] });
-      qc.invalidateQueries({ queryKey: ['adminStats'] });
-      toast.success('Plan updated — user notified by email');
+      qc.invalidateQueries({ queryKey: ['adminPlansCatalog'] });
+      toast.success('Plan created');
+      setShowCreate(false);
+      setForm(emptyForm);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to create plan'),
+  });
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }) => adminApi.updatePlanDef(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminPlansCatalog'] });
+      toast.success('Plan updated');
       setEditingId(null);
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to update plan'),
   });
+  const deleteMut = useMutation({
+    mutationFn: (id) => adminApi.deletePlanDef(id),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminPlansCatalog'] });
+      toast.success('Plan deleted');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Failed to delete plan'),
+  });
 
-  const users = data?.users || [];
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
-
-  const planCounts = users.reduce((acc, u) => { acc[u.plan] = (acc[u.plan] || 0) + 1; return acc; }, {});
+  const plans = data?.plans || [];
+  const toPaise = (v) => (v === '' || v == null ? null : Math.max(0, Math.round(Number(v) * 100)));
+  const savePayload = {
+    ...form,
+    pricing: {
+      monthlyPricePaise: toPaise(form.pricing.monthlyPricePaise) || 99900,
+      quarterlyPricePaise: toPaise(form.pricing.quarterlyPricePaise),
+      halfYearlyPricePaise: toPaise(form.pricing.halfYearlyPricePaise),
+      yearlyPricePaise: toPaise(form.pricing.yearlyPricePaise),
+    },
+  };
 
   return (
     <div className="space-y-5">
-      {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: 'Total Users', value: data?.total ?? '—', icon: <Users size={18} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-[var(--color-primary)]' },
-          { label: 'Free Plan', value: planCounts.free ?? 0, icon: <Zap size={18} />, color: 'bg-slate-50 dark:bg-slate-800 text-slate-600' },
-          { label: 'Premium Plan', value: planCounts.pro ?? 0, icon: <Shield size={18} />, color: 'bg-blue-50 dark:bg-blue-900/20 text-blue-600' },
-        ].map(s => (
-          <div key={s.label} className="card flex items-center gap-3 py-3">
-            <div className={`${s.color} p-2.5 rounded-xl shrink-0`}>{s.icon}</div>
-            <div>
-              <div className="text-xl font-bold text-[var(--color-text)]">{s.value}</div>
-              <div className="text-xs text-[var(--color-text-muted)]">{s.label}</div>
-            </div>
-          </div>
-        ))}
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-sm text-[var(--color-text-muted)]">
+          Individual/institute plans are fully configurable here. Enterprise plans are managed separately.
+        </p>
+        <button className="btn-primary text-sm px-4 py-2 inline-flex items-center gap-2" onClick={() => { setForm(emptyForm); setShowCreate(true); }}>
+          <Plus size={14} /> Create Plan
+        </button>
       </div>
 
-      {/* Filters */}
-      <div className="flex flex-wrap gap-3 items-center">
-        <div className="relative flex-1 min-w-48">
-          <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
-          <input
-            className="input pl-9 text-sm w-full"
-            placeholder="Search name or email..."
-            value={search}
-            onChange={e => { setSearch(e.target.value); setPage(1); }}
-          />
-        </div>
-        <div className="flex gap-1.5">
-          {[{ v: '', l: 'All Plans' }, { v: 'free', l: 'Free' }, { v: 'pro', l: 'Premium' }].map(f => (
-            <button
-              key={f.v}
-              onClick={() => { setPlanFilter(f.v); setPage(1); }}
-              className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all ${planFilter === f.v ? 'bg-[var(--color-primary)] text-white' : 'btn-secondary'}`}
-            >
-              {f.l}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Table */}
       <div className="card p-0 overflow-hidden">
         <table className="w-full text-sm">
           <thead className="bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] text-xs uppercase">
             <tr>
-              <th className="px-4 py-3 text-left">User</th>
               <th className="px-4 py-3 text-left">Plan</th>
-              <th className="px-4 py-3 text-left">Status</th>
-              <th className="px-4 py-3 text-left">Expires</th>
-              <th className="px-4 py-3 text-left">Used/Limit</th>
+              <th className="px-4 py-3 text-left">Monthly</th>
+              <th className="px-4 py-3 text-left">Limits</th>
+              <th className="px-4 py-3 text-left">Billing</th>
               <th className="px-4 py-3 text-left">Actions</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-[var(--color-border)]">
             {isLoading ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-[var(--color-text-muted)]">Loading...</td></tr>
-            ) : users.length === 0 ? (
-              <tr><td colSpan={6} className="px-4 py-10 text-center text-[var(--color-text-muted)]">No users found.</td></tr>
-            ) : users.map(u => (
-              <tr key={u._id} className="hover:bg-[var(--color-bg-alt)] transition-colors">
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-[var(--color-text-muted)]">Loading...</td></tr>
+            ) : plans.length === 0 ? (
+              <tr><td colSpan={5} className="px-4 py-10 text-center text-[var(--color-text-muted)]">No plans yet. Create your first plan.</td></tr>
+            ) : plans.map((p) => (
+              <tr key={p._id} className="hover:bg-[var(--color-bg-alt)] transition-colors">
                 <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white text-xs font-bold flex items-center justify-center shrink-0">
-                      {u.name?.[0]?.toUpperCase()}
-                    </div>
-                    <div>
-                      <p className="font-medium text-[var(--color-text)] text-xs">{u.name}</p>
-                      <p className="text-xs text-[var(--color-text-muted)]">{u.email}</p>
+                  <div>
+                    <p className="font-medium text-[var(--color-text)]">{p.name}</p>
+                    <p className="text-xs text-[var(--color-text-muted)]">{p.code}</p>
+                    <div className="mt-1 flex gap-1.5">
+                      {p.isRecommended ? <span className="badge text-xs bg-amber-100 text-amber-700">Recommended</span> : null}
+                      <span className={`badge text-xs ${p.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {p.isActive ? 'Active' : 'Inactive'}
+                      </span>
                     </div>
                   </div>
                 </td>
                 <td className="px-4 py-3">
-                  <span className={`badge capitalize text-xs ${PLAN_COLORS[u.plan] || PLAN_COLORS.free}`}>{u.plan}</span>
+                  ₹{((p.pricing?.monthlyPricePaise || 0) / 100).toFixed(0)}
                 </td>
-                <td className="px-4 py-3">
-                  <span className={`badge capitalize text-xs ${STATUS_COLORS[u.planStatus] || STATUS_COLORS.free}`}>
-                    {u.planStatus || 'free'}
-                  </span>
-                </td>
-                <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">{fmtDate(u.planExpiresAt)}</td>
                 <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
-                  {u.examsCreatedThisMonth ?? 0} / {u.plan === 'pro' ? 10 : 3}
+                  {p.limits?.examsPerMonth ?? 0} exams/mo · {p.limits?.questionsPerExam ?? 0} q/exam
+                </td>
+                <td className="px-4 py-3 text-xs text-[var(--color-text-muted)]">
+                  AutoPay: {p.billing?.autoPayAllowed ? 'Yes' : 'No'} · Manual: {p.billing?.manualPaymentAllowed ? 'Yes' : 'No'}
                 </td>
                 <td className="px-4 py-3">
-                  {editingId === u._id ? (
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <select
-                        value={editForm.plan}
-                        onChange={e => setEditForm(f => ({ ...f, plan: e.target.value }))}
-                        className="input text-xs py-1 px-2 h-7 w-28"
-                      >
-                        <option value="free">Free</option>
-                        <option value="pro">Premium</option>
-                      </select>
-                      {editForm.plan !== 'free' && (
-                        <select
-                          value={editForm.months}
-                          onChange={e => setEditForm(f => ({ ...f, months: Number(e.target.value) }))}
-                          className="input text-xs py-1 px-2 h-7 w-24"
-                        >
-                          {[1, 3, 6].map(m => <option key={m} value={m}>{m} mo</option>)}
-                        </select>
-                      )}
-                      <button
-                        onClick={() => planMut.mutate({ id: u._id, plan: editForm.plan, months: editForm.months })}
-                        disabled={planMut.isPending}
-                        className="btn-primary text-xs py-1 px-3 h-7"
-                      >
-                        {planMut.isPending ? '...' : 'Save'}
-                      </button>
-                      <button onClick={() => setEditingId(null)} className="btn-secondary text-xs py-1 px-2 h-7">Cancel</button>
-                    </div>
-                  ) : (
+                  <div className="flex gap-2">
+                <button
+                      onClick={() => {
+                        setEditingId(p._id);
+                        setForm({
+                          ...emptyForm,
+                          ...p,
+                          pricing: {
+                            monthlyPricePaise: Number(p?.pricing?.monthlyPricePaise || 0) / 100,
+                            quarterlyPricePaise: p?.pricing?.quarterlyPricePaise ? Number(p.pricing.quarterlyPricePaise) / 100 : '',
+                            halfYearlyPricePaise: p?.pricing?.halfYearlyPricePaise ? Number(p.pricing.halfYearlyPricePaise) / 100 : '',
+                            yearlyPricePaise: p?.pricing?.yearlyPricePaise ? Number(p.pricing.yearlyPricePaise) / 100 : '',
+                          },
+                        });
+                        setShowCreate(true);
+                      }}
+                      className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1"
+                    ><Edit3 size={12} /> Edit</button>
                     <button
-                      onClick={() => { setEditingId(u._id); setEditForm({ plan: u.plan, months: 1 }); }}
-                      className="btn-secondary text-xs py-1 px-3 flex items-center gap-1"
-                    >
-                      <RefreshCw size={11} /> Change Plan
-                    </button>
-                  )}
+                      onClick={() => deleteMut.mutate(p._id)}
+                      className="btn-secondary text-xs py-1 px-2 inline-flex items-center gap-1 text-red-600"
+                    ><Trash2 size={12} /> Delete</button>
+                  </div>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
 
-        {/* Pagination */}
-        {(data?.pages || 1) > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t border-[var(--color-border)]">
-            <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="btn-secondary text-xs py-1 px-3 flex items-center gap-1 disabled:opacity-40">
-              <ChevronLeft size={12} /> Prev
-            </button>
-            <span className="text-xs self-center text-[var(--color-text-muted)]">{page} / {data?.pages}</span>
-            <button onClick={() => setPage(p => p + 1)} disabled={page >= (data?.pages || 1)} className="btn-secondary text-xs py-1 px-3 flex items-center gap-1 disabled:opacity-40">
-              Next <ChevronRight size={12} />
-            </button>
+      {(showCreate || editingId) && (
+        <Modal
+          onClose={() => { setShowCreate(false); setEditingId(null); }}
+        >
+          <div className="w-[min(1100px,94vw)] rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)] shadow-2xl overflow-hidden">
+            <div className="px-6 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/40">
+              <h3 className="text-lg font-semibold text-[var(--color-text)]">{editingId ? 'Edit Plan' : 'Create Plan'}</h3>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">Configure individual/institute plan template details.</p>
+            </div>
+            <div className="p-6 space-y-4 max-h-[70vh] overflow-y-auto bg-[var(--color-surface)]">
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Basic Information</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Plan Code</label>
+                  <input className="input mt-1 w-full" placeholder="silver" value={form.code || ''} onChange={(e) => setForm((s) => ({ ...s, code: e.target.value }))} disabled={!!editingId} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Plan Name</label>
+                  <input className="input mt-1 w-full" placeholder="Silver" value={form.name || ''} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Plan Order (Tier)</label>
+                  <input className="input mt-1 w-full" type="number" value={form.sortOrder ?? 100} onChange={(e) => setForm((s) => ({ ...s, sortOrder: Number(e.target.value) }))} />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="text-xs font-medium text-[var(--color-text-muted)]">Description</label>
+                  <input className="input mt-1 w-full" placeholder="Short plan description" value={form.description || ''} onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))} />
+                </div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Pricing</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Monthly Price (INR)</label><input className="input mt-1 w-full" type="number" min="1" step="0.01" value={form.pricing?.monthlyPricePaise ?? ''} onChange={(e) => setForm((s) => ({ ...s, pricing: { ...s.pricing, monthlyPricePaise: e.target.value } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Quarterly Price (optional, INR)</label><input className="input mt-1 w-full" type="number" min="1" step="0.01" value={form.pricing?.quarterlyPricePaise ?? ''} onChange={(e) => setForm((s) => ({ ...s, pricing: { ...s.pricing, quarterlyPricePaise: e.target.value } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Half-Yearly Price (optional, INR)</label><input className="input mt-1 w-full" type="number" min="1" step="0.01" value={form.pricing?.halfYearlyPricePaise ?? ''} onChange={(e) => setForm((s) => ({ ...s, pricing: { ...s.pricing, halfYearlyPricePaise: e.target.value } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Yearly Price (optional, INR)</label><input className="input mt-1 w-full" type="number" min="1" step="0.01" value={form.pricing?.yearlyPricePaise ?? ''} onChange={(e) => setForm((s) => ({ ...s, pricing: { ...s.pricing, yearlyPricePaise: e.target.value } }))} /></div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Limits</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Exams Per Month</label><input className="input mt-1 w-full" type="number" value={form.limits?.examsPerMonth ?? 0} onChange={(e) => setForm((s) => ({ ...s, limits: { ...s.limits, examsPerMonth: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Questions Per Exam</label><input className="input mt-1 w-full" type="number" value={form.limits?.questionsPerExam ?? 0} onChange={(e) => setForm((s) => ({ ...s, limits: { ...s.limits, questionsPerExam: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Students Allowed</label><input className="input mt-1 w-full" type="number" value={form.limits?.studentsAllowed ?? 0} onChange={(e) => setForm((s) => ({ ...s, limits: { ...s.limits, studentsAllowed: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Resource Upload Limit</label><input className="input mt-1 w-full" type="number" value={form.limits?.resourceUploadLimit ?? 0} onChange={(e) => setForm((s) => ({ ...s, limits: { ...s.limits, resourceUploadLimit: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Storage Limit (GB)</label><input className="input mt-1 w-full" type="number" value={form.limits?.storageLimitGb ?? 0} onChange={(e) => setForm((s) => ({ ...s, limits: { ...s.limits, storageLimitGb: Number(e.target.value) } }))} /></div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Billing Settings</h4>
+              <div className="grid sm:grid-cols-2 gap-3">
+                <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.billing?.autoPayAllowed} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, autoPayAllowed: e.target.checked } }))} /> AutoPay Allowed</label>
+                <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.billing?.manualPaymentAllowed} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, manualPaymentAllowed: e.target.checked } }))} /> Manual Payment Allowed</label>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Trial Days</label><input className="input mt-1 w-full" type="number" value={form.billing?.trialDays ?? 0} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, trialDays: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Grace Period Days</label><input className="input mt-1 w-full" type="number" value={form.billing?.gracePeriodDays ?? 7} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, gracePeriodDays: Number(e.target.value) } }))} /></div>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Feature Access</h4>
+              <div className="grid sm:grid-cols-2 gap-2 text-sm">
+                {[
+                  ['aiQuestionGeneration', 'AI Question Generation'],
+                  ['aiRegeneration', 'AI Regeneration'],
+                  ['aiFlashcards', 'AI Flashcards'],
+                  ['aiExplanations', 'AI Explanations'],
+                  ['mcqExams', 'MCQ Exams'],
+                  ['descriptiveExams', 'Descriptive Exams'],
+                  ['mixedExams', 'Mixed Exams'],
+                  ['codingExams', 'Coding Exams'],
+                  ['listeningExams', 'Listening Exams'],
+                  ['certificates', 'Certificates'],
+                  ['answerReview', 'Answer Review'],
+                  ['flashcards', 'Flashcards'],
+                  ['reattempts', 'Reattempts'],
+                  ['resultVisibility', 'Result Visibility'],
+                  ['aiProctoring', 'AI Proctoring'],
+                  ['screenshotMonitoring', 'Screenshot Monitoring'],
+                  ['resourceUpload', 'Resource Upload'],
+                  ['aiResourceProcessing', 'AI Resource Processing'],
+                  ['adminResourcesAccess', 'Admin Resources Access'],
+                ].map(([key, label]) => (
+                  <label key={key} className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={form.features?.[key] !== false}
+                      onChange={(e) => setForm((s) => ({ ...s, features: { ...(s.features || {}), [key]: e.target.checked } }))}
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/30 p-4">
+              <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Status</h4>
+              <div className="flex flex-wrap gap-4 text-sm">
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.isRecommended} onChange={(e) => setForm((s) => ({ ...s, isRecommended: e.target.checked }))} /> Recommended Plan</label>
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.isActive} onChange={(e) => setForm((s) => ({ ...s, isActive: e.target.checked }))} /> Active</label>
+              </div>
+            </div>
+            </div>
+            <div className="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 flex justify-end gap-2">
+              <button className="btn-secondary" onClick={() => { setShowCreate(false); setEditingId(null); }}>Cancel</button>
+              <button
+                className="btn-primary"
+                onClick={() => (editingId ? updateMut.mutate({ id: editingId, payload: savePayload }) : createMut.mutate(savePayload))}
+                disabled={createMut.isPending || updateMut.isPending}
+              >
+                {createMut.isPending || updateMut.isPending ? 'Saving…' : 'Save Plan'}
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-
-      <div className="card bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800 text-xs text-amber-800 dark:text-amber-300 p-4">
-        <strong>Note:</strong> Changing a user's plan sends an automatic email notification to the user. Duration only applies to the paid Premium plan.
-      </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2098,12 +2353,22 @@ function GroupsTab() {
 function ResourcesTab() {
   const qc = useQueryClient();
   const [file, setFile] = useState(null);
-  const [title, setTitle] = useState('');
+  const [uploadForm, setUploadForm] = useState({
+    title: '', board: 'CBSE', classLevel: '', subject: '',
+  });
+  const [filters, setFilters] = useState({ board: '', classLevel: '', subject: '' });
+  const [editResource, setEditResource] = useState(null);
   const [uploading, setUploading] = useState(false);
 
+  const listParams = {
+    ...(filters.board ? { board: filters.board } : {}),
+    ...(filters.classLevel ? { classLevel: filters.classLevel } : {}),
+    ...(filters.subject ? { subject: filters.subject } : {}),
+  };
+
   const { data, isLoading } = useQuery({
-    queryKey: ['adminResources'],
-    queryFn: () => resourceApi.adminList().then(r => r.data),
+    queryKey: ['adminResources', listParams],
+    queryFn: () => resourceApi.adminList(listParams).then((r) => r.data),
   });
 
   const deleteMut = useMutation({
@@ -2112,16 +2377,36 @@ function ResourcesTab() {
     onError: () => toast.error('Failed to delete resource'),
   });
 
+  const updateMut = useMutation({
+    mutationFn: ({ id, payload }) => resourceApi.adminUpdate(id, payload),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['adminResources'] });
+      qc.invalidateQueries({ queryKey: ['curriculumMappings'] });
+      toast.success('Resource updated');
+      setEditResource(null);
+    },
+    onError: (err) => toast.error(err?.response?.data?.message || 'Update failed'),
+  });
+
   const handleUpload = async (e) => {
     e.preventDefault();
-    if (!file || !title.trim()) return toast.error('Title and file are required');
+    const { title, board, classLevel, subject } = uploadForm;
+    if (!file || !title.trim() || !board || !classLevel || !subject.trim()) {
+      return toast.error('Resource name, board, class, subject, and file are required');
+    }
     setUploading(true);
     try {
-      await resourceApi.adminUpload(file, title.trim());
+      await resourceApi.adminUpload(file, {
+        title: title.trim(),
+        board,
+        classLevel,
+        subject: subject.trim(),
+      });
       qc.invalidateQueries({ queryKey: ['adminResources'] });
+      qc.invalidateQueries({ queryKey: ['curriculumMappings'] });
       toast.success('Resource uploaded');
       setFile(null);
-      setTitle('');
+      setUploadForm({ title: '', board: 'CBSE', classLevel: '', subject: '' });
       e.target.reset();
     } catch (err) {
       toast.error(err?.response?.data?.message || 'Upload failed');
@@ -2134,86 +2419,134 @@ function ResourcesTab() {
 
   return (
     <div className="space-y-6 pt-6">
-      {/* Upload form */}
       <div className="card p-6">
         <h3 className="font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
-          <Upload size={16} /> Upload Resource / Book
+          <Upload size={16} /> Upload curriculum resource
         </h3>
         <form onSubmit={handleUpload} className="space-y-4">
-          <div>
-            <label className="label">Title</label>
-            <input
-              className="input"
-              placeholder="e.g. Data Structures Handbook"
-              value={title}
-              onChange={e => setTitle(e.target.value)}
-            />
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div className="sm:col-span-2">
+              <label className="label">Resource name</label>
+              <input
+                className="input"
+                placeholder="e.g. Class 10 Science — Term 1"
+                value={uploadForm.title}
+                onChange={(e) => setUploadForm((f) => ({ ...f, title: e.target.value }))}
+              />
+            </div>
+            <div>
+              <label className="label">Board</label>
+              <select className="input" value={uploadForm.board} onChange={(e) => setUploadForm((f) => ({ ...f, board: e.target.value }))}>
+                {BOARDS.map((b) => <option key={b} value={b}>{b}</option>)}
+              </select>
+            </div>
+            <div>
+              <label className="label">Class</label>
+              <select className="input" value={uploadForm.classLevel} onChange={(e) => setUploadForm((f) => ({ ...f, classLevel: e.target.value }))}>
+                <option value="">Select class</option>
+                {CLASS_LEVELS.map((c) => <option key={c} value={c}>Class {c}</option>)}
+              </select>
+            </div>
+            <div className="sm:col-span-2">
+              <label className="label">Subject</label>
+              <input
+                className="input"
+                placeholder="e.g. Science, Mathematics"
+                value={uploadForm.subject}
+                onChange={(e) => setUploadForm((f) => ({ ...f, subject: e.target.value }))}
+              />
+            </div>
           </div>
           <div>
-            <label className="label">File (DOC, DOCX, PDF, PPTX, TXT — max 20 MB)</label>
+            <label className="label">Resource file (DOC, DOCX, PDF, PPTX, TXT — max 20 MB)</label>
             <input
               type="file"
               accept=".doc,.docx,.pdf,.pptx,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/pdf,application/vnd.openxmlformats-officedocument.presentationml.presentation,text/plain"
               className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
-              onChange={e => setFile(e.target.files?.[0] || null)}
+              onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
           </div>
           <button
             type="submit"
-            disabled={uploading || !file || !title.trim()}
+            disabled={uploading || !file || !uploadForm.title.trim() || !uploadForm.classLevel || !uploadForm.subject.trim()}
             className="btn-primary flex items-center gap-2"
           >
             {uploading ? <RefreshCw size={14} className="animate-spin" /> : <Upload size={14} />}
-            {uploading ? 'Uploading…' : 'Upload'}
+            {uploading ? 'Uploading…' : 'Upload resource'}
           </button>
         </form>
       </div>
 
-      {/* Resource list */}
       <div className="card p-6">
-        <h3 className="font-semibold text-[var(--color-text)] mb-4 flex items-center gap-2">
-          <FileText size={16} /> Uploaded Resources ({resources.length})
-        </h3>
+        <div className="flex flex-wrap items-end justify-between gap-3 mb-4">
+          <h3 className="font-semibold text-[var(--color-text)] flex items-center gap-2">
+            <FileText size={16} /> Resources ({resources.length})
+          </h3>
+          <div className="flex flex-wrap gap-2">
+            <select className="input text-sm w-auto" value={filters.board} onChange={(e) => setFilters((f) => ({ ...f, board: e.target.value }))}>
+              <option value="">All boards</option>
+              {BOARDS.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+            <select className="input text-sm w-auto" value={filters.classLevel} onChange={(e) => setFilters((f) => ({ ...f, classLevel: e.target.value }))}>
+              <option value="">All classes</option>
+              {CLASS_LEVELS.map((c) => <option key={c} value={c}>Class {c}</option>)}
+            </select>
+            <input
+              className="input text-sm w-40"
+              placeholder="Filter subject"
+              value={filters.subject}
+              onChange={(e) => setFilters((f) => ({ ...f, subject: e.target.value }))}
+            />
+          </div>
+        </div>
         {isLoading ? (
           <div className="text-center py-8 text-[var(--color-text-muted)]"><RefreshCw size={20} className="animate-spin mx-auto" /></div>
         ) : resources.length === 0 ? (
-          <p className="text-center py-8 text-[var(--color-text-muted)] text-sm">No resources uploaded yet.</p>
+          <p className="text-center py-8 text-[var(--color-text-muted)] text-sm">No resources match your filters.</p>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-[var(--color-border)] text-[var(--color-text-muted)]">
-                  <th className="text-left py-2 pr-4 font-medium">Title</th>
+                  <th className="text-left py-2 pr-4 font-medium">Name</th>
+                  <th className="text-left py-2 pr-4 font-medium">Board</th>
+                  <th className="text-left py-2 pr-4 font-medium">Class</th>
+                  <th className="text-left py-2 pr-4 font-medium">Subject</th>
                   <th className="text-left py-2 pr-4 font-medium">File</th>
-                  <th className="text-left py-2 pr-4 font-medium">Size</th>
-                  <th className="text-left py-2 pr-4 font-medium">Pages</th>
-                  <th className="text-left py-2 pr-4 font-medium">Uploaded By</th>
+                  <th className="text-left py-2 pr-4 font-medium">Uploaded by</th>
                   <th className="text-left py-2 pr-4 font-medium">Date</th>
                   <th className="text-left py-2 font-medium">Actions</th>
                 </tr>
               </thead>
               <tbody>
-                {resources.map(r => (
+                {resources.map((r) => (
                   <tr key={r._id} className="border-b border-[var(--color-border)] hover:bg-[var(--color-surface-hover)] transition-colors">
                     <td className="py-2 pr-4 font-medium text-[var(--color-text)]">{r.title}</td>
-                    <td className="py-2 pr-4 text-[var(--color-text-muted)] max-w-[140px] truncate">{r.originalName}</td>
-                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.size ? `${(r.size / 1024).toFixed(1)} KB` : '—'}</td>
-                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.pages ?? '—'}</td>
-                    <td className="py-2 pr-4">
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-[var(--color-text)] text-xs">{r.uploadedBy?.name || '—'}</span>
-                        {r.uploadedBy?.role === 'admin' && (
-                          <span className="inline-flex items-center px-1.5 py-0.5 rounded-md text-[9px] font-bold bg-[var(--color-primary)]/10 text-[var(--color-primary)] border border-[var(--color-primary)]/25 leading-none uppercase tracking-wide">
-                            Admin
-                          </span>
-                        )}
-                      </div>
-                    </td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.board || '—'}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)]">{r.classLevel ? `Class ${r.classLevel}` : '—'}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text)]">{r.subject || '—'}</td>
+                    <td className="py-2 pr-4 text-[var(--color-text-muted)] max-w-[120px] truncate">{r.originalName}</td>
+                    <td className="py-2 pr-4 text-xs text-[var(--color-text)]">{r.uploadedBy?.name || '—'}</td>
                     <td className="py-2 pr-4 text-[var(--color-text-muted)]">{new Date(r.createdAt).toLocaleDateString()}</td>
-                    <td className="py-2">
+                    <td className="py-2 flex gap-1">
                       <button
+                        type="button"
+                        onClick={() => setEditResource({
+                          id: r._id,
+                          title: r.title,
+                          board: r.board || 'CBSE',
+                          classLevel: r.classLevel || '',
+                          subject: r.subject || '',
+                        })}
+                        className="p-1.5 rounded-lg text-[var(--color-primary)] hover:bg-[var(--color-primary)]/10"
+                        title="Edit"
+                      >
+                        <Edit3 size={14} />
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => { if (window.confirm(`Delete "${r.title}"?`)) deleteMut.mutate(r._id); }}
-                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+                        className="p-1.5 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20"
                         title="Delete"
                       >
                         <Trash2 size={14} />
@@ -2226,6 +2559,53 @@ function ResourcesTab() {
           </div>
         )}
       </div>
+
+      {editResource && (
+        <Modal onClose={() => setEditResource(null)}>
+          <div className="bg-[var(--color-surface)] rounded-2xl border border-[var(--color-border)] p-5 max-w-md w-full shadow-xl space-y-3">
+            <h4 className="font-semibold text-[var(--color-text)]">Edit resource</h4>
+            <div>
+              <label className="label">Resource name</label>
+              <input className="input" value={editResource.title} onChange={(e) => setEditResource((x) => ({ ...x, title: e.target.value }))} />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="label">Board</label>
+                <select className="input" value={editResource.board} onChange={(e) => setEditResource((x) => ({ ...x, board: e.target.value }))}>
+                  {BOARDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="label">Class</label>
+                <select className="input" value={editResource.classLevel} onChange={(e) => setEditResource((x) => ({ ...x, classLevel: e.target.value }))}>
+                  <option value="">Select</option>
+                  {CLASS_LEVELS.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+            </div>
+            <div>
+              <label className="label">Subject</label>
+              <input className="input" value={editResource.subject} onChange={(e) => setEditResource((x) => ({ ...x, subject: e.target.value }))} />
+            </div>
+            <button
+              type="button"
+              className="btn-primary w-full py-2 rounded-xl text-sm font-semibold"
+              disabled={updateMut.isPending}
+              onClick={() => updateMut.mutate({
+                id: editResource.id,
+                payload: {
+                  title: editResource.title.trim(),
+                  board: editResource.board,
+                  classLevel: editResource.classLevel,
+                  subject: editResource.subject.trim(),
+                },
+              })}
+            >
+              {updateMut.isPending ? 'Saving…' : 'Save changes'}
+            </button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
@@ -2250,6 +2630,7 @@ function EnterprisesTab() {
     city: '',
     zipCode: '',
     mode: 'institute',
+    board: 'CBSE',
     teacherLimit: 5,
     studentLimit: 2000,
     examsPerTeacherLimit: 30,
@@ -2283,6 +2664,7 @@ function EnterprisesTab() {
         zipCode: form.zipCode.trim(),
       },
       mode: form.mode,
+      board: form.board,
       teacherLimit: Number(form.teacherLimit) || 5,
       studentLimit: Number(form.studentLimit) || 2000,
       examsPerTeacherLimit: Number(form.examsPerTeacherLimit) || 30,
@@ -2491,12 +2873,20 @@ function EnterprisesTab() {
             ) : null}
           </p>
         </div>
-        <div className="mb-3">
-          <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Mode</label>
-          <select className="input w-full mt-0.5 max-w-xs" value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}>
-            <option value="school">School — classes &amp; students</option>
-            <option value="institute">Institute — batches (existing flow)</option>
-          </select>
+        <div className="mb-3 grid sm:grid-cols-2 gap-4 max-w-2xl">
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Board</label>
+            <select className="input w-full" value={form.board} onChange={(e) => setForm((f) => ({ ...f, board: e.target.value }))}>
+              {BOARDS.map((b) => <option key={b} value={b}>{b}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-[var(--color-text-muted)] block mb-1.5">Mode</label>
+            <select className="input w-full" value={form.mode} onChange={(e) => setForm((f) => ({ ...f, mode: e.target.value }))}>
+              <option value="school">School — classes &amp; students</option>
+              <option value="institute">Institute — batches (existing flow)</option>
+            </select>
+          </div>
           <p className="text-xs text-amber-800 dark:text-amber-200 mt-2 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
             This cannot be changed later.
           </p>
@@ -2519,6 +2909,7 @@ function EnterprisesTab() {
               <tr className="text-left text-xs text-[var(--color-text-muted)] uppercase border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]">
                 <th className="px-3 py-2">Name</th>
                 <th className="px-3 py-2">Mode</th>
+                <th className="px-3 py-2">Board</th>
                 <th className="px-3 py-2">Principal</th>
                 <th className="px-3 py-2">Teachers</th>
                 <th className="px-3 py-2">Limits</th>
@@ -2531,6 +2922,7 @@ function EnterprisesTab() {
                 <tr key={e._id} className="border-b border-[var(--color-border)] last:border-0">
                   <td className="px-3 py-2 font-medium text-[var(--color-text)]">{e.name}</td>
                   <td className="px-3 py-2 capitalize">{e.mode}</td>
+                  <td className="px-3 py-2">{e.board || 'CBSE'}</td>
                   <td className="px-3 py-2 text-[var(--color-text-muted)]">
                     {e.principalUser?.name} <span className="text-xs block">{e.principalUser?.email}</span>
                   </td>
@@ -2554,6 +2946,7 @@ function EnterprisesTab() {
                         city: e.address?.city || '',
                         zipCode: e.address?.zipCode || '',
                         mode: e.mode,
+                        board: e.board || 'CBSE',
                         teacherLimit: e.teacherLimit || 5,
                         examsPerTeacherLimit: e.examsPerTeacherLimit || 30,
                         questionsPerExamLimit: e.questionsPerExamLimit || 100,
@@ -2636,7 +3029,17 @@ function EnterprisesTab() {
               <input className="input" placeholder="City" value={editEnterprise.city} onChange={(e) => setEditEnterprise((x) => ({ ...x, city: e.target.value }))} />
               <input className="input" placeholder="ZIP" value={editEnterprise.zipCode} onChange={(e) => setEditEnterprise((x) => ({ ...x, zipCode: e.target.value }))} />
             </div>
-            <div className="mt-3 text-xs text-[var(--color-text-muted)]">Mode: <span className="font-semibold capitalize text-[var(--color-text)]">{editEnterprise.mode}</span> (cannot be changed)</div>
+            <div className="mt-3 grid sm:grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-[var(--color-text-muted)]">Board</label>
+                <select className="input w-full mt-0.5" value={editEnterprise.board} onChange={(e) => setEditEnterprise((x) => ({ ...x, board: e.target.value }))}>
+                  {BOARDS.map((b) => <option key={b} value={b}>{b}</option>)}
+                </select>
+              </div>
+              <div className="text-xs text-[var(--color-text-muted)] flex items-end pb-2">
+                Mode: <span className="font-semibold capitalize text-[var(--color-text)] ml-1">{editEnterprise.mode}</span> (cannot be changed)
+              </div>
+            </div>
             <div className="mt-3 grid sm:grid-cols-2 gap-2 text-xs text-[var(--color-text-muted)]">
               <label className="inline-flex items-center gap-2">
                 <input type="checkbox" checked={!!editEnterprise.aiProctoringEnabled} onChange={(e) => setEditEnterprise((x) => ({ ...x, aiProctoringEnabled: e.target.checked }))} />
@@ -2686,6 +3089,7 @@ function EnterprisesTab() {
                     name: editEnterprise.name,
                     contactEmail: editEnterprise.contactEmail,
                     phone: editEnterprise.phone,
+                    board: editEnterprise.board,
                     teacherLimit: Number(editEnterprise.teacherLimit) || 5,
                     examsPerTeacherLimit: Number(editEnterprise.examsPerTeacherLimit) || 30,
                     questionsPerExamLimit: Number(editEnterprise.questionsPerExamLimit) || 100,

@@ -231,14 +231,22 @@ export const adminApi = {
   updateHelpTopic: (topicId, data) => api.put(`/admin/help/topics/${topicId}`, data),
   deleteHelpTopic: (topicId) => api.delete(`/admin/help/topics/${topicId}`),
   stats: () => api.get('/admin/stats'),
+  aiHealthActive: () => api.get('/admin/ai-health/active'),
+  aiHealthLastTrace: () => api.get('/admin/ai-health/last-trace'),
+  aiHealthIncidents: () => api.get('/admin/ai-health/incidents'),
+  aiHealthIncident: (id) => api.get(`/admin/ai-health/incidents/${id}`),
   users: (page, search = '', plan = '') => api.get(`/admin/users?page=${page}&search=${search}&plan=${plan}`),
   createUser: (data) => api.post('/admin/users', data),
   updateRole: (id, role) => api.patch(`/admin/users/${id}/role`, { role }),
   toggleBlock: (id) => api.patch(`/admin/users/${id}/block`),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
-  updatePlan: (id, plan, months = 1) => api.patch(`/admin/users/${id}/plan`, { plan, months }),
+  updatePlan: (id, payload) => api.patch(`/admin/users/${id}/plan`, payload),
   transactions: (page = 1) => api.get(`/admin/transactions?page=${page}`),
   subscriptions: (status = '', page = 1) => api.get(`/admin/subscriptions?status=${status}&page=${page}`),
+  plans: () => api.get('/admin/plans'),
+  createPlan: (data) => api.post('/admin/plans', data),
+  updatePlanDef: (id, data) => api.put(`/admin/plans/${id}`, data),
+  deletePlanDef: (id) => api.delete(`/admin/plans/${id}`),
 };
 
 export const settingsApi = {
@@ -254,8 +262,15 @@ export const logsApi = {
 };
 
 export const paymentApi = {
+  getPlans: () => api.get('/payments/plans'),
   createOrder: (data) => api.post('/payments/create-order', data),
+  upgradeQuote: (data) => api.post('/payments/upgrade-quote', data),
+  createSubscription: (data) => api.post('/payments/create-subscription', data),
   verify: (data) => api.post('/payments/verify', data),
+  enableAutoRenew: (data) => api.post('/payments/autopay/enable', data),
+  disableAutoRenew: (data) => api.post('/payments/autopay/disable', data),
+  cancelAutoRenew: (data) => api.post('/payments/autopay/cancel', data),
+  getAutoRenewManagement: () => api.get('/payments/autopay/management'),
   getSubscription: () => api.get('/payments/subscription'),
   getBillingCatalog: () => api.get('/payments/billing-catalog'),
   getTransactions: () => api.get('/payments/transactions'),
@@ -542,19 +557,24 @@ export const resourceApi = {
     }));
   },
   // Admin: list + upload via admin panel
-  adminList: () => api.get('/admin/resources'),
-  adminUpload: (file, title) => {
+  adminList: (params) => api.get('/admin/resources', { params }),
+  adminUpload: (file, fields) => {
     const form = new FormData();
     form.append('file', file);
-    form.append('title', title);
+    form.append('title', fields.title);
+    form.append('board', fields.board);
+    form.append('classLevel', fields.classLevel);
+    form.append('subject', fields.subject);
     return api.post('/admin/resources', form, {
       directUpload: true,
       headers: { 'Content-Type': 'multipart/form-data' },
     });
   },
+  adminUpdate: (id, data) => api.patch(`/admin/resources/${id}`, data),
   adminDelete: (id) => api.delete(`/admin/resources/${id}`),
+  getCurriculumMappings: (params) => api.get('/resources/curriculum-mappings', { params }),
   // Instructor: get admin resources for dropdown
-  getAdminResources: () => api.get('/resources/admin'),
+  getAdminResources: (params) => api.get('/resources/admin', { params }),
   // Instructor: get own resources (across groups)
   getMyResources: () => api.get('/resources/mine'),
   // Group resources
