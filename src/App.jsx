@@ -92,8 +92,9 @@ function InstructorDashboardRoute() {
 
 /** Instructor workspace routes (tests, create exam, etc.) */
 const Guard = ({ children, adminOnly, instructorOnly, instructorPrincipalOrAdmin, principalOnly }) => {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, needsAccountType } = useAuthStore();
   if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (needsAccountType) return <Navigate to="/signup" replace />;
   if (adminOnly && user?.role !== 'admin') {
     return <Navigate to={getDashboardPath(user?.role)} replace />;
   }

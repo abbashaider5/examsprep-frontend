@@ -11,7 +11,7 @@ function persistSessionToken(res) {
 }
 
 export const useAuth = () => {
-  const { user, isAuthenticated, setUser, clearUser } = useAuthStore();
+  const { user, isAuthenticated, needsAccountType, setUser, clearNeedsAccountType, clearUser } = useAuthStore();
   const qc = useQueryClient();
   const navigate = useNavigate();
 
@@ -77,6 +77,11 @@ export const useAuth = () => {
     mutationFn: authApi.google,
     onSuccess: async (res) => {
       if (res.data.requiresOTP) return;
+      if (res.data.needsAccountType) {
+        setUser(res.data.user, { needsAccountType: true });
+        if (res.data.accessToken) setAccessToken(res.data.accessToken);
+        return;
+      }
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       const pending = typeof window !== 'undefined'
@@ -102,7 +107,30 @@ export const useAuth = () => {
     onError: (err) => toast.error(err.response?.data?.message || 'Google sign-in failed'),
   });
 
-  return { user, isAuthenticated, login: loginMut, signup: signupMut, google: googleMut, verifyOtp: verifyOtpMut, logout: logoutMut };
+  const completeOnboardingMut = useMutation({
+    mutationFn: authApi.completeOnboarding,
+    onSuccess: (res) => {
+      setUser(res.data.user, { needsAccountType: false });
+      clearNeedsAccountType();
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
+      if (res.data.redirectPath) navigate(res.data.redirectPath);
+      else navigate(getDashboardPath(res.data.user?.role));
+      toast.success(res.data.message || 'Account setup complete');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not complete account setup'),
+  });
+
+  return {
+    user,
+    isAuthenticated,
+    needsAccountType,
+    login: loginMut,
+    signup: signupMut,
+    google: googleMut,
+    completeOnboarding: completeOnboardingMut,
+    verifyOtp: verifyOtpMut,
+    logout: logoutMut,
+  };
 };
 
 export const useMe = () => {

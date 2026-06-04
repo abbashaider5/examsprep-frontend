@@ -1198,8 +1198,9 @@ function PlansTab() {
     description: '',
     pricing: { monthlyPricePaise: 999, quarterlyPricePaise: '', halfYearlyPricePaise: '', yearlyPricePaise: '' },
     limits: { examsPerMonth: 20, questionsPerExam: 50, studentsAllowed: 0, resourceUploadLimit: 20, storageLimitGb: 5 },
-    billing: { autoPayAllowed: true, manualPaymentAllowed: true, trialDays: 0, gracePeriodDays: 7 },
+    billing: { autoPayAllowed: true, manualPaymentAllowed: true, trialDays: 30, gracePeriodDays: 7 },
     isRecommended: false,
+    isDefaultInstructorTrial: false,
     isActive: true,
   };
   const [form, setForm] = useState(emptyForm);
@@ -1285,6 +1286,7 @@ function PlansTab() {
                     <p className="text-xs text-[var(--color-text-muted)]">{p.code}</p>
                     <div className="mt-1 flex gap-1.5">
                       {p.isRecommended ? <span className="badge text-xs bg-amber-100 text-amber-700">Recommended</span> : null}
+                      {p.isDefaultInstructorTrial ? <span className="badge text-xs bg-blue-100 text-blue-700">Default Trial</span> : null}
                       <span className={`badge text-xs ${p.isActive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-600'}`}>
                         {p.isActive ? 'Active' : 'Inactive'}
                       </span>
@@ -1389,7 +1391,7 @@ function PlansTab() {
               <div className="grid sm:grid-cols-2 gap-3">
                 <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.billing?.autoPayAllowed} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, autoPayAllowed: e.target.checked } }))} /> AutoPay Allowed</label>
                 <label className="inline-flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.billing?.manualPaymentAllowed} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, manualPaymentAllowed: e.target.checked } }))} /> Manual Payment Allowed</label>
-                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Trial Days</label><input className="input mt-1 w-full" type="number" value={form.billing?.trialDays ?? 0} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, trialDays: Number(e.target.value) } }))} /></div>
+                <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Trial Days</label><input className="input mt-1 w-full" type="number" min="1" value={form.billing?.trialDays ?? 30} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, trialDays: Number(e.target.value) } }))} /><p className="text-[10px] text-[var(--color-text-muted)] mt-1">Used when this plan is the default instructor trial.</p></div>
                 <div><label className="text-xs font-medium text-[var(--color-text-muted)]">Grace Period Days</label><input className="input mt-1 w-full" type="number" value={form.billing?.gracePeriodDays ?? 7} onChange={(e) => setForm((s) => ({ ...s, billing: { ...s.billing, gracePeriodDays: Number(e.target.value) } }))} /></div>
               </div>
             </div>
@@ -1434,8 +1436,10 @@ function PlansTab() {
               <h4 className="text-sm font-semibold text-[var(--color-text)] mb-3">Status</h4>
               <div className="flex flex-wrap gap-4 text-sm">
                 <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.isRecommended} onChange={(e) => setForm((s) => ({ ...s, isRecommended: e.target.checked }))} /> Recommended Plan</label>
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.isDefaultInstructorTrial} onChange={(e) => setForm((s) => ({ ...s, isDefaultInstructorTrial: e.target.checked }))} /> Default Instructor Trial Plan</label>
                 <label className="inline-flex items-center gap-2"><input type="checkbox" checked={!!form.isActive} onChange={(e) => setForm((s) => ({ ...s, isActive: e.target.checked }))} /> Active</label>
               </div>
+              <p className="text-xs text-[var(--color-text-muted)] mt-2">Only one plan can be the default instructor trial. New instructor signups receive that plan for the configured trial days.</p>
             </div>
             </div>
             <div className="px-6 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 flex justify-end gap-2">

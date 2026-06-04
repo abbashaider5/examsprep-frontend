@@ -93,10 +93,10 @@ function ImageCarousel() {
 }
 
 export default function AuthLayout() {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, needsAccountType } = useAuthStore();
   const { dark, toggle } = useThemeStore();
 
-  if (isAuthenticated) return <Navigate to={getDashboardPath(user?.role)} replace />;
+  if (isAuthenticated && !needsAccountType) return <Navigate to={getDashboardPath(user?.role)} replace />;
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg)]">

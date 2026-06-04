@@ -163,6 +163,7 @@ export const authApi = {
   signup: (data) => api.post('/auth/signup', data),
   login: (data) => api.post('/auth/login', data),
   google: (data) => api.post('/auth/google', data),
+  completeOnboarding: (data) => api.post('/auth/complete-onboarding', data),
   logout: () => api.post('/auth/logout'),
   getMe: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),

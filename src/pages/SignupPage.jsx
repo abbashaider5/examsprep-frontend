@@ -1,5 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, User } from 'lucide-react';
+import AccountTypePicker from '../components/onboarding/AccountTypePicker.jsx';
+import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
 import { useEffect, useRef, useState } from 'react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import toast from 'react-hot-toast';
@@ -32,7 +34,7 @@ const STRENGTH_CONFIG = [
   { label: 'Strong', color: 'bg-green-500' },
 ];
 
-function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', enterpriseInviteToken = '' }) {
+function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', enterpriseInviteToken = '', accountType = 'student' }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
   const [countdown, setCountdown] = useState(30);
@@ -63,6 +65,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', e
       email,
       otp: code,
       purpose,
+      accountType,
       ...(examInviteToken ? { examInviteToken } : {}),
       ...(enterpriseInviteToken ? { enterpriseInviteToken } : {}),
     });
@@ -138,9 +141,12 @@ export default function SignupPage() {
   const inviteTokenFromUrl = searchParams.get('invite') || '';
   const enterpriseInviteFromUrl = searchParams.get('enterpriseInvite') || '';
   const emailFromUrl = searchParams.get('email') || '';
+  const roleFromUrl = searchParams.get('role') || '';
 
-  const { signup, google, verifyOtp } = useAuth();
+  const { signup, google, verifyOtp, needsAccountType } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [accountType, setAccountType] = useState(() => (roleFromUrl === 'instructor' ? 'instructor' : 'student'));
+  const [accountTypeForOtp, setAccountTypeForOtp] = useState('student');
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
@@ -178,6 +184,13 @@ export default function SignupPage() {
     if (enterpriseInviteFromUrl) setEnterpriseInviteForOtp(enterpriseInviteFromUrl);
   }, [enterpriseInviteFromUrl]);
 
+  useEffect(() => {
+    if (enterpriseInviteFromUrl) setAccountType('instructor');
+    else if (roleFromUrl === 'instructor') setAccountType('instructor');
+  }, [enterpriseInviteFromUrl, roleFromUrl]);
+
+  const hideAccountTypePicker = !!enterpriseInviteFromUrl;
+
   const handleSubmit = (e) => {
     e.preventDefault();
     const result = schema.safeParse(form);
@@ -201,6 +214,7 @@ export default function SignupPage() {
     signup.mutate(
       {
         ...form,
+        accountType: hideAccountTypePicker ? 'instructor' : accountType,
         recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined,
         ...(inviteTokenFromUrl || examInviteForOtp ? { examInviteToken: inviteTokenFromUrl || examInviteForOtp } : {}),
         ...(enterpriseInviteFromUrl || enterpriseInviteForOtp ? { enterpriseInviteToken: enterpriseInviteFromUrl || enterpriseInviteForOtp } : {}),
@@ -209,6 +223,7 @@ export default function SignupPage() {
         onSuccess: (res) => {
           if (!res.data.requiresOTP) return;
           setOtpEmail(form.email);
+          setAccountTypeForOtp(res.data.accountType || accountType);
           if (res.data.examInviteToken) setExamInviteForOtp(res.data.examInviteToken);
           if (res.data.enterpriseInviteToken) setEnterpriseInviteForOtp(res.data.enterpriseInviteToken);
         },
@@ -218,12 +233,21 @@ export default function SignupPage() {
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  if (needsAccountType) {
+    return (
+      <GoogleAccountTypeStep
+        examInviteToken={inviteTokenFromUrl || examInviteForOtp}
+      />
+    );
+  }
+
   if (otpEmail) {
     return (
       <div className="w-full">
         <OTPInput
           email={otpEmail}
           purpose="signup"
+          accountType={accountTypeForOtp}
           examInviteToken={examInviteForOtp}
           enterpriseInviteToken={enterpriseInviteForOtp}
           onVerify={verifyOtp.mutate}
@@ -239,9 +263,14 @@ export default function SignupPage() {
   return (
     <div className="animate-fade-in w-full">
       <h1 className="text-2xl font-bold text-[var(--color-text)] mb-1">Create your account</h1>
-      <p className="text-[var(--color-text-muted)] text-sm mb-4">Start AI-powered exam prep — free forever</p>
       {enterpriseInviteFromUrl && (
         <p className="text-xs text-[var(--color-primary)] font-medium mb-3 -mt-2">You’re joining an organization via invitation.</p>
+      )}
+
+      {!hideAccountTypePicker && (
+        <div className="mb-5">
+          <AccountTypePicker value={accountType} onChange={setAccountType} />
+        </div>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-3" noValidate>
@@ -349,7 +378,6 @@ export default function SignupPage() {
           google.mutate(
             {
               ...payload,
-              role: 'user',
               ...(examTok ? { examInviteToken: examTok } : {}),
               ...(entTok ? { enterpriseInviteToken: entTok } : {}),
             },

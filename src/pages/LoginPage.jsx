@@ -6,6 +6,7 @@ import { Link } from 'react-router-dom';
 import { z } from 'zod';
 import ReCAPTCHA from 'react-google-recaptcha';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
+import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { authApi, settingsApi } from '../services/api.js';
 
@@ -124,7 +125,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 }
 
 export default function LoginPage() {
-  const { login, google, verifyOtp } = useAuth();
+  const { login, google, verifyOtp, needsAccountType } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
@@ -166,6 +167,10 @@ export default function LoginPage() {
   };
 
   const set = (key) => (e) => setForm((f) => ({ ...f, [key]: e.target.value }));
+
+  if (needsAccountType) {
+    return <GoogleAccountTypeStep />;
+  }
 
   if (otpEmail) {
     return (

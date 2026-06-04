@@ -7,14 +7,27 @@ export const useAuthStore = create(
     (set) => ({
       user: null,
       isAuthenticated: false,
-      setUser: (user) => set({ user, isAuthenticated: !!user }),
+      needsAccountType: false,
+      setUser: (user, options = {}) => set({
+        user,
+        isAuthenticated: !!user,
+        needsAccountType: options.needsAccountType ?? false,
+      }),
+      clearNeedsAccountType: () => set({ needsAccountType: false }),
       clearUser: () => {
         clearAccessToken();
-        set({ user: null, isAuthenticated: false });
+        set({ user: null, isAuthenticated: false, needsAccountType: false });
       },
     }),
-    { name: 'auth-storage', partialize: (s) => ({ user: s.user, isAuthenticated: s.isAuthenticated }) }
-  )
+    {
+      name: 'auth-storage',
+      partialize: (s) => ({
+        user: s.user,
+        isAuthenticated: s.isAuthenticated,
+        needsAccountType: s.needsAccountType,
+      }),
+    },
+  ),
 );
 
 export const useThemeStore = create(
