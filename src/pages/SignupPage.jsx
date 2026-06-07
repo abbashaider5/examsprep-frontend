@@ -1,13 +1,13 @@
 import { useQuery } from '@tanstack/react-query';
 import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, User } from 'lucide-react';
-import AccountTypePicker from '../components/onboarding/AccountTypePicker.jsx';
-import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
 import { useEffect, useRef, useState } from 'react';
 import ReCAPTCHA from 'react-google-recaptcha';
 import toast from 'react-hot-toast';
 import { Link, useSearchParams } from 'react-router-dom';
 import { z } from 'zod';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
+import AccountTypePicker from '../components/onboarding/AccountTypePicker.jsx';
+import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { authApi, settingsApi } from '../services/api.js';
 
@@ -240,7 +240,7 @@ export default function SignupPage() {
       />
     );
   }
-
+// 
   if (otpEmail) {
     return (
       <div className="w-full">
