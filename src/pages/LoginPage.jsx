@@ -9,6 +9,9 @@ import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { authApi, settingsApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
+import { completeAuthSession, isLogin2FAResponse } from '../utils/authSession.js';
+import { useNavigate } from 'react-router-dom';
 
 const schema = z.object({
   email: z.string().email('Enter a valid email'),
@@ -281,6 +284,8 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 }
 
 export default function LoginPage() {
+  const navigate = useNavigate();
+  const { setUser } = useAuthStore();
   const { login, google, verifyOtp, verifyTotp, needsAccountType } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
@@ -322,16 +327,25 @@ export default function LoginPage() {
       { ...form, recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined },
       {
         onSuccess: (res) => {
-          if (res.data.requires2FA) {
+          const data = res.data;
+          if (data.requires2FA) {
             setTwoFactorChoice({
-              pendingToken: res.data.pendingToken,
-              email: res.data.email || form.email,
-              methods: res.data.methods || [],
+              pendingToken: data.pendingToken,
+              email: data.email || form.email,
+              methods: data.methods || [],
             });
-          } else if (res.data.requiresTOTP) {
-            setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email || form.email });
-          } else if (res.data.requiresOTP) {
-            setOtpEmail(form.email);
+            return;
+          }
+          if (data.requiresTOTP) {
+            setTotpSession({ pendingToken: data.pendingToken, email: data.email || form.email });
+            return;
+          }
+          if (data.requiresOTP) {
+            setOtpEmail(data.email || form.email);
+            return;
+          }
+          if (!isLogin2FAResponse(data) && completeAuthSession(data, { setUser, navigate, toast })) {
+            toast.success('Welcome back!');
           }
         },
       },
@@ -473,16 +487,21 @@ export default function LoginPage() {
         onCredential={(payload) => {
           google.mutate(payload, {
             onSuccess: (res) => {
-              if (res.data.requires2FA) {
+              const data = res.data;
+              if (data.requires2FA) {
                 setTwoFactorChoice({
-                  pendingToken: res.data.pendingToken,
-                  email: res.data.email,
-                  methods: res.data.methods || [],
+                  pendingToken: data.pendingToken,
+                  email: data.email,
+                  methods: data.methods || [],
                 });
-              } else if (res.data.requiresTOTP) {
-                setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email });
-              } else if (res.data.requiresOTP) {
-                setOtpEmail(res.data.email);
+                return;
+              }
+              if (data.requiresTOTP) {
+                setTotpSession({ pendingToken: data.pendingToken, email: data.email });
+                return;
+              }
+              if (data.requiresOTP) {
+                setOtpEmail(data.email);
               }
             },
           });

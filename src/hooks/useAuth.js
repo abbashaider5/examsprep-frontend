@@ -3,6 +3,7 @@ import toast from 'react-hot-toast';
 import { useNavigate } from 'react-router-dom';
 import { authApi, enterpriseApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { completeAuthSession, isLogin2FAResponse } from '../utils/authSession.js';
 import { setAccessToken } from '../utils/authToken.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 
@@ -18,9 +19,7 @@ export const useAuth = () => {
   const loginMut = useMutation({
     mutationFn: authApi.login,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return; // caller handles 2FA step
-      setUser(res.data.user);
-      if (res.data.accessToken) setAccessToken(res.data.accessToken);
+      if (isLogin2FAResponse(res.data)) return;
       const pending = typeof window !== 'undefined'
         ? new URLSearchParams(window.location.search).get('enterpriseInvite')
         : null;
@@ -37,8 +36,9 @@ export const useAuth = () => {
           toast.error(err.response?.data?.message || 'Could not accept organization invite.');
         }
       }
-      navigate(getDashboardPath(res.data.user?.role));
-      toast.success('Welcome back!');
+      if (completeAuthSession(res.data, { setUser, navigate, toast })) {
+        toast.success('Welcome back!');
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Login failed'),
   });
@@ -46,7 +46,7 @@ export const useAuth = () => {
   const signupMut = useMutation({
     mutationFn: authApi.signup,
     onSuccess: (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return; // caller handles 2FA step
+      if (isLogin2FAResponse(res.data)) return;
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       if (res.data.redirectPath) navigate(res.data.redirectPath);
@@ -59,11 +59,9 @@ export const useAuth = () => {
   const verifyOtpMut = useMutation({
     mutationFn: authApi.verifyOtp,
     onSuccess: (res) => {
-      setUser(res.data.user);
-      if (res.data.accessToken) setAccessToken(res.data.accessToken);
-      if (res.data.redirectPath) navigate(res.data.redirectPath);
-      else navigate(getDashboardPath(res.data.user?.role));
-      toast.success(res.data.message || 'Verified!');
+      if (completeAuthSession(res.data, { setUser, navigate, toast })) {
+        toast.success(res.data.message || 'Verified!');
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'OTP verification failed'),
   });
@@ -71,10 +69,9 @@ export const useAuth = () => {
   const verifyTotpMut = useMutation({
     mutationFn: authApi.verifyTotp,
     onSuccess: (res) => {
-      setUser(res.data.user);
-      if (res.data.accessToken) setAccessToken(res.data.accessToken);
-      navigate(getDashboardPath(res.data.user?.role));
-      toast.success(res.data.message || 'Welcome back!');
+      if (completeAuthSession(res.data, { setUser, navigate, toast })) {
+        toast.success(res.data.message || 'Welcome back!');
+      }
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Invalid verification code.'),
   });
@@ -87,7 +84,7 @@ export const useAuth = () => {
   const googleMut = useMutation({
     mutationFn: authApi.google,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return;
+      if (isLogin2FAResponse(res.data)) return;
       if (res.data.needsAccountType) {
         setUser(res.data.user, { needsAccountType: true });
         if (res.data.accessToken) setAccessToken(res.data.accessToken);
