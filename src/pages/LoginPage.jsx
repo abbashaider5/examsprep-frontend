@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck } from 'lucide-react';
+import { Eye, EyeOff, Lock, Mail, RefreshCw, ShieldCheck, Smartphone } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
@@ -14,6 +14,85 @@ const schema = z.object({
   email: z.string().email('Enter a valid email'),
   password: z.string().min(1, 'Password is required'),
 });
+
+function TwoFactorMethodPicker({ email, methods, pendingToken, onBack }) {
+  const [loading, setLoading] = useState(null);
+  const [error, setError] = useState('');
+
+  const selectMethod = async (method) => {
+    setLoading(method);
+    setError('');
+    try {
+      const res = await authApi.begin2FA({ pendingToken, method });
+      if (res.data.requiresTOTP) {
+        onBack.setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email || email });
+        onBack.setTwoFactorChoice(null);
+      } else if (res.data.requiresOTP) {
+        onBack.setOtpEmail(res.data.email || email);
+        onBack.setTwoFactorChoice(null);
+      }
+    } catch (err) {
+      setError(err.response?.data?.message || 'Could not start verification. Try again.');
+    } finally {
+      setLoading(null);
+    }
+  };
+
+  return (
+    <div className="animate-fade-in">
+      <div className="flex justify-center mb-3">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+          <ShieldCheck size={24} className="text-[var(--color-primary)]" />
+        </div>
+      </div>
+      <h1 className="text-2xl font-bold text-[var(--color-text)] text-center mb-1">Verify your identity</h1>
+      <p className="text-[var(--color-text-muted)] text-sm text-center mb-6">
+        Choose how you&apos;d like to verify <span className="font-medium text-[var(--color-text)]">{email}</span>
+      </p>
+      <div className="space-y-3">
+        {methods.includes('email') && (
+          <button
+            type="button"
+            onClick={() => selectMethod('email')}
+            disabled={!!loading}
+            className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-subtle)] transition-colors text-left disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-lg bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+              <Mail size={18} className="text-[var(--color-primary)]" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[var(--color-text)]">Email code</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Send a 6-digit code to your inbox</p>
+            </div>
+            {loading === 'email' && (
+              <span className="w-4 h-4 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
+            )}
+          </button>
+        )}
+        {methods.includes('totp') && (
+          <button
+            type="button"
+            onClick={() => selectMethod('totp')}
+            disabled={!!loading}
+            className="w-full flex items-center gap-3 p-4 rounded-xl border border-[var(--color-border)] hover:border-[var(--color-primary)] hover:bg-[var(--color-bg-subtle)] transition-colors text-left disabled:opacity-50"
+          >
+            <div className="w-10 h-10 rounded-lg bg-violet-50 dark:bg-violet-900/20 flex items-center justify-center shrink-0">
+              <Smartphone size={18} className="text-violet-600 dark:text-violet-400" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold text-[var(--color-text)]">Authenticator app</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Enter the code from your app</p>
+            </div>
+            {loading === 'totp' && (
+              <span className="w-4 h-4 border-2 border-[var(--color-primary)]/30 border-t-[var(--color-primary)] rounded-full animate-spin" />
+            )}
+          </button>
+        )}
+      </div>
+      {error && <p className="text-red-500 text-sm text-center mt-4">{error}</p>}
+    </div>
+  );
+}
 
 function TOTPInput({ email, pendingToken, onVerify, verifyMut }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
@@ -208,6 +287,7 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
   const [totpSession, setTotpSession] = useState(null);
+  const [twoFactorChoice, setTwoFactorChoice] = useState(null);
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const { data: publicSettings } = useQuery({
@@ -242,7 +322,13 @@ export default function LoginPage() {
       { ...form, recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined },
       {
         onSuccess: (res) => {
-          if (res.data.requiresTOTP) {
+          if (res.data.requires2FA) {
+            setTwoFactorChoice({
+              pendingToken: res.data.pendingToken,
+              email: res.data.email || form.email,
+              methods: res.data.methods || [],
+            });
+          } else if (res.data.requiresTOTP) {
             setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email || form.email });
           } else if (res.data.requiresOTP) {
             setOtpEmail(form.email);
@@ -256,6 +342,22 @@ export default function LoginPage() {
 
   if (needsAccountType) {
     return <GoogleAccountTypeStep />;
+  }
+
+  if (twoFactorChoice) {
+    return (
+      <div className="w-full">
+        <TwoFactorMethodPicker
+          email={twoFactorChoice.email}
+          methods={twoFactorChoice.methods}
+          pendingToken={twoFactorChoice.pendingToken}
+          onBack={{ setTotpSession, setOtpEmail, setTwoFactorChoice }}
+        />
+        <button onClick={() => setTwoFactorChoice(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-4">
+          ← Back to sign in
+        </button>
+      </div>
+    );
   }
 
   if (totpSession) {
@@ -371,7 +473,13 @@ export default function LoginPage() {
         onCredential={(payload) => {
           google.mutate(payload, {
             onSuccess: (res) => {
-              if (res.data.requiresTOTP) {
+              if (res.data.requires2FA) {
+                setTwoFactorChoice({
+                  pendingToken: res.data.pendingToken,
+                  email: res.data.email,
+                  methods: res.data.methods || [],
+                });
+              } else if (res.data.requiresTOTP) {
                 setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email });
               } else if (res.data.requiresOTP) {
                 setOtpEmail(res.data.email);

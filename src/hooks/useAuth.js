@@ -18,7 +18,7 @@ export const useAuth = () => {
   const loginMut = useMutation({
     mutationFn: authApi.login,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP) return; // caller handles 2FA step
+      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return; // caller handles 2FA step
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       const pending = typeof window !== 'undefined'
@@ -46,7 +46,7 @@ export const useAuth = () => {
   const signupMut = useMutation({
     mutationFn: authApi.signup,
     onSuccess: (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP) return; // caller handles 2FA step
+      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return; // caller handles 2FA step
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       if (res.data.redirectPath) navigate(res.data.redirectPath);
@@ -87,7 +87,7 @@ export const useAuth = () => {
   const googleMut = useMutation({
     mutationFn: authApi.google,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP || res.data.requiresTOTP) return;
+      if (res.data.requiresOTP || res.data.requiresTOTP || res.data.requires2FA) return;
       if (res.data.needsAccountType) {
         setUser(res.data.user, { needsAccountType: true });
         if (res.data.accessToken) setAccessToken(res.data.accessToken);
