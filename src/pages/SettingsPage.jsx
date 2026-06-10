@@ -1,8 +1,8 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Bell, CheckCircle, KeyRound, Lock, Settings as SettingsIcon, Shield } from 'lucide-react';
+import { Bell, CheckCircle, KeyRound, Settings as SettingsIcon, Shield, Smartphone } from 'lucide-react';
 import { useState } from 'react';
 import toast from 'react-hot-toast';
-import { profileApi } from '../services/api.js';
+import { authApi, profileApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
 const TABS = [
@@ -39,16 +39,6 @@ export default function SettingsPage() {
     toast.success('Preferences saved');
   };
 
-  const updateMut = useMutation({
-    mutationFn: (data) => profileApi.update(data),
-    onSuccess: (res) => {
-      if (res?.data?.user) setUser(res.data.user);
-      qc.invalidateQueries({ queryKey: ['me'] });
-      toast.success('Settings updated');
-    },
-    onError: (err) => toast.error(err.response?.data?.message || 'Failed to update settings'),
-  });
-
   const changePwMut = useMutation({
     mutationFn: (data) => profileApi.changePassword(data),
     onSuccess: () => {
@@ -56,6 +46,46 @@ export default function SettingsPage() {
       setPwForm({ current: '', new: '', confirm: '' });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to change password'),
+  });
+
+  const [totpSetup, setTotpSetup] = useState(null);
+  const [totpCode, setTotpCode] = useState('');
+  const [disableCode, setDisableCode] = useState('');
+  const [showDisable, setShowDisable] = useState(false);
+  const totpEnabled = !!user?.totpEnabled;
+
+  const setupMut = useMutation({
+    mutationFn: () => authApi.totpSetup(),
+    onSuccess: (res) => {
+      setTotpSetup({ qrCodeDataUrl: res.data.qrCodeDataUrl, secret: res.data.secret });
+      setTotpCode('');
+      setShowDisable(false);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not start authenticator setup'),
+  });
+
+  const confirmMut = useMutation({
+    mutationFn: (code) => authApi.totpConfirm({ code }),
+    onSuccess: (res) => {
+      if (res?.data?.user) setUser(res.data.user);
+      qc.invalidateQueries({ queryKey: ['me'] });
+      setTotpSetup(null);
+      setTotpCode('');
+      toast.success('Authenticator app enabled.');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Invalid verification code.'),
+  });
+
+  const disableMut = useMutation({
+    mutationFn: (code) => authApi.totpDisable({ code }),
+    onSuccess: (res) => {
+      if (res?.data?.user) setUser(res.data.user);
+      qc.invalidateQueries({ queryKey: ['me'] });
+      setDisableCode('');
+      setShowDisable(false);
+      toast.success('Authenticator app disabled.');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Invalid verification code.'),
   });
 
   return (
@@ -121,22 +151,127 @@ export default function SettingsPage() {
 
           <div className="card">
             <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">
-              <Shield size={15} className="text-[var(--color-primary)]" /> Security Controls
+              <Shield size={15} className="text-[var(--color-primary)]" /> Authenticator App
             </h3>
-            <div className="flex items-start justify-between gap-4">
-              <div>
-                <p className="text-sm font-medium text-[var(--color-text)] flex items-center gap-1.5">
-                  <Lock size={14} className="text-[var(--color-primary)]" /> Two-Factor Authentication (2FA)
-                </p>
-                <p className="text-xs text-[var(--color-text-muted)] mt-1">Add an extra verification step during login.</p>
+
+            {totpEnabled ? (
+              <div className="space-y-4">
+                <div className="flex items-center gap-2 text-sm text-green-600 dark:text-green-400">
+                  <CheckCircle size={16} />
+                  <span>Authenticator is enabled for your account.</span>
+                </div>
+                {!showDisable ? (
+                  <button
+                    type="button"
+                    onClick={() => { setShowDisable(true); setDisableCode(''); }}
+                    className="text-sm text-red-600 hover:underline font-medium"
+                  >
+                    Disable authenticator
+                  </button>
+                ) : (
+                  <div className="space-y-3 pt-1 border-t border-[var(--color-border)]">
+                    <p className="text-xs text-[var(--color-text-muted)]">
+                      Enter the current 6-digit code from your authenticator app to disable.
+                    </p>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      maxLength={6}
+                      placeholder="000000"
+                      value={disableCode}
+                      onChange={(e) => setDisableCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="input w-full max-w-[200px] text-sm tracking-widest text-center font-mono"
+                    />
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => disableMut.mutate(disableCode)}
+                        disabled={disableCode.length < 6 || disableMut.isPending}
+                        className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+                      >
+                        {disableMut.isPending ? 'Disabling…' : 'Confirm disable'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => { setShowDisable(false); setDisableCode(''); }}
+                        className="py-2 px-4 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
-              <button
-                onClick={() => updateMut.mutate({ twoFactorEnabled: !user?.twoFactorEnabled })}
-                className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${user?.twoFactorEnabled ? 'bg-[var(--color-primary)]' : 'bg-[var(--color-border)]'}`}
-              >
-                <span className={`inline-block h-4 w-4 transform rounded-full bg-white shadow transition-transform ${user?.twoFactorEnabled ? 'translate-x-6' : 'translate-x-1'}`} />
-              </button>
-            </div>
+            ) : totpSetup ? (
+              <div className="space-y-4">
+                <p className="text-xs text-[var(--color-text-muted)]">
+                  Scan this QR code with Google Authenticator, Microsoft Authenticator, or Authy.
+                </p>
+                <div className="flex flex-col sm:flex-row gap-5 items-start">
+                  <img
+                    src={totpSetup.qrCodeDataUrl}
+                    alt="Authenticator QR code"
+                    className="w-40 h-40 rounded-lg border border-[var(--color-border)] bg-white p-2"
+                  />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs text-[var(--color-text-muted)] mb-1">Or enter this key manually:</p>
+                    <code className="block text-xs font-mono break-all bg-[var(--color-bg-subtle)] px-3 py-2 rounded-lg border border-[var(--color-border)]">
+                      {totpSetup.secret}
+                    </code>
+                  </div>
+                </div>
+                <div>
+                  <label className="text-xs text-[var(--color-text-muted)] mb-1 block font-medium">
+                    Enter the 6-digit code from your app
+                  </label>
+                  <input
+                    type="text"
+                    inputMode="numeric"
+                    maxLength={6}
+                    placeholder="000000"
+                    value={totpCode}
+                    onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                    className="input w-full max-w-[200px] text-sm tracking-widest text-center font-mono"
+                  />
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => confirmMut.mutate(totpCode)}
+                    disabled={totpCode.length < 6 || confirmMut.isPending}
+                    className="btn-primary py-2 px-4 text-sm disabled:opacity-50"
+                  >
+                    {confirmMut.isPending ? 'Verifying…' : 'Verify & enable'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { setTotpSetup(null); setTotpCode(''); }}
+                    className="py-2 px-4 text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <p className="text-sm font-medium text-[var(--color-text)] flex items-center gap-1.5">
+                    <Smartphone size={14} className="text-[var(--color-primary)]" /> Two-factor authentication
+                  </p>
+                  <p className="text-xs text-[var(--color-text-muted)] mt-1">
+                    Use an authenticator app for an extra login step after your password.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setupMut.mutate()}
+                  disabled={setupMut.isPending}
+                  className="btn-primary py-2 px-4 text-sm whitespace-nowrap disabled:opacity-50"
+                >
+                  {setupMut.isPending ? 'Preparing…' : 'Enable'}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

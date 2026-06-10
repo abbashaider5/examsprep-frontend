@@ -18,7 +18,7 @@ export const useAuth = () => {
   const loginMut = useMutation({
     mutationFn: authApi.login,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP) return; // caller handles OTP step
+      if (res.data.requiresOTP || res.data.requiresTOTP) return; // caller handles 2FA step
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       const pending = typeof window !== 'undefined'
@@ -46,7 +46,7 @@ export const useAuth = () => {
   const signupMut = useMutation({
     mutationFn: authApi.signup,
     onSuccess: (res) => {
-      if (res.data.requiresOTP) return; // caller handles OTP step
+      if (res.data.requiresOTP || res.data.requiresTOTP) return; // caller handles 2FA step
       setUser(res.data.user);
       if (res.data.accessToken) setAccessToken(res.data.accessToken);
       if (res.data.redirectPath) navigate(res.data.redirectPath);
@@ -68,6 +68,17 @@ export const useAuth = () => {
     onError: (err) => toast.error(err.response?.data?.message || 'OTP verification failed'),
   });
 
+  const verifyTotpMut = useMutation({
+    mutationFn: authApi.verifyTotp,
+    onSuccess: (res) => {
+      setUser(res.data.user);
+      if (res.data.accessToken) setAccessToken(res.data.accessToken);
+      navigate(getDashboardPath(res.data.user?.role));
+      toast.success(res.data.message || 'Welcome back!');
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Invalid verification code.'),
+  });
+
   const logoutMut = useMutation({
     mutationFn: authApi.logout,
     onSuccess: () => { clearUser(); qc.clear(); navigate('/login'); toast.success('Logged out'); },
@@ -76,7 +87,7 @@ export const useAuth = () => {
   const googleMut = useMutation({
     mutationFn: authApi.google,
     onSuccess: async (res) => {
-      if (res.data.requiresOTP) return;
+      if (res.data.requiresOTP || res.data.requiresTOTP) return;
       if (res.data.needsAccountType) {
         setUser(res.data.user, { needsAccountType: true });
         if (res.data.accessToken) setAccessToken(res.data.accessToken);
@@ -129,6 +140,7 @@ export const useAuth = () => {
     google: googleMut,
     completeOnboarding: completeOnboardingMut,
     verifyOtp: verifyOtpMut,
+    verifyTotp: verifyTotpMut,
     logout: logoutMut,
   };
 };

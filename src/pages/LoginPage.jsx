@@ -15,6 +15,83 @@ const schema = z.object({
   password: z.string().min(1, 'Password is required'),
 });
 
+function TOTPInput({ email, pendingToken, onVerify, verifyMut }) {
+  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const inputs = useRef([]);
+
+  const handleChange = (i, val) => {
+    if (!/^\d?$/.test(val)) return;
+    const next = [...otp];
+    next[i] = val;
+    setOtp(next);
+    if (val && i < 5) inputs.current[i + 1]?.focus();
+  };
+
+  const handleKeyDown = (i, e) => {
+    if (e.key === 'Backspace' && !otp[i] && i > 0) inputs.current[i - 1]?.focus();
+  };
+
+  const handlePaste = (e) => {
+    const paste = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
+    if (paste.length === 6) { setOtp(paste.split('')); inputs.current[5]?.focus(); }
+  };
+
+  const handleSubmit = (e) => {
+    e.preventDefault();
+    const code = otp.join('');
+    if (code.length < 6) return;
+    onVerify({ pendingToken, code });
+  };
+
+  return (
+    <div className="animate-fade-in">
+      <div className="flex justify-center mb-3">
+        <div className="w-12 h-12 rounded-2xl bg-blue-50 dark:bg-blue-900/30 flex items-center justify-center">
+          <ShieldCheck size={24} className="text-[var(--color-primary)]" />
+        </div>
+      </div>
+      <h1 className="text-2xl font-bold text-[var(--color-text)] text-center mb-1">Authenticator code</h1>
+      <p className="text-[var(--color-text-muted)] text-sm text-center mb-5">
+        Enter the 6-digit code from your authenticator app for <span className="font-medium text-[var(--color-text)]">{email}</span>
+      </p>
+      <form onSubmit={handleSubmit} className="space-y-4">
+        <div className="flex gap-2 justify-center" onPaste={handlePaste}>
+          {otp.map((d, i) => (
+            <input
+              key={i}
+              ref={(el) => { inputs.current[i] = el; }}
+              type="text"
+              inputMode="numeric"
+              maxLength={1}
+              value={d}
+              onChange={(e) => handleChange(i, e.target.value)}
+              onKeyDown={(e) => handleKeyDown(i, e)}
+              className="w-11 h-13 text-center text-xl font-bold input rounded-xl"
+              style={{ height: '3.25rem' }}
+            />
+          ))}
+        </div>
+
+        {verifyMut.error && (
+          <p className="text-red-500 text-sm text-center">
+            {verifyMut.error.response?.data?.message || 'Invalid verification code.'}
+          </p>
+        )}
+
+        <button
+          type="submit"
+          disabled={verifyMut.isPending || otp.join('').length < 6}
+          className="btn-primary w-full py-3 rounded-xl font-semibold"
+        >
+          {verifyMut.isPending
+            ? <span className="flex items-center justify-center gap-2"><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />Verifying…</span>
+            : 'Verify & Sign In'}
+        </button>
+      </form>
+    </div>
+  );
+}
+
 function OTPInput({ email, purpose, onVerify, verifyMut }) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
@@ -125,11 +202,12 @@ function OTPInput({ email, purpose, onVerify, verifyMut }) {
 }
 
 export default function LoginPage() {
-  const { login, google, verifyOtp, needsAccountType } = useAuth();
+  const { login, google, verifyOtp, verifyTotp, needsAccountType } = useAuth();
   const [form, setForm] = useState({ email: '', password: '' });
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
+  const [totpSession, setTotpSession] = useState(null);
   const [recaptchaToken, setRecaptchaToken] = useState(null);
   const recaptchaSiteKey = import.meta.env.VITE_RECAPTCHA_SITE_KEY;
   const { data: publicSettings } = useQuery({
@@ -162,7 +240,15 @@ export default function LoginPage() {
     }
     login.mutate(
       { ...form, recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined },
-      { onSuccess: (res) => { if (res.data.requiresOTP) setOtpEmail(form.email); } },
+      {
+        onSuccess: (res) => {
+          if (res.data.requiresTOTP) {
+            setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email || form.email });
+          } else if (res.data.requiresOTP) {
+            setOtpEmail(form.email);
+          }
+        },
+      },
     );
   };
 
@@ -170,6 +256,22 @@ export default function LoginPage() {
 
   if (needsAccountType) {
     return <GoogleAccountTypeStep />;
+  }
+
+  if (totpSession) {
+    return (
+      <div className="w-full">
+        <TOTPInput
+          email={totpSession.email}
+          pendingToken={totpSession.pendingToken}
+          onVerify={verifyTotp.mutate}
+          verifyMut={verifyTotp}
+        />
+        <button onClick={() => setTotpSession(null)} className="w-full text-center text-sm text-[var(--color-text-muted)] hover:underline mt-4">
+          ← Back
+        </button>
+      </div>
+    );
   }
 
   if (otpEmail) {
@@ -269,7 +371,11 @@ export default function LoginPage() {
         onCredential={(payload) => {
           google.mutate(payload, {
             onSuccess: (res) => {
-              if (res.data.requiresOTP) setOtpEmail(res.data.email);
+              if (res.data.requiresTOTP) {
+                setTotpSession({ pendingToken: res.data.pendingToken, email: res.data.email });
+              } else if (res.data.requiresOTP) {
+                setOtpEmail(res.data.email);
+              }
             },
           });
         }}
