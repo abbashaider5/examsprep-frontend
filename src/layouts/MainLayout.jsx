@@ -61,7 +61,13 @@ export default function MainLayout() {
                   <Link to={dashPath} className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">
                     <LayoutDashboard size={15} /> Dashboard
                   </Link>
-                  <button onClick={() => logout.mutate()} className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors" title="Logout">
+                  <button
+                    type="button"
+                    onClick={() => logout.mutate()}
+                    disabled={logout.isPending}
+                    className="p-2 rounded-lg text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50"
+                    title="Logout"
+                  >
                     <LogOut size={16} />
                   </button>
                 </div>
@@ -98,7 +104,14 @@ export default function MainLayout() {
               {isAuthenticated ? (
                 <div className="flex flex-col gap-2">
                   <Link to={dashPath} className="btn-primary text-sm py-2 text-center" onClick={() => setMobileOpen(false)}>Go to Dashboard</Link>
-                  <button onClick={() => { logout.mutate(); setMobileOpen(false); }} className="text-sm text-red-500 text-center py-1">Logout</button>
+                  <button
+                    type="button"
+                    onClick={() => { logout.mutate(); setMobileOpen(false); }}
+                    disabled={logout.isPending}
+                    className="text-sm text-red-500 text-center py-1 disabled:opacity-50"
+                  >
+                    {logout.isPending ? 'Logging out…' : 'Logout'}
+                  </button>
                 </div>
               ) : (
                 <div className="flex gap-2">

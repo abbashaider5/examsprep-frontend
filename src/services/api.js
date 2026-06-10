@@ -11,6 +11,7 @@ import {
   getValidAccessToken,
   setAccessToken,
 } from '../utils/authToken.js';
+import { isLogoutInProgress } from '../utils/logout.js';
 import { extractPdfTextFromFile } from '../utils/pdfClientExtract.js';
 
 const api = axios.create({
@@ -20,6 +21,7 @@ const api = axios.create({
 /** Bearer token for cross-origin uploads — uses cookie session via same-origin /api. */
 let ensuringAccessToken = null;
 async function ensureAccessToken({ force = false } = {}) {
+  if (isLogoutInProgress()) return null;
   if (!force) {
     const existing = getValidAccessToken();
     if (existing) return existing;
@@ -120,6 +122,9 @@ api.interceptors.response.use(
   (res) => res,
   async (err) => {
     const original = err.config;
+    if (isLogoutInProgress() || original?._skipAuthRefresh) {
+      return Promise.reject(err);
+    }
     if (err.response?.status === 503 && err.response?.data?.maintenance) {
       window.location.href = '/maintenance';
       return Promise.reject(err);
@@ -164,7 +169,7 @@ export const authApi = {
   login: (data) => api.post('/auth/login', data),
   google: (data) => api.post('/auth/google', data),
   completeOnboarding: (data) => api.post('/auth/complete-onboarding', data),
-  logout: () => api.post('/auth/logout'),
+  logout: () => api.post('/auth/logout', null, { _skipAuthRefresh: true }),
   getMe: () => api.get('/auth/me'),
   refresh: () => api.post('/auth/refresh'),
   verifyOtp: (data) => api.post('/auth/verify-otp', data),

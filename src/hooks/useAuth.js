@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { authApi, enterpriseApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { completeAuthSession, isLogin2FAResponse } from '../utils/authSession.js';
+import { isLogoutInProgress, performLogout } from '../utils/logout.js';
 import { setAccessToken } from '../utils/authToken.js';
 import { getDashboardPath } from '../utils/dashboardPath.js';
 
@@ -77,8 +78,13 @@ export const useAuth = () => {
   });
 
   const logoutMut = useMutation({
-    mutationFn: authApi.logout,
-    onSuccess: () => { clearUser(); qc.clear(); navigate('/login'); toast.success('Logged out'); },
+    mutationFn: () => performLogout({ queryClient: qc }),
+    onError: () => {
+      /* performLogout always redirects; onError is a safety net for unexpected throws before redirect. */
+      useAuthStore.getState().clearUser();
+      qc.clear();
+      window.location.replace('/login');
+    },
   });
 
   const googleMut = useMutation({
@@ -147,8 +153,14 @@ export const useMe = () => {
   return useQuery({
     queryKey: ['me'],
     queryFn: async () => {
+      if (isLogoutInProgress()) {
+        throw new Error('Logout in progress');
+      }
       try {
         const res = await authApi.getMe();
+        if (isLogoutInProgress()) {
+          throw new Error('Logout in progress');
+        }
         setUser(res.data.user);
         persistSessionToken(res);
         return res.data.user;
@@ -161,7 +173,7 @@ export const useMe = () => {
         throw err;
       }
     },
-    enabled: isAuthenticated,
+    enabled: isAuthenticated && !isLogoutInProgress(),
     staleTime: 30 * 1000,
     retry: 1,
     refetchOnMount: 'always',

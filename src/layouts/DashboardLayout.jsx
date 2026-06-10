@@ -502,8 +502,10 @@ export default function DashboardLayout() {
             {!collapsed && 'Ticketing'}
           </Link>
           <button
+            type="button"
             onClick={() => logout.mutate()}
-            className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors ${collapsed ? 'justify-center' : ''}`}
+            disabled={logout.isPending}
+            className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors disabled:opacity-50 ${collapsed ? 'justify-center' : ''}`}
             title="Logout"
           >
             <LogOut size={16} />
@@ -605,9 +607,10 @@ export default function DashboardLayout() {
                   <button
                     type="button"
                     onClick={() => { setUserMenuOpen(false); logout.mutate(); }}
-                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    disabled={logout.isPending}
+                    className="w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 disabled:opacity-50"
                   >
-                    Logout
+                    {logout.isPending ? 'Logging out…' : 'Logout'}
                   </button>
                 </div>
               )}
