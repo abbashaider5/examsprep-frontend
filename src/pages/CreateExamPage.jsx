@@ -713,6 +713,7 @@ export default function CreateExamPage() {
   const [showFeedback, setShowFeedback] = useState(false);
   /** Advanced listening controls: open when enabling listening, or via chevron (preview/configure before enable). */
   const [listeningSettingsExpanded, setListeningSettingsExpanded] = useState(false);
+  const [questionMixExpanded, setQuestionMixExpanded] = useState(false);
   const [showAdvancedAi, setShowAdvancedAi] = useState(false);
 
   const curriculumBoard = isSchoolInstructor ? enterpriseBoard : form.board;
@@ -1217,6 +1218,7 @@ export default function CreateExamPage() {
     if (isInstructor && examType === 'mixed') {
       const mp = Number(form.mixedMcqPercent);
       if (!Number.isFinite(mp) || mp < 10 || mp > 90) {
+        setQuestionMixExpanded(true);
         setErrors({ mixedMcqPercent: 'Choose how many questions are MCQ vs descriptive (10–90% MCQ).' });
         return;
       }
@@ -1367,31 +1369,59 @@ export default function CreateExamPage() {
                   ))}
                 </div>
                 {isInstructor && form.examType === 'mixed' && !advanced.enableCoding && (
-                  <div className="mt-4 p-4 rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/50 space-y-2">
-                    <label className="label flex items-center gap-1.5">
-                      Question mix (required)
-                      <FieldHint
-                        placement="bottom"
-                        text="Sets how many questions are auto-graded MCQ versus descriptive answers. You can adjust the slider between 10% and 90% MCQ."
-                      />
-                    </label>
-                    <p className="text-xs text-[var(--color-text-muted)]">
-                      Choose what share of questions are multiple choice vs written answers (descriptive).
-                    </p>
-                    <div className="flex items-center gap-4 flex-wrap">
-                      <input
-                        type="range"
-                        min={10}
-                        max={90}
-                        value={form.mixedMcqPercent}
-                        onChange={e => setF('mixedMcqPercent')(Number(e.target.value))}
-                        className="flex-1 min-w-[180px] accent-[var(--color-primary)] h-2"
-                      />
-                      <p className="text-sm font-semibold text-[var(--color-text)] tabular-nums shrink-0">
-                        {form.mixedMcqPercent}% MCQ · {100 - form.mixedMcqPercent}% written
-                      </p>
+                  <div className="mt-3 rounded-lg border border-[var(--color-border)]/80 bg-[var(--color-bg-alt)]/25 overflow-hidden">
+                    <div className="flex items-center gap-1.5 min-h-0">
+                      <button
+                        type="button"
+                        aria-expanded={questionMixExpanded}
+                        onClick={() => setQuestionMixExpanded((v) => !v)}
+                        className="flex-1 flex items-center gap-2 px-3 py-2 text-left hover:bg-[var(--color-bg-alt)]/50 transition-colors min-w-0"
+                      >
+                        <Percent size={13} className="text-[var(--color-primary)] shrink-0" aria-hidden />
+                        <span className="text-xs font-medium text-[var(--color-text)] shrink-0">Question mix</span>
+                        <span className="text-[9px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)] shrink-0">required</span>
+                        <span className="ml-auto text-[11px] font-semibold tabular-nums text-[var(--color-text)] truncate">
+                          {form.mixedMcqPercent}% MCQ · {100 - form.mixedMcqPercent}% written
+                        </span>
+                        <ChevronDown
+                          size={14}
+                          className={`shrink-0 text-[var(--color-text-muted)] transition-transform duration-200 ${questionMixExpanded ? 'rotate-180' : ''}`}
+                          aria-hidden
+                        />
+                      </button>
+                      <div className="pr-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        <FieldHint
+                          placement="bottom"
+                          text="Sets how many questions are auto-graded MCQ versus descriptive answers. Adjust between 10% and 90% MCQ."
+                        />
+                      </div>
                     </div>
-                    {errors.mixedMcqPercent && <p className="text-red-500 text-xs">{errors.mixedMcqPercent}</p>}
+                    <div
+                      className={`grid transition-[grid-template-rows] duration-200 ease-out ${questionMixExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'}`}
+                    >
+                      <div className="overflow-hidden min-h-0">
+                        <div
+                          className={`px-3 pb-2.5 pt-1 border-t border-[var(--color-border)]/60 space-y-2 transition-opacity duration-150 ${questionMixExpanded ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
+                        >
+                          <input
+                            type="range"
+                            min={10}
+                            max={90}
+                            value={form.mixedMcqPercent}
+                            onChange={(e) => setF('mixedMcqPercent')(Number(e.target.value))}
+                            className="w-full accent-[var(--color-primary)] h-1.5 cursor-pointer"
+                            aria-label="MCQ versus written question mix"
+                          />
+                          <div className="flex justify-between text-[10px] text-[var(--color-text-muted)] tabular-nums">
+                            <span>More written</span>
+                            <span>More MCQ</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                    {errors.mixedMcqPercent && (
+                      <p className="px-3 pb-2 text-red-500 text-[11px]">{errors.mixedMcqPercent}</p>
+                    )}
                   </div>
                 )}
               </div>
