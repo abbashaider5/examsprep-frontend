@@ -38,6 +38,8 @@ import { playWarningAudio } from '../utils/warningAudio.js';
 // ─── Phases ───────────────────────────────────────────────
 // LOADING → (invite ? INVITE_ACCEPT) → (proctored ? PREFLIGHT : INSTRUCTIONS) → INSTRUCTIONS → EXAM
 
+const RULES_READ_SECONDS = 20;
+
 export default function ExamPage() {
   const { id } = useParams();
   const { user } = useAuthStore();
@@ -66,6 +68,7 @@ export default function ExamPage() {
   const [revealedAnswers, setRevealedAnswers] = useState(new Set());
   const [showSubmitModal, setShowSubmitModal] = useState(false);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [rulesReadSecondsLeft, setRulesReadSecondsLeft] = useState(RULES_READ_SECONDS);
   const [proctoringConsentAccepted, setProctoringConsentAccepted] = useState(false);
   const [showProctoringConsentModal, setShowProctoringConsentModal] = useState(false);
   const [listeningAudioSrc, setListeningAudioSrc] = useState('');
@@ -89,6 +92,17 @@ export default function ExamPage() {
   const [faceBlockedDuringExam, setFaceBlockedDuringExam] = useState(false);
   // Bumped whenever a new stream is acquired — causes display <video> elements to remount & rebind
   const [streamVersion, setStreamVersion] = useState(0);
+
+  // Minimum read time on exam rules before the student can acknowledge and start
+  useEffect(() => {
+    if (phase !== 'instructions' || isPractice) return;
+    setRulesReadSecondsLeft(RULES_READ_SECONDS);
+    setAcknowledged(false);
+    const timer = setInterval(() => {
+      setRulesReadSecondsLeft((s) => (s <= 1 ? 0 : s - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [phase, isPractice, id]);
 
   // Live network status (used in preflight)
   useEffect(() => {
@@ -1484,6 +1498,7 @@ export default function ExamPage() {
   }, []);
 
   const startExam = () => {
+    if (!isPractice && (rulesReadSecondsLeft > 0 || !acknowledged)) return;
     if (!isPractice && isProctoredExam && !proctoringConsentAccepted) {
       pendingAfterConsentRef.current = 'exam';
       setShowProctoringConsentModal(true);
@@ -1537,6 +1552,43 @@ export default function ExamPage() {
       n.has(current) ? n.delete(current) : n.add(current);
       return n;
     });
+  };
+
+  const clearCurrentAnswer = () => {
+    if (!exam?.questions?.length) return;
+    const qq = exam.questions[current];
+    if (!qq) return;
+    if (qq.type === 'coding') {
+      setCodeAnswers((a) => {
+        const next = { ...a };
+        delete next[current];
+        return next;
+      });
+      setCodeOutputs((o) => {
+        const next = { ...o };
+        delete next[current];
+        return next;
+      });
+    } else if (qq.type === 'descriptive') {
+      setTextAnswers((a) => {
+        const next = { ...a };
+        delete next[current];
+        return next;
+      });
+    } else {
+      setAnswers((a) => {
+        const next = { ...a };
+        delete next[current];
+        return next;
+      });
+      if (isPractice) {
+        setRevealedAnswers((r) => {
+          const n = new Set(r);
+          n.delete(current);
+          return n;
+        });
+      }
+    }
   };
 
   // Show loading when: invite validating, exam loading, or phase is still 'loading'
@@ -2014,16 +2066,24 @@ export default function ExamPage() {
 
           {/* Rules + Actions card */}
           <div className="card">
-            <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center justify-between mb-3 gap-3">
               <h3 className="font-semibold text-[var(--color-text)] text-sm flex items-center gap-2">
                 <Monitor size={14} className="text-[var(--color-primary)]" />
                 {isPractice ? 'Study Mode Guidelines' : 'Exam Rules'}
               </h3>
-              {isProctoredExam && !isPractice && (
-                <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 px-2.5 py-1 rounded-full">
-                  <Shield size={11} /> AI Proctored
-                </span>
-              )}
+              <div className="flex items-center gap-2 shrink-0">
+                {!isPractice && rulesReadSecondsLeft > 0 && (
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-[var(--color-primary)] bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-700 px-2.5 py-1 rounded-full tabular-nums">
+                    <Clock size={11} />
+                    Read rules: {rulesReadSecondsLeft}s
+                  </span>
+                )}
+                {isProctoredExam && !isPractice && (
+                  <span className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-700 px-2.5 py-1 rounded-full">
+                    <Shield size={11} /> AI Proctored
+                  </span>
+                )}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-4">
@@ -2045,27 +2105,32 @@ export default function ExamPage() {
             )}
 
             {!isPractice && (
-              <label className="flex items-start gap-3 cursor-pointer mb-4 p-3 rounded-xl border border-[var(--color-border)] hover:bg-[var(--color-bg-alt)] transition-colors">
+              <label className={`flex items-start gap-3 mb-4 p-3 rounded-xl border border-[var(--color-border)] transition-colors ${rulesReadSecondsLeft > 0 ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--color-bg-alt)]'}`}>
                 <input
                   type="checkbox"
                   checked={acknowledged}
+                  disabled={rulesReadSecondsLeft > 0}
                   onChange={e => setAcknowledged(e.target.checked)}
-                  className="mt-0.5 w-4 h-4 rounded accent-[var(--color-primary)] cursor-pointer shrink-0"
+                  className="mt-0.5 w-4 h-4 rounded accent-[var(--color-primary)] cursor-pointer shrink-0 disabled:cursor-not-allowed"
                 />
                 <span className="text-xs text-[var(--color-text)] leading-relaxed">
-                  I have read and understand all exam rules. I agree to complete this exam honestly.
+                  {rulesReadSecondsLeft > 0
+                    ? `Please read the rules above. You can confirm in ${rulesReadSecondsLeft} second${rulesReadSecondsLeft === 1 ? '' : 's'}.`
+                    : 'I have read and understand all exam rules. I agree to complete this exam honestly.'}
                 </span>
               </label>
             )}
 
             <button
               onClick={startExam}
-              disabled={!isPractice && !acknowledged}
+              disabled={!isPractice && (rulesReadSecondsLeft > 0 || !acknowledged)}
               className={`w-full py-3 text-sm font-semibold rounded-lg flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${isPractice ? 'bg-green-600 hover:bg-green-700 text-white' : 'btn-primary'}`}
             >
               {isPractice
                 ? <><BookOpen size={16} /> Start Studying</>
-                : <><Maximize size={16} /> Start Exam — Enter Fullscreen</>
+                : rulesReadSecondsLeft > 0
+                  ? <><Clock size={16} /> Start in {rulesReadSecondsLeft}s</>
+                  : <><Maximize size={16} /> Start Exam — Enter Fullscreen</>
               }
             </button>
           </div>
@@ -2092,6 +2157,10 @@ export default function ExamPage() {
   const timeColor = isPractice ? 'text-green-500' : timePercent < 20 ? 'text-red-500' : timePercent < 40 ? 'text-yellow-500' : 'text-emerald-500';
   const isRevealed = revealedAnswers.has(current);
   const unanswered = exam.questions.length - answered;
+  const isQuestionAttempted = (qq, i) =>
+    qq.type === 'coding' ? !!codeAnswers[i]
+      : qq.type === 'descriptive' ? !!(textAnswers[i]?.trim())
+      : answers[i] !== undefined;
 
   return (
     <div ref={examShellRef} className="min-h-screen flex flex-col select-none bg-[var(--color-bg)]">
@@ -2136,20 +2205,6 @@ export default function ExamPage() {
             <span className="text-sm font-semibold text-[var(--color-text)] truncate">{exam.title}</span>
           </div>
 
-          {/* Center: progress */}
-          <div className="flex-1 max-w-sm hidden md:block">
-            <div className="flex justify-between text-xs text-[var(--color-text-muted)] mb-1">
-              <span>Q {current + 1} / {exam.questions.length}</span>
-              <span>{answered} answered · {unanswered} left</span>
-            </div>
-            <div className="bg-[var(--color-border)] rounded-full h-1.5 overflow-hidden">
-              <div
-                className="bg-[var(--color-primary)] h-1.5 rounded-full transition-all duration-300"
-                style={{ width: `${((current + 1) / exam.questions.length) * 100}%` }}
-              />
-            </div>
-          </div>
-
           {/* Right: timer + violations */}
           <div className="flex items-center gap-3 shrink-0">
             {violations > 0 && !isPractice && (
@@ -2170,14 +2225,6 @@ export default function ExamPage() {
               </button>
             )}
           </div>
-        </div>
-
-        {/* Progress bar (mobile) */}
-        <div className="md:hidden bg-[var(--color-border)] h-0.5">
-          <div
-            className="bg-[var(--color-primary)] h-0.5 transition-all duration-300"
-            style={{ width: `${((current + 1) / exam.questions.length) * 100}%` }}
-          />
         </div>
       </div>
 
@@ -2234,27 +2281,33 @@ export default function ExamPage() {
         {/* Question Area */}
         <div className="flex-1 overflow-y-auto px-4 sm:px-8 py-8">
           <div className="max-w-3xl mx-auto">
-            {/* Question Header */}
-            <div className="flex items-center justify-between mb-4">
+            {/* Question count + actions */}
+            <div className="flex items-center justify-between gap-3 mb-2">
+              <span className="text-xs font-semibold text-[var(--color-text-muted)] tabular-nums">
+                Question {current + 1} of {exam.questions.length}
+              </span>
               <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-3 py-1.5 rounded-full">
-                  Question {current + 1} of {exam.questions.length}
-                </span>
-                {q.topic && (
-                  <span className="text-xs text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-2.5 py-1.5 rounded-full hidden sm:inline">
-                    {q.topic}
-                  </span>
+                {isQuestionAttempted(q, current) && (
+                  <button
+                    type="button"
+                    onClick={clearCurrentAnswer}
+                    className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-red-300 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
+                  >
+                    <X size={12} />
+                    Clear
+                  </button>
+                )}
+                {!isPractice && (
+                  <button
+                    type="button"
+                    onClick={toggleFlag}
+                    className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all ${flagged.has(current) ? 'bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-900/20' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-amber-300'}`}
+                  >
+                    <Flag size={12} />
+                    {flagged.has(current) ? 'Flagged' : 'Flag'}
+                  </button>
                 )}
               </div>
-              {!isPractice && (
-                <button
-                  onClick={toggleFlag}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border transition-all ${flagged.has(current) ? 'bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-900/20' : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-amber-300'}`}
-                >
-                  <Flag size={12} />
-                  {flagged.has(current) ? 'Flagged' : 'Flag'}
-                </button>
-              )}
             </div>
 
             {FEATURE_AI_LISTENING && q.isAudioQuestion && (
@@ -2328,6 +2381,31 @@ export default function ExamPage() {
                 </p>
               </div>
             )}
+
+            {/* Per-question progress strip — above question text */}
+            <div className="mb-3" role="group" aria-label="Question progress">
+              <div className="flex gap-0.5 items-center max-w-md">
+                {exam.questions.map((qq, i) => {
+                  const attempted = isQuestionAttempted(qq, i);
+                  const isFlagged = flagged.has(i);
+                  const isCurrent = i === current;
+                  let barColor = 'bg-gray-200 dark:bg-gray-700/80';
+                  if (attempted) barColor = 'bg-emerald-500';
+                  else if (isFlagged) barColor = 'bg-amber-400';
+                  return (
+                    <button
+                      key={i}
+                      type="button"
+                      onClick={() => setCurrent(i)}
+                      title={`Question ${i + 1}${attempted ? ' · answered' : ''}${isFlagged ? ' · flagged' : ''}`}
+                      aria-label={`Question ${i + 1}${isCurrent ? ', current' : ''}${attempted ? ', answered' : ', not attempted'}${isFlagged ? ', flagged' : ''}`}
+                      aria-current={isCurrent ? 'step' : undefined}
+                      className={`flex-1 min-w-0 rounded-full transition-all duration-200 ${barColor} ${isCurrent ? 'h-1.5 opacity-100' : 'h-1 hover:opacity-80'}`}
+                    />
+                  );
+                })}
+              </div>
+            </div>
 
             {/* Question Card */}
             <div className="card mb-6 border-l-4 border-l-[var(--color-primary)]">
@@ -2423,7 +2501,7 @@ export default function ExamPage() {
               <div className="space-y-3">
                 <div className="p-3 bg-teal-50 dark:bg-teal-900/20 border border-teal-200 dark:border-teal-700 rounded-xl text-xs text-teal-700 dark:text-teal-300 flex items-start gap-2">
                   <span>✍</span>
-                  <span>Write a detailed answer below. Your response will be evaluated by AI based on accuracy, completeness, and clarity.</span>
+                  <span>Write a detailed answer below.</span>
                 </div>
                 <textarea
                   className="w-full rounded-xl border-2 border-[var(--color-border)] bg-[var(--color-surface)] text-[var(--color-text)] text-sm p-4 focus:outline-none focus:border-[var(--color-primary)] resize-y transition-all leading-relaxed"
@@ -2438,16 +2516,6 @@ export default function ExamPage() {
                     <span className="text-teal-600 dark:text-teal-400">Answer saved</span>
                   )}
                 </div>
-                {q.keyPoints?.length > 0 && (
-                  <div className="p-3 bg-[var(--color-bg-alt)] rounded-xl">
-                    <p className="text-xs font-semibold text-[var(--color-text-muted)] mb-2">Key concepts to address:</p>
-                    <div className="flex flex-wrap gap-1.5">
-                      {q.keyPoints.map((kp, ki) => (
-                        <span key={ki} className="text-xs bg-[var(--color-surface)] border border-[var(--color-border)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">{kp}</span>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             ) : (
             <div className="space-y-3">

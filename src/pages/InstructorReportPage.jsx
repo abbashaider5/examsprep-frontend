@@ -360,6 +360,11 @@ export default function InstructorReportPage() {
                       {row.inviteStatus === 'accepted' ? <CheckCircle size={9} /> : row.inviteStatus === 'expired' ? <XCircle size={9} /> : <AlertCircle size={9} />}
                       {row.inviteStatus}
                     </span>
+                    {row.enrollmentSource === 'access_key' && (
+                      <span className="text-[10px] font-medium text-violet-600 dark:text-violet-400 bg-violet-50 dark:bg-violet-900/20 px-2 py-0.5 rounded-full">
+                        Joined via Key
+                      </span>
+                    )}
                     {row.totalAttempts > 1 && (
                       <span className="text-[10px] text-[var(--color-primary)] font-semibold">{row.totalAttempts} attempts</span>
                     )}

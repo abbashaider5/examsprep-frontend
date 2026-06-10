@@ -330,6 +330,11 @@ function uploadErrorFriendly(err) {
   if (status === 401 || code === 'TOKEN_EXPIRED') {
     return msg || 'Your session expired. Please log in again and retry the upload.';
   }
+  if (status === 400 && /validation error/i.test(String(msg || ''))) {
+    const details = err?.response?.data?.errors;
+    if (Array.isArray(details) && details.length) return details.join(' ');
+    return 'The server rejected the upload. Refresh and try again.';
+  }
   if (status === 400 && (/no file uploaded/i.test(String(msg || '')) || /document text is required/i.test(String(msg || '')))) {
     return 'The server did not accept the extracted PDF text. Hard-refresh (Ctrl+Shift+R) and try again.';
   }
@@ -628,8 +633,12 @@ export default function CreateExamPage() {
   const isSchoolInstructor = isEnterpriseInstructor && user?.enterprise?.mode === 'school';
   const isInstituteInstructor = isEnterpriseInstructor && user?.enterprise?.mode === 'institute';
   const isIndividualInstructor = user?.role === 'instructor' && !user?.enterpriseId && !user?.enterprise?.id && !user?.enterprise?._id;
-  /** School + individual: board/class/subject dropdowns from admin curriculum. */
-  const usesCurriculumWorkflow = isSchoolInstructor || isIndividualInstructor;
+  const instructorOrgType = user?.organizationType || 'school';
+  const isSchoolIndividualInstructor = isIndividualInstructor && instructorOrgType === 'school';
+  const isInstituteIndividualInstructor = isIndividualInstructor && instructorOrgType === 'institute';
+  /** School + individual school: board/class/subject dropdowns from admin curriculum. */
+  const usesCurriculumWorkflow = isSchoolInstructor || isSchoolIndividualInstructor;
+  const isInstituteWorkflow = isInstituteInstructor || isInstituteIndividualInstructor;
   const enterpriseBoard = user?.enterprise?.board || 'CBSE';
   /** Org-linked instructors: billing and upgrades are handled by the organization. */
   const orgManagedBilling = user?.subscriptionBillingManagedByOrg === true;
@@ -1117,10 +1126,10 @@ export default function CreateExamPage() {
       title: z.string().min(3, 'Title too short'),
       numQuestions: z.number().int().min(5),
     });
-    const fullSchema = usesCurriculumWorkflow || isInstituteInstructor
+    const fullSchema = usesCurriculumWorkflow || isInstituteWorkflow
       ? baseSchema
       : schema;
-    const parseInput = usesCurriculumWorkflow || isInstituteInstructor
+    const parseInput = usesCurriculumWorkflow || isInstituteWorkflow
       ? { title: form.title, numQuestions: numQuestionsParsed }
       : { ...form, numQuestions: numQuestionsParsed };
     const result = fullSchema.safeParse(parseInput);
@@ -1170,7 +1179,7 @@ export default function CreateExamPage() {
       return;
     }
     if (usesCurriculumWorkflow) {
-      if (isIndividualInstructor && !form.board) {
+      if (isSchoolIndividualInstructor && !form.board) {
         setErrors({ board: 'Select a board (CBSE or ICSE)' });
         return;
       }
@@ -1183,7 +1192,7 @@ export default function CreateExamPage() {
         return;
       }
     }
-    if (isInstituteInstructor && !form.subject?.trim()) {
+    if (isInstituteWorkflow && !form.subject?.trim()) {
       setErrors({ subject: 'Subject is required' });
       return;
     }
@@ -1270,6 +1279,16 @@ export default function CreateExamPage() {
     { value: 'examprep',    icon: BookOpen,    label: 'LikhitAI Resources', desc: 'Admin-curated materials' },
     { value: 'myresources', icon: FolderOpen,  label: 'My Resources',          desc: 'Your uploaded files' },
   ];
+  const availableSources = isInstituteWorkflow
+    ? SOURCES.filter((s) => s.value === 'ai' || s.value === 'myresources')
+    : SOURCES;
+
+  useEffect(() => {
+    if (isInstituteWorkflow && source === 'examprep') {
+      setSource('ai');
+      setSelectedResourceId('');
+    }
+  }, [isInstituteWorkflow, source]);
 
   const selectedResource = activeResources.find(r => r._id === selectedResourceId)
     || (uploadedResourceStub?._id === selectedResourceId ? uploadedResourceStub : null);
@@ -1634,7 +1653,7 @@ export default function CreateExamPage() {
                   <input className="input" placeholder="e.g., Python Fundamentals Quiz" value={form.title} onChange={e => setF('title')(e.target.value)} />
                   {errors.title && <p className="text-red-500 text-xs mt-1">{errors.title}</p>}
                 </div>
-                {usesCurriculumWorkflow && isIndividualInstructor ? (
+                {usesCurriculumWorkflow && isSchoolIndividualInstructor ? (
                   <>
                     <div>
                       <label className="label flex items-center gap-1.5">
@@ -1693,15 +1712,15 @@ export default function CreateExamPage() {
                       
                     </div>
                   </>
-                ) : isInstituteInstructor ? (
+                ) : isInstituteWorkflow ? (
                   <div>
                     <label className="label flex items-center gap-1.5">
                       Subject
                       {isInstructor && (
-                        <FieldHint placement="bottom" text="Helps the AI focus question generation on the right domain (e.g. Biology, Python)." />
+                        <FieldHint placement="bottom" text="Helps the AI understand the exam focus (e.g. JEE Physics, Banking aptitude, Python)." />
                       )}
                     </label>
-                    <input className="input" placeholder="e.g., Python, Biology, History" value={form.subject} onChange={e => setF('subject')(e.target.value)} />
+                    <input className="input" placeholder="e.g., JEE Physics, Banking, Python" value={form.subject} onChange={(e) => setF('subject')(e.target.value)} />
                     {errors.subject && <p className="text-red-500 text-xs mt-1">{errors.subject}</p>}
                   </div>
                 ) : (
@@ -1792,8 +1811,8 @@ export default function CreateExamPage() {
                 </label>
 
                 {/* 3 source cards */}
-                <div className="grid grid-cols-3 gap-2">
-                  {SOURCES.map(s => {
+                <div className={`grid gap-2 ${availableSources.length === 2 ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  {availableSources.map(s => {
                     const Icon = s.icon;
                     const active = source === s.value;
                     return (

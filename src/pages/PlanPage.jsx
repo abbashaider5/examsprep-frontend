@@ -11,6 +11,7 @@ import toast from 'react-hot-toast';
 import { authApi, paymentApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import { filterPlansAboveSortOrder, resolveFeatureList } from '../utils/planFeatures.js';
+import { openAutoPayMandate } from '../utils/autoPayMandate.js';
 import CurrentPlanHero from '../components/billing/CurrentPlanHero.jsx';
 import PlanFeaturesModal from '../components/billing/PlanFeaturesModal.jsx';
 import UpgradePlanCard from '../components/billing/UpgradePlanCard.jsx';
@@ -946,10 +947,10 @@ export default function PlanPage() {
     [subData, currentPlanDef],
   );
   const dynamicUpgradePlans = useMemo(() => {
-    const source = Array.isArray(subData?.upgradeEligiblePlans)
-      ? subData.upgradeEligiblePlans
-      : individualPlans;
-    return filterPlansAboveSortOrder(source, currentPlanDef, currentPlanSortOrder);
+    if (Array.isArray(subData?.upgradeEligiblePlans)) {
+      return subData.upgradeEligiblePlans;
+    }
+    return filterPlansAboveSortOrder(individualPlans, currentPlanDef, currentPlanSortOrder);
   }, [subData?.upgradeEligiblePlans, individualPlans, currentPlanDef, currentPlanSortOrder]);
 
   const catalog = subData?.pricingCatalog;
@@ -1080,65 +1081,20 @@ export default function PlanPage() {
           setLoadingKey('');
           return;
         }
-        const ready = await loadRazorpay();
-        if (!ready) {
-          toast.error('Payment gateway failed to load.');
-          setLoadingKey('');
-          return;
-        }
-        const { data } = await paymentApi.createSubscription({ plan: autopayTargetPlan, autoRenewEnabled: true });
-        setAutoPaySetup((s) => ({ ...s, open: true, mode: 'progress', stepIndex: 0, subscription: null }));
-        const options = {
-          key: data.keyId,
-          subscription_id: data.subscriptionId,
-          name: 'LikhitAI',
-          description: `Enable AutoPay for ${currentPlanName} monthly renewal`,
-          prefill: { name: user?.name, email: user?.email },
-          theme: { color: '#0d9488' },
-          handler: async () => {
-            try {
-              setAutoPaySetup((s) => ({ ...s, stepIndex: 1 }));
-              const enableRes = await paymentApi.enableAutoRenew({ razorpaySubscriptionId: data.subscriptionId });
-              setAutoPaySetup((s) => ({ ...s, stepIndex: 2 }));
-              await qc.invalidateQueries({ queryKey: ['subscription'] });
-              await qc.invalidateQueries({ queryKey: ['me'] });
-              const [subRes, me] = await Promise.all([
-                paymentApi.getSubscription().then((r) => r.data),
-                authApi.getMe(),
-              ]);
-              setUser(me.data.user);
-              setAutoPaySetup((s) => ({ ...s, stepIndex: 3 }));
-              await new Promise((r) => setTimeout(r, 350));
-              const mergedAutoRenew = {
-                ...(subRes?.autoRenew || {}),
-                enabled: true,
-                nextBillingDate: enableRes.data?.nextBillingDate
-                  || subRes?.autoRenew?.nextBillingDate
-                  || subRes?.planExpiresAt
-                  || null,
-                subscriptionStatus: enableRes.data?.subscriptionStatus || subRes?.autoRenew?.subscriptionStatus,
-              };
-              setAutoPaySetup((s) => ({ ...s, stepIndex: 4, mode: 'success', subscription: mergedAutoRenew }));
-              toast.success('AutoPay enabled successfully.');
-            } catch {
-              setAutoPaySetup((s) => ({ ...s, mode: 'error' }));
-              toast.error('Unable to enable AutoPay');
-            }
+        const { data } = await paymentApi.createSubscription({ plan: autopayTargetPlan });
+        const ok = await openAutoPayMandate({
+          checkout: data,
+          user,
+          planName: currentPlanName,
+          onEnabled: async () => {
+            await qc.invalidateQueries({ queryKey: ['subscription'] });
+            await qc.invalidateQueries({ queryKey: ['me'] });
+            const me = await authApi.getMe();
+            setUser(me.data.user);
           },
-          modal: {
-            ondismiss: () => {
-              setLoadingKey('');
-              setAutoPaySetup((s) => ({ ...s, open: false }));
-            },
-          },
-        };
-        const rzp = new window.Razorpay(options);
-        rzp.on('payment.failed', () => {
-          setAutoPaySetup((s) => ({ ...s, open: true, mode: 'error' }));
-          toast.error('Unable to enable AutoPay');
-          setLoadingKey('');
         });
-        rzp.open();
+        if (ok) toast.success('AutoPay enabled successfully.');
+        else toast.error('AutoPay setup was not completed.');
         setLoadingKey('');
         return;
       }
@@ -1216,7 +1172,7 @@ export default function PlanPage() {
         order_id: data.orderId,
         handler: async (response) => {
           try {
-            await paymentApi.verify({
+            const verifyRes = await paymentApi.verify({
               razorpay_order_id: response.razorpay_order_id,
               razorpay_payment_id: response.razorpay_payment_id,
               razorpay_signature: response.razorpay_signature,
@@ -1226,7 +1182,22 @@ export default function PlanPage() {
             qc.invalidateQueries({ queryKey: ['transactions'] });
             qc.invalidateQueries({ queryKey: ['subscription'] });
             qc.invalidateQueries({ queryKey: ['me'] });
-            toast.success('Payment confirmed.');
+            if (verifyRes.data?.autoPayCheckout) {
+              const ok = await openAutoPayMandate({
+                checkout: verifyRes.data.autoPayCheckout,
+                user: me.data.user,
+                planName: checkoutIntent?.quote?.newPlan || currentPlanName,
+                onEnabled: async () => {
+                  await qc.invalidateQueries({ queryKey: ['subscription'] });
+                  await qc.invalidateQueries({ queryKey: ['me'] });
+                  const me2 = await authApi.getMe();
+                  setUser(me2.data.user);
+                },
+              });
+              toast.success(ok ? 'Payment confirmed and AutoPay is enabled.' : 'Payment confirmed. Approve the mandate to finish AutoPay setup.');
+            } else {
+              toast.success('Payment confirmed.');
+            }
           } catch (err) {
             toast.error(err.response?.data?.message || 'Payment verification failed.');
           } finally {

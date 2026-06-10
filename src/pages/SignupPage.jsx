@@ -8,6 +8,7 @@ import { z } from 'zod';
 import GoogleAuthButton from '../components/GoogleAuthButton.jsx';
 import AccountTypePicker from '../components/onboarding/AccountTypePicker.jsx';
 import GoogleAccountTypeStep from '../components/onboarding/GoogleAccountTypeStep.jsx';
+import OrganizationPurposePicker from '../components/onboarding/OrganizationPurposePicker.jsx';
 import { useAuth } from '../hooks/useAuth.js';
 import { authApi, settingsApi } from '../services/api.js';
 
@@ -34,7 +35,16 @@ const STRENGTH_CONFIG = [
   { label: 'Strong', color: 'bg-green-500' },
 ];
 
-function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', enterpriseInviteToken = '', accountType = 'student' }) {
+function OTPInput({
+  email,
+  purpose,
+  onVerify,
+  verifyMut,
+  examInviteToken = '',
+  enterpriseInviteToken = '',
+  accountType = 'student',
+  organizationType = 'school',
+}) {
   const [otp, setOtp] = useState(['', '', '', '', '', '']);
   const inputs = useRef([]);
   const [countdown, setCountdown] = useState(30);
@@ -66,6 +76,7 @@ function OTPInput({ email, purpose, onVerify, verifyMut, examInviteToken = '', e
       otp: code,
       purpose,
       accountType,
+      ...(accountType === 'instructor' ? { organizationType } : {}),
       ...(examInviteToken ? { examInviteToken } : {}),
       ...(enterpriseInviteToken ? { enterpriseInviteToken } : {}),
     });
@@ -146,7 +157,9 @@ export default function SignupPage() {
   const { signup, google, verifyOtp, needsAccountType } = useAuth();
   const [form, setForm] = useState({ name: '', email: '', password: '' });
   const [accountType, setAccountType] = useState(() => (roleFromUrl === 'instructor' ? 'instructor' : 'student'));
+  const [organizationType, setOrganizationType] = useState('school');
   const [accountTypeForOtp, setAccountTypeForOtp] = useState('student');
+  const [organizationTypeForOtp, setOrganizationTypeForOtp] = useState('school');
   const [errors, setErrors] = useState({});
   const [showPass, setShowPass] = useState(false);
   const [otpEmail, setOtpEmail] = useState(null);
@@ -215,6 +228,7 @@ export default function SignupPage() {
       {
         ...form,
         accountType: hideAccountTypePicker ? 'instructor' : accountType,
+        ...(hideAccountTypePicker || accountType === 'instructor' ? { organizationType } : {}),
         recaptchaToken: mustSolveRecaptcha ? recaptchaToken : undefined,
         ...(inviteTokenFromUrl || examInviteForOtp ? { examInviteToken: inviteTokenFromUrl || examInviteForOtp } : {}),
         ...(enterpriseInviteFromUrl || enterpriseInviteForOtp ? { enterpriseInviteToken: enterpriseInviteFromUrl || enterpriseInviteForOtp } : {}),
@@ -224,6 +238,7 @@ export default function SignupPage() {
           if (!res.data.requiresOTP) return;
           setOtpEmail(form.email);
           setAccountTypeForOtp(res.data.accountType || accountType);
+          setOrganizationTypeForOtp(res.data.organizationType || organizationType);
           if (res.data.examInviteToken) setExamInviteForOtp(res.data.examInviteToken);
           if (res.data.enterpriseInviteToken) setEnterpriseInviteForOtp(res.data.enterpriseInviteToken);
         },
@@ -240,7 +255,7 @@ export default function SignupPage() {
       />
     );
   }
-// 
+
   if (otpEmail) {
     return (
       <div className="w-full">
@@ -248,6 +263,7 @@ export default function SignupPage() {
           email={otpEmail}
           purpose="signup"
           accountType={accountTypeForOtp}
+          organizationType={organizationTypeForOtp}
           examInviteToken={examInviteForOtp}
           enterpriseInviteToken={enterpriseInviteForOtp}
           onVerify={verifyOtp.mutate}
@@ -268,8 +284,11 @@ export default function SignupPage() {
       )}
 
       {!hideAccountTypePicker && (
-        <div className="mb-5">
+        <div className="mb-4 space-y-3">
           <AccountTypePicker value={accountType} onChange={setAccountType} />
+          {accountType === 'instructor' && (
+            <OrganizationPurposePicker value={organizationType} onChange={setOrganizationType} />
+          )}
         </div>
       )}
 

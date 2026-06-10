@@ -1,21 +1,25 @@
-import { GraduationCap, Sparkles } from 'lucide-react';
+import { Building2, GraduationCap } from 'lucide-react';
 
 const OPTIONS = [
   {
-    value: 'student',
-    label: 'Student',
-    hint: 'Exams & classrooms',
+    value: 'school',
+    label: 'School',
+    hint: 'Board, class & subject',
     icon: GraduationCap,
   },
   {
-    value: 'instructor',
-    label: 'Instructor',
-    hint: 'Create exams & teach',
-    icon: Sparkles,
+    value: 'institute',
+    label: 'Institute',
+    hint: 'Coaching & competitive prep',
+    icon: Building2,
   },
 ];
 
-export default function AccountTypePicker({ value, onChange, title = 'Who is this account for?' }) {
+export default function OrganizationPurposePicker({
+  value,
+  onChange,
+  title = 'Primary use case',
+}) {
   return (
     <div>
       <p className="text-xs font-medium text-[var(--color-text-muted)] mb-2">{title}</p>

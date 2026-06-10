@@ -297,6 +297,10 @@ export const instructorApi = {
   getMyInvites: () => api.get('/instructor/my-invites'),
   getMyAcceptedInvites: () => api.get('/instructor/my-accepted-invites'),
   reevaluateResult: (resultId, data) => api.patch(`/instructor/results/${resultId}/reevaluate`, data),
+  getExamAccessKey: (examId) => api.get(`/instructor/exams/${examId}/access-key`),
+  saveExamAccessKey: (examId, data) => api.put(`/instructor/exams/${examId}/access-key`, data),
+  deleteExamAccessKey: (examId) => api.delete(`/instructor/exams/${examId}/access-key`),
+  enrollViaAccessKey: (accessKey) => api.post('/instructor/access-keys/enroll', { accessKey }),
 };
 
 export const groupApi = {

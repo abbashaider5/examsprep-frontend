@@ -6,6 +6,7 @@ import {
   Eye, FileText,
   Layers,
   LayoutDashboard,
+  KeyRound,
   LifeBuoy, Mail, MessageSquare, RefreshCw,
   Settings, Shield,
   Timer, Trash2, Upload, Users, X, Zap
@@ -16,6 +17,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
+import ExamAccessKeyModal from '../components/ExamAccessKeyModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { enterpriseApi, examApi, groupApi, instructorApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
@@ -43,6 +45,7 @@ export default function InstructorPage() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [editExam, setEditExam] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [accessKeyExam, setAccessKeyExam] = useState(null);
   const inviteFileRef = useRef(null);
 
   const closeInviteModal = () => {
@@ -297,6 +300,11 @@ export default function InstructorPage() {
                         <RefreshCw size={8} /> Reattempt
                       </span>
                     )}
+                    {exam.accessKey?.isActive && (
+                      <span className="inline-flex items-center gap-0.5 text-[10px] bg-violet-100 text-violet-700 dark:bg-violet-900/30 dark:text-violet-400 px-1.5 py-0.5 rounded-full font-semibold" title={`Key: ${exam.accessKey.accessKey}`}>
+                        <KeyRound size={8} /> Access Key Active · {exam.accessKey.enrolledCount}/{exam.accessKey.enrollmentLimit}
+                      </span>
+                    )}
                     {(exam.questions?.length || exam.questionCount) ? (
                       <span className="text-[10px] text-[var(--color-text-muted)] bg-[var(--color-bg-alt)] px-1.5 py-0.5 rounded-full">
                         {exam.questions?.length || exam.questionCount}q
@@ -350,6 +358,13 @@ export default function InstructorPage() {
                     title="View report"
                   >
                     <FileText size={11} /> Report
+                  </button>
+                  <button
+                    onClick={() => setAccessKeyExam(exam)}
+                    className="btn-secondary text-xs py-1 px-2.5 flex items-center gap-1"
+                    title="Generate access key"
+                  >
+                    <KeyRound size={11} /> Key
                   </button>
                   <button
                     onClick={() => openInviteFor(exam)}
@@ -701,6 +716,7 @@ export default function InstructorPage() {
 
       {/* Edit Exam Modal */}
       {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} />}
+      {accessKeyExam && <ExamAccessKeyModal exam={accessKeyExam} onClose={() => setAccessKeyExam(null)} />}
 
       <ConfirmDialog
         open={!!deleteTarget}

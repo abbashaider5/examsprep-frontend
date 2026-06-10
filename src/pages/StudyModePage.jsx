@@ -3,6 +3,7 @@ import {
   ArrowLeft,
   BarChart2, BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
   Lightbulb, Loader2, Mail,
+  KeyRound,
   RotateCcw, Search, Shield, Star,
   Target, Timer,
   Trash2,
@@ -14,6 +15,7 @@ import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
+import ExamAccessKeyModal from '../components/ExamAccessKeyModal.jsx';
 import Modal from '../components/Modal.jsx';
 import { enterpriseApi, examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
@@ -486,6 +488,7 @@ export default function StudyModePage() {
   const [inviteExam, setInviteExam] = useState(null);
   const [editExam, setEditExam] = useState(null);
   const [deleteTarget, setDeleteTarget] = useState(null);
+  const [accessKeyExam, setAccessKeyExam] = useState(null);
   const [search, setSearch] = useState('');
   const [filterDiff, setFilterDiff] = useState('all');
 
@@ -552,14 +555,35 @@ export default function StudyModePage() {
     return acc;
   }, {});
 
+  const canPreviewStudyAsInstructor = (exam) => {
+    const isOwnerCard = !exam._isInvited && ownExamIds.has(exam._id);
+    return isOwnerCard && ['instructor', 'admin'].includes(user?.role);
+  };
+
+  const canUseStudyForExam = (exam) => {
+    const hasFlashOrReview = exam._isInvited
+      ? (exam.showFlashcards !== false || exam.showReview !== false)
+      : true;
+    if (!hasFlashOrReview) return false;
+    return canPreviewStudyAsInstructor(exam) || Boolean(examStats[exam._id]);
+  };
+
   const loadExam = async (exam) => {
-    const res = await examApi.getById(exam._id, { params: { practice: 'true' } });
-    setExamData(res.data.exam);
-    setSelectedExam(exam);
-    const inv = exam._isInvited ? acceptedInvites.find(i => i.exam?._id === exam._id) : null;
-    setSelectedInvite(inv || null);
-    setCardIndex(0);
-    setFlipped(false);
+    if (!canUseStudyForExam(exam)) {
+      toast.error('Complete the exam at least once before using flashcards or review.');
+      return;
+    }
+    try {
+      const res = await examApi.getById(exam._id, { params: { practice: 'true' } });
+      setExamData(res.data.exam);
+      setSelectedExam(exam);
+      const inv = exam._isInvited ? acceptedInvites.find(i => i.exam?._id === exam._id) : null;
+      setSelectedInvite(inv || null);
+      setCardIndex(0);
+      setFlipped(false);
+    } catch (err) {
+      toast.error(err.response?.data?.message || 'Study mode is not available yet.');
+    }
   };
 
   const exitStudy = () => {
@@ -672,6 +696,7 @@ export default function StudyModePage() {
                 ? `/exam/${e._id}?invite=${encodeURIComponent(e._inviteToken)}`
                 : `/exam/${e._id}`;
               const hasStudyMode = showFlashcards || showReview;
+              const canStudy = canUseStudyForExam(e);
               const qCount = e.questions?.length || 0;
               const diffColors = DIFF_COLORS[e.difficulty] || DIFF_COLORS.medium;
               const gradClass = CARD_GRADIENTS[idx % CARD_GRADIENTS.length];
@@ -775,6 +800,11 @@ export default function StudyModePage() {
                       {e.expiryDate && !isExpired && (
                         <span className="flex items-center gap-1 text-[10px] bg-rose-50 dark:bg-rose-900/20 text-rose-500 dark:text-rose-400 px-2 py-0.5 rounded-full">
                           <Timer size={9} /> Expires {fmtDate(e.expiryDate)}
+                        </span>
+                      )}
+                      {e.accessKey?.isActive && (
+                        <span className="flex items-center gap-1 text-[10px] bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 px-2 py-0.5 rounded-full" title={`Key: ${e.accessKey.accessKey}`}>
+                          <KeyRound size={9} /> Key · {e.accessKey.enrolledCount}/{e.accessKey.enrollmentLimit}
                         </span>
                       )}
                     </div>
@@ -883,6 +913,14 @@ export default function StudyModePage() {
                           </Link>
                           <button
                             type="button"
+                            onClick={() => setAccessKeyExam(e)}
+                            className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-violet-600 hover:border-violet-300 transition-colors"
+                            title="Generate access key"
+                          >
+                            <KeyRound size={13} />
+                          </button>
+                          <button
+                            type="button"
                             onClick={() => setInviteExam(e)}
                             className="shrink-0 p-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-[var(--color-primary)] hover:border-[var(--color-primary)] transition-colors disabled:opacity-50"
                             title="Invite users"
@@ -913,10 +951,19 @@ export default function StudyModePage() {
                             </Link>
                           ) : null}
                           {hasStudyMode ? (
-                            <button type="button" onClick={() => loadExam(e)}
-                              className="flex-1 text-center text-xs btn-secondary py-2 rounded-xl font-semibold flex items-center justify-center gap-1">
-                              <FlipHorizontal size={12} /> Study
-                            </button>
+                            canStudy ? (
+                              <button type="button" onClick={() => loadExam(e)}
+                                className="flex-1 text-center text-xs btn-secondary py-2 rounded-xl font-semibold flex items-center justify-center gap-1">
+                                <FlipHorizontal size={12} /> Study
+                              </button>
+                            ) : (
+                              <span
+                                className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-2 rounded-xl border border-dashed border-[var(--color-border)]"
+                                title="Complete the exam first to unlock flashcards and review"
+                              >
+                                Study after attempt
+                              </span>
+                            )
                           ) : (
                             <span className="flex-1 text-center text-xs text-[var(--color-text-muted)] py-2">No study mode</span>
                           )}
@@ -946,6 +993,7 @@ export default function StudyModePage() {
 
         {inviteExam && <InviteModal exam={inviteExam} onClose={() => setInviteExam(null)} />}
         {editExam && <EditExamModal exam={editExam} onClose={() => setEditExam(null)} invalidateKey="myExams" />}
+        {accessKeyExam && <ExamAccessKeyModal exam={accessKeyExam} onClose={() => setAccessKeyExam(null)} />}
 
         <ConfirmDialog
           open={!!deleteTarget}
@@ -961,6 +1009,19 @@ export default function StudyModePage() {
   }
 
   // ── Study view ────────────────────────────────────────────────────────────
+  if (!canUseStudyForExam(selectedExam)) {
+    return (
+      <div className="px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+        <div className="card text-center py-16 max-w-lg mx-auto">
+          <BookOpen size={40} className="mx-auto mb-3 text-[var(--color-border)]" />
+          <p className="font-medium text-[var(--color-text)]">Study mode is locked</p>
+          <p className="text-sm text-[var(--color-text-muted)] mt-2">Complete the exam at least once before using flashcards or review.</p>
+          <button type="button" onClick={exitStudy} className="btn-secondary text-sm mt-6 px-4 py-2">← Back to My Tests</button>
+        </div>
+      </div>
+    );
+  }
+
   const questions = examData?.questions || [];
   const q = questions[cardIndex];
   const isInvitedExam = !!selectedExam._isInvited;

@@ -5,13 +5,14 @@ import {
 } from 'chart.js';
 import {
   ArrowRight, Award, BarChart2, Bell, BookOpen, CalendarDays, CheckCircle, ChevronRight,
+  KeyRound, Loader2,
   Shield, Sparkles, X,
   Users,
 } from 'lucide-react';
 import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { enterpriseApi, examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 import UserPageHeader from '../components/UserPageHeader.jsx';
@@ -37,6 +38,8 @@ function DiffBadge({ difficulty }) {
 export default function DashboardPage() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [accessKeyInput, setAccessKeyInput] = useState('');
 
   const isInstructor = ['instructor', 'admin'].includes(user?.role);
   const isStudent    = user?.role === 'user';
@@ -81,6 +84,18 @@ export default function DashboardPage() {
       queryClient.invalidateQueries({ queryKey: ['myInvites'] });
     },
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to decline invite'),
+  });
+
+  const enrollKeyMut = useMutation({
+    mutationFn: (key) => instructorApi.enrollViaAccessKey(key),
+    onSuccess: (res) => {
+      toast.success(res.data?.message || 'Successfully enrolled in exam.');
+      setAccessKeyInput('');
+      queryClient.invalidateQueries({ queryKey: ['myAcceptedInvites'] });
+      const examId = res.data?.exam?._id;
+      if (examId) navigate(`/tests`);
+    },
+    onError: (err) => toast.error(err.response?.data?.message || 'Could not enroll with this key'),
   });
 
   const publicExams   = publicData?.exams || [];
@@ -212,6 +227,39 @@ export default function DashboardPage() {
 
       {isStudent && (
         <>
+          <div className="card border border-[var(--color-border)] p-4">
+            <div className="flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center shrink-0">
+                <KeyRound size={18} className="text-violet-600 dark:text-violet-400" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h3 className="text-sm font-semibold text-[var(--color-text)]">Join Exam</h3>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5 mb-3">Enter an exam access key from your instructor.</p>
+                <div className="flex flex-col sm:flex-row gap-2">
+                  <input
+                    className="input flex-1 font-mono text-sm uppercase"
+                    placeholder="e.g. MATH-ABX7K9"
+                    value={accessKeyInput}
+                    onChange={(e) => setAccessKeyInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && accessKeyInput.trim()) {
+                        enrollKeyMut.mutate(accessKeyInput.trim());
+                      }
+                    }}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => enrollKeyMut.mutate(accessKeyInput.trim())}
+                    disabled={!accessKeyInput.trim() || enrollKeyMut.isPending}
+                    className="btn-primary text-sm px-5 py-2 inline-flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                  >
+                    {enrollKeyMut.isPending ? <><Loader2 size={14} className="animate-spin" /> Enrolling…</> : 'Enroll'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div>
             <h3 className="text-sm font-semibold text-[var(--color-text)] mb-2">Quick Navigation</h3>
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
@@ -404,11 +452,13 @@ export default function DashboardPage() {
                       <Link to={`/exam/${exam._id}`} className={`flex-1 flex items-center justify-center gap-1 text-xs py-2 rounded-xl bg-gradient-to-r ${grad} text-white font-semibold hover:opacity-90 transition-opacity`}>
                         Start <ChevronRight size={12} />
                       </Link>
-                      <Link to={`/exam/${exam._id}?practice=true`}
-                        className="flex items-center justify-center px-3 py-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-emerald-600 hover:border-emerald-400 text-xs transition-colors"
-                        title="Practice Mode">
-                        <BookOpen size={14} />
-                      </Link>
+                      {examStats[exam._id] && (
+                        <Link to={`/exam/${exam._id}?practice=true`}
+                          className="flex items-center justify-center px-3 py-2 rounded-xl border border-[var(--color-border)] text-[var(--color-text-muted)] hover:text-emerald-600 hover:border-emerald-400 text-xs transition-colors"
+                          title="Practice Mode">
+                          <BookOpen size={14} />
+                        </Link>
+                      )}
                     </div>
                   </div>
                 </div>
