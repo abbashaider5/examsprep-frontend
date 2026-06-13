@@ -10,6 +10,7 @@ import {
   TrendingUp, Upload, Users, X
 } from 'lucide-react';
 import { useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
 import * as XLSX from 'xlsx';
@@ -503,25 +504,59 @@ function TestCardSkeleton({ gradientClass = CARD_GRADIENTS[0] }) {
   );
 }
 
-function TestsPageLoading() {
-  return (
-    <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
-      <div className="flex flex-col items-center text-center mb-10">
-        <div className="relative mb-4">
-          <div className="absolute inset-0 rounded-full bg-[var(--color-primary)]/15 blur-xl scale-150" aria-hidden />
-          <Loader2 size={36} className="relative animate-spin text-[var(--color-primary)]" aria-hidden />
+function TestsPageLoadingOverlay() {
+  if (typeof document === 'undefined') return null;
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="tests-loading-title"
+      aria-busy="true"
+    >
+      <div className="absolute inset-0 bg-[var(--color-bg)]/45 backdrop-blur-[4px]" aria-hidden />
+      <div className="relative w-full max-w-sm rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface)]/95 shadow-2xl shadow-black/10 dark:shadow-black/30 px-6 py-7 text-center animate-fade-in">
+        <div className="relative mx-auto mb-5 w-14 h-14 flex items-center justify-center">
+          <div className="absolute inset-0 rounded-full border-2 border-[var(--color-primary)]/20" aria-hidden />
+          <div className="absolute inset-0 rounded-full border-2 border-transparent border-t-[var(--color-primary)] animate-spin" aria-hidden />
+          <Loader2 size={22} className="text-[var(--color-primary)]" aria-hidden />
         </div>
-        <h2 className="text-lg font-semibold text-[var(--color-text)] tracking-tight">Loading Your Tests</h2>
-        <p className="text-sm text-[var(--color-text-muted)] mt-1.5 max-w-sm">
+        <h2 id="tests-loading-title" className="text-base font-semibold text-[var(--color-text)] tracking-tight">
+          Loading Your Tests
+        </h2>
+        <p className="text-sm text-[var(--color-text-muted)] mt-1.5 leading-relaxed">
           Fetching your exams and enrollments…
         </p>
       </div>
-      <div className="w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {[0, 1, 2, 3, 4, 5].map((i) => (
-          <TestCardSkeleton key={i} gradientClass={CARD_GRADIENTS[i % CARD_GRADIENTS.length]} />
-        ))}
+    </div>,
+    document.body,
+  );
+}
+
+function TestsPageLoadingShell() {
+  return (
+    <>
+      <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
+        <div className="mb-5 flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <div className="h-7 w-36 rounded-lg bg-[var(--color-border)]/70 animate-pulse" />
+            <div className="h-4 w-52 rounded-md bg-[var(--color-border)]/50 animate-pulse" />
+          </div>
+          <div className="h-9 w-20 rounded-xl bg-[var(--color-border)]/60 animate-pulse shrink-0" />
+        </div>
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <div className="h-9 w-64 rounded-xl bg-[var(--color-border)]/60 animate-pulse" />
+          <div className="h-9 flex-1 min-w-[180px] max-w-xs rounded-xl bg-[var(--color-border)]/50 animate-pulse" />
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {[0, 1, 2, 3, 4, 5].map((i) => (
+            <TestCardSkeleton key={i} gradientClass={CARD_GRADIENTS[i % CARD_GRADIENTS.length]} />
+          ))}
+        </div>
       </div>
-    </div>
+      <TestsPageLoadingOverlay />
+    </>
   );
 }
 
@@ -656,7 +691,7 @@ export default function StudyModePage() {
 
   if (!selectedExam) {
     if (examsLoading) {
-      return <TestsPageLoading />;
+      return <TestsPageLoadingShell />;
     }
 
     return (
@@ -815,16 +850,6 @@ export default function StudyModePage() {
                           <Calendar size={9} aria-hidden /> Created: {fmtDate(e.createdAt)}
                         </span>
                       )}
-                      {isInvited && e._inviteDate && (
-                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
-                          <Calendar size={9} aria-hidden /> Enrolled: {fmtDate(e._inviteDate)}
-                        </span>
-                      )}
-                      {isInvited && attempted && stats?.lastAttemptAt && (
-                        <span className="flex items-center gap-1 text-[10px] bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">
-                          <CheckCircle size={9} aria-hidden /> Attempted: {fmtDate(stats.lastAttemptAt)}
-                        </span>
-                      )}
                       {qCount > 0 && (
                         <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
                           <Hash size={9} /> {qCount} questions
@@ -933,6 +958,23 @@ export default function StudyModePage() {
                         <span className={`text-xs ${isExpired ? 'text-red-500 dark:text-red-400 font-medium' : 'text-[var(--color-text-muted)]'}`}>
                           {isExpired ? 'This test has expired' : 'Not attempted yet'}
                         </span>
+                      </div>
+                    )}
+
+                    {isInvited && (e._inviteDate || (attempted && stats?.lastAttemptAt)) && (
+                      <div className="flex flex-col gap-0.5 mb-2.5">
+                        {e._inviteDate && (
+                          <p className="flex items-center gap-1.5 text-[10px] text-[var(--color-text-muted)] leading-snug">
+                            <Calendar size={10} className="shrink-0 opacity-75" aria-hidden />
+                            <span>Enrolled: {fmtDate(e._inviteDate)}</span>
+                          </p>
+                        )}
+                        {attempted && stats?.lastAttemptAt && (
+                          <p className="flex items-center gap-1.5 text-[10px] text-emerald-600/90 dark:text-emerald-400/90 leading-snug">
+                            <CheckCircle size={10} className="shrink-0 opacity-85" aria-hidden />
+                            <span>Attempted: {fmtDate(stats.lastAttemptAt)}</span>
+                          </p>
+                        )}
                       </div>
                     )}
 
