@@ -307,6 +307,16 @@ function fileExtension(file) {
   return i > 0 ? n.slice(i + 1).toLowerCase() : '';
 }
 
+const MY_RESOURCE_CHIP_PREVIEW = 6;
+
+function getResourceProcessingLabel(r) {
+  const st = r?.processingStatus;
+  if (st === 'failed') return 'Failed';
+  if (st === 'processing' || st === 'uploading') return 'Indexing';
+  if (r?.chunkCount > 0 || st === 'ready') return 'Ready';
+  return 'Pending';
+}
+
 const PROD_RESOURCE_MAX_BYTES = Math.floor(4.5 * 1024 * 1024);
 
 function isProductionUploadHost() {
@@ -705,6 +715,7 @@ export default function CreateExamPage() {
   const [uploadInFlight, setUploadInFlight] = useState(false);
   const [uploadedResourceStub, setUploadedResourceStub] = useState(null);
   const [myLibraryExpanded, setMyLibraryExpanded] = useState(true);
+  const [myResourcesShowAll, setMyResourcesShowAll] = useState(false);
   const [myLibraryQuery, setMyLibraryQuery] = useState('');
   /** `{ _id, title }` when showing delete confirmation (replaces `window.confirm`). */
   const [resourceDeleteConfirm, setResourceDeleteConfirm] = useState(null);
@@ -1078,6 +1089,10 @@ export default function CreateExamPage() {
         (r.title || '').toLowerCase().includes(myLibraryQ)
         || (r.originalName || '').toLowerCase().includes(myLibraryQ),
       );
+  const visibleMyResources = myResourcesShowAll
+    ? filteredMyResources
+    : filteredMyResources.slice(0, MY_RESOURCE_CHIP_PREVIEW);
+  const hiddenMyResourceCount = Math.max(0, filteredMyResources.length - MY_RESOURCE_CHIP_PREVIEW);
   const activeResources = source === 'examprep' ? adminResources : myResources;
   const activeResLoading = source === 'examprep' ? adminResLoading : myResLoading;
 
@@ -1863,188 +1878,205 @@ export default function CreateExamPage() {
                 </div>
 
                 {source === 'myresources' && isInstructor && (
-                  <div className="mt-3 space-y-2">
-                    <div className="rounded-xl border border-teal-200/70 dark:border-teal-800/50 bg-gradient-to-br from-teal-50/90 via-cyan-50/40 to-violet-100/50 dark:from-teal-950/35 dark:via-[var(--color-bg-alt)] dark:to-violet-950/30 p-3 space-y-3 shadow-sm ring-1 ring-teal-500/10 dark:ring-teal-400/10">
-                      <div className="flex items-center gap-2 mb-0.5">
-                        <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-teal-500 to-violet-600 flex items-center justify-center shadow-sm shrink-0">
-                          <Sparkles size={14} className="text-white" aria-hidden />
-                        </div>
-                        <div>
-                          <p className="text-[11px] font-semibold text-[var(--color-text)]">Upload for AI</p>
-                          <p className="text-[9px] text-[var(--color-text-muted)]">Teal zone: new file → LikhitAI reads it</p>
-                        </div>
+                  <div className="mt-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-alt)] overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setMyLibraryExpanded((v) => !v)}
+                      className="w-full flex items-center justify-between gap-2 px-3 py-2 text-left hover:bg-[var(--color-surface)]/60 transition-colors"
+                    >
+                      <div className="min-w-0 flex items-center gap-2">
+                        <FolderOpen size={14} className="text-[var(--color-primary)] shrink-0" aria-hidden />
+                        <span className="text-xs font-medium text-[var(--color-text)]">My Resources</span>
+                        {myResources.length > 0 && (
+                          <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">({myResources.length})</span>
+                        )}
+                        {selectedResource && !myLibraryExpanded && (
+                          <span className="text-[10px] text-[var(--color-text-muted)] truncate hidden sm:inline">
+                            · {selectedResource.title}
+                          </span>
+                        )}
                       </div>
-                      <div>
-                        <label className="text-[10px] font-medium text-teal-800/80 dark:text-teal-300/90">Library title</label>
-                        <input
-                          className="input text-sm mt-1 bg-white/80 dark:bg-[var(--color-surface)]/90 border-teal-200/60 dark:border-teal-800/40"
-                          value={resourceUploadTitle}
-                          onChange={e => setResourceUploadTitle(e.target.value)}
-                          placeholder="Title shown in your library"
-                        />
-                      </div>
-                      <input
-                        ref={resourceUploadRef}
-                        type="file"
-                        accept=".doc,.docx,.ppt,.pptx,.pdf,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf,text/plain"
-                        className="hidden"
-                        onChange={(e) => {
-                          setPickedUploadFile(e.target.files?.[0] || null);
-                        }}
-                      />
-                      {pickedUploadFile ? (
-                        <div className="rounded-xl border border-violet-200/70 dark:border-violet-800/45 bg-white/70 dark:bg-violet-950/20 px-3 py-2.5 flex items-start gap-3 shadow-sm ring-1 ring-violet-400/15">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-violet-500/20 to-teal-500/25 border border-violet-300/50 dark:border-violet-600/30 flex items-center justify-center shrink-0 text-violet-700 dark:text-violet-300">
-                            <FileKindIcon ext={fileExtension(pickedUploadFile)} className="w-5 h-5" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <p className="text-[9px] font-semibold uppercase tracking-wide text-violet-600/90 dark:text-violet-300/90">Chosen file</p>
-                            <p className="text-xs font-semibold text-[var(--color-text)] truncate leading-snug mt-0.5" title={pickedUploadFile.name}>
-                              {pickedUploadFile.name}
-                            </p>
-                            <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5 tabular-nums">
-                              <span className="inline-flex items-center rounded-md border border-[var(--color-border)] px-1 py-0 font-medium uppercase tracking-wide">
-                                {fileExtension(pickedUploadFile) || 'file'}
-                              </span>
-                              {pickedUploadFile.size ? (
-                                <span className="ml-1.5">{formatFileSize(pickedUploadFile.size)}</span>
-                              ) : null}
-                            </p>
-                          </div>
-                          <div className="flex flex-col gap-1 shrink-0">
+                      {myLibraryExpanded
+                        ? <ChevronDown size={15} className="text-[var(--color-text-muted)] shrink-0" aria-hidden />
+                        : <ChevronRight size={15} className="text-[var(--color-text-muted)] shrink-0" aria-hidden />}
+                    </button>
+
+                    {myLibraryExpanded && (
+                      <div className="px-3 pb-3 pt-1 border-t border-[var(--color-border)] space-y-2">
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <input
+                            className="input text-xs py-1.5 flex-1 min-w-[8rem]"
+                            value={resourceUploadTitle}
+                            onChange={(e) => setResourceUploadTitle(e.target.value)}
+                            placeholder="Library title"
+                            aria-label="Library title"
+                          />
+                          <input
+                            ref={resourceUploadRef}
+                            type="file"
+                            accept=".doc,.docx,.ppt,.pptx,.pdf,.txt,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.openxmlformats-officedocument.presentationml.presentation,application/vnd.ms-powerpoint,application/pdf,text/plain"
+                            className="hidden"
+                            onChange={(e) => {
+                              setPickedUploadFile(e.target.files?.[0] || null);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => resourceUploadRef.current?.click()}
+                            className="text-xs px-2.5 py-1.5 rounded-md border border-dashed border-[var(--color-border)] text-[var(--color-text-muted)] hover:border-[var(--color-primary)]/50 hover:text-[var(--color-primary)] transition-colors shrink-0"
+                          >
+                            {pickedUploadFile ? 'Change file' : 'Choose file'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={uploadInFlight || resourceFlow.open || !pickedUploadFile}
+                            onClick={() => { void runMyResourceUpload(); }}
+                            className="btn-primary text-xs py-1.5 px-2.5 rounded-md inline-flex items-center gap-1 shrink-0 disabled:opacity-50"
+                          >
+                            {uploadInFlight ? <Loader2 size={12} className="animate-spin shrink-0" aria-hidden /> : <Upload size={12} aria-hidden />}
+                            Upload
+                          </button>
+                        </div>
+
+                        {pickedUploadFile && (
+                          <div className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs">
+                            <FileKindIcon ext={fileExtension(pickedUploadFile)} className="w-3.5 h-3.5 shrink-0 text-[var(--color-text-muted)]" />
+                            <span className="truncate text-[var(--color-text)] max-w-[12rem]" title={pickedUploadFile.name}>{pickedUploadFile.name}</span>
+                            <span className="text-[10px] text-[var(--color-text-muted)] shrink-0">Queued</span>
                             <button
                               type="button"
                               onClick={() => {
                                 setPickedUploadFile(null);
                                 if (resourceUploadRef.current) resourceUploadRef.current.value = '';
                               }}
-                              className="p-1.5 rounded-lg text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 transition-colors"
+                              className="p-0.5 rounded text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 shrink-0"
                               aria-label="Remove selected file"
                             >
-                              <Trash2 size={15} aria-hidden />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => resourceUploadRef.current?.click()}
-                              className="text-[10px] font-medium text-[var(--color-primary)] hover:underline py-0.5"
-                            >
-                              Change file
+                              <X size={12} aria-hidden />
                             </button>
                           </div>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => resourceUploadRef.current?.click()}
-                          className="w-full rounded-xl border-2 border-dashed border-teal-300/60 dark:border-teal-700/50 hover:border-teal-500/70 hover:bg-teal-50/50 dark:hover:bg-teal-950/25 py-3 px-3 text-left transition-all"
-                        >
-                          <span className="text-xs font-semibold text-teal-900 dark:text-teal-200">Choose file</span>
-                          <span className="block text-[10px] text-[var(--color-text-muted)] mt-0.5">DOCX, PPTX, PDF, or TXT</span>
-                        </button>
-                      )}
-                      <p className="text-[10px] text-[var(--color-text-muted)] leading-relaxed mt-2">
-                        LikhitAI reads text PDFs directly and runs OCR on scanned pages automatically. Very large scans may need a smaller export.
-                      </p>
-                      <div className="flex justify-end">
-                        <button
-                          type="button"
-                          disabled={uploadInFlight || resourceFlow.open}
-                          onClick={() => { void runMyResourceUpload(); }}
-                          className="btn-primary text-xs py-2 px-4 rounded-xl inline-flex items-center gap-1.5"
-                        >
-                          {uploadInFlight ? <Loader2 size={14} className="animate-spin shrink-0" aria-hidden /> : <Upload size={14} aria-hidden />}
-                          Upload & prepare with AI
-                        </button>
-                      </div>
-                    </div>
-                    {myResources.length > 0 && (
-                      <div className="rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-gradient-to-b from-slate-50/95 to-blue-50/30 dark:from-slate-900/40 dark:to-blue-950/20 overflow-hidden shadow-sm ring-1 ring-slate-300/20 dark:ring-slate-600/20">
-                        <button
-                          type="button"
-                          onClick={() => setMyLibraryExpanded((e) => !e)}
-                          className="w-full flex items-center justify-between gap-2 px-3 py-2.5 text-left bg-gradient-to-r from-blue-500/8 to-violet-500/8 hover:from-blue-500/12 hover:to-violet-500/12 transition-colors border-b border-slate-200/60 dark:border-slate-700/50"
-                        >
-                          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">
-                            Your library
-                            <span className="text-slate-500 dark:text-slate-400 font-normal"> ({myResources.length})</span>
-                          </span>
-                          {myLibraryExpanded ? <ChevronDown size={16} className="text-blue-600/70 dark:text-blue-400 shrink-0" aria-hidden /> : <ChevronRight size={16} className="text-blue-600/70 dark:text-blue-400 shrink-0" aria-hidden />}
-                        </button>
-                        {myLibraryExpanded && (
+                        )}
+
+                        {myResources.length > 4 && (
+                          <div className="relative">
+                            <Search size={13} className="absolute left-2 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)] pointer-events-none" aria-hidden />
+                            <input
+                              type="search"
+                              className="input text-xs py-1 pl-7 w-full"
+                              placeholder="Search resources…"
+                              value={myLibraryQuery}
+                              onChange={(e) => {
+                                setMyLibraryQuery(e.target.value);
+                                setMyResourcesShowAll(false);
+                              }}
+                              aria-label="Search your resources"
+                            />
+                          </div>
+                        )}
+
+                        {myResLoading ? (
+                          <div className="flex items-center gap-2 py-2 text-xs text-[var(--color-text-muted)]">
+                            <Loader2 size={13} className="animate-spin shrink-0" aria-hidden />
+                            Loading resources…
+                          </div>
+                        ) : myResources.length === 0 ? (
+                          <p className="text-[11px] text-[var(--color-text-muted)] py-1">Upload a file to build your library.</p>
+                        ) : (
                           <>
-                            <div className="px-3 pb-2 pt-2 bg-white/40 dark:bg-black/10">
-                              <div className="relative">
-                                <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-blue-500/70 pointer-events-none" aria-hidden />
-                                <input
-                                  type="search"
-                                  className="input text-xs py-1.5 pl-8 w-full border-blue-200/50 dark:border-blue-900/40 bg-white/90 dark:bg-[var(--color-surface)]/80"
-                                  placeholder="Search files…"
-                                  value={myLibraryQuery}
-                                  onChange={(e) => setMyLibraryQuery(e.target.value)}
-                                  aria-label="Search your files"
-                                />
-                              </div>
+                            <div className="flex flex-wrap gap-1.5">
+                              {visibleMyResources.map((r) => {
+                                const ext = fileExtension({ name: r.originalName || '' });
+                                const busy = deleteResourceMut.isPending && deleteResourceMut.variables === r._id;
+                                const statusLabel = getResourceProcessingLabel(r);
+                                const isSelected = selectedResourceId === r._id;
+                                const statusTone = statusLabel === 'Failed'
+                                  ? 'text-red-600 dark:text-red-400'
+                                  : statusLabel === 'Indexing'
+                                    ? 'text-amber-600 dark:text-amber-400'
+                                    : statusLabel === 'Ready'
+                                      ? 'text-emerald-600 dark:text-emerald-400'
+                                      : 'text-[var(--color-text-muted)]';
+                                return (
+                                  <div
+                                    key={r._id}
+                                    role="button"
+                                    tabIndex={0}
+                                    onClick={() => { setSelectedResourceId(r._id); setErrors((e) => ({ ...e, resource: undefined })); }}
+                                    onKeyDown={(ev) => {
+                                      if (ev.key === 'Enter' || ev.key === ' ') {
+                                        ev.preventDefault();
+                                        setSelectedResourceId(r._id);
+                                        setErrors((e) => ({ ...e, resource: undefined }));
+                                      }
+                                    }}
+                                    className={`group inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border text-xs cursor-pointer transition-colors ${
+                                      isSelected
+                                        ? 'border-[var(--color-primary)]/50 bg-[var(--color-primary)]/8 ring-1 ring-[var(--color-primary)]/20'
+                                        : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:border-[var(--color-primary)]/30'
+                                    }`}
+                                  >
+                                    <FileKindIcon ext={ext} className="w-3.5 h-3.5 shrink-0 text-[var(--color-text-muted)]" />
+                                    <span className="truncate max-w-[9rem] sm:max-w-[11rem] text-[var(--color-text)]" title={r.title || r.originalName}>
+                                      {r.title || r.originalName}
+                                    </span>
+                                    <span className={`text-[10px] shrink-0 ${statusTone}`}>{statusLabel}</span>
+                                    <button
+                                      type="button"
+                                      className="p-0.5 rounded text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 disabled:opacity-40 shrink-0"
+                                      disabled={busy}
+                                      aria-label={`Remove ${r.title}`}
+                                      onClick={(ev) => {
+                                        ev.stopPropagation();
+                                        setResourceDeleteConfirm({ _id: r._id, title: r.title });
+                                      }}
+                                    >
+                                      {busy ? <Loader2 size={12} className="animate-spin" aria-hidden /> : <X size={12} aria-hidden />}
+                                    </button>
+                                  </div>
+                                );
+                              })}
                             </div>
-                            <div className="max-h-52 overflow-auto border-t border-slate-200/70 dark:border-slate-700/50 bg-white/30 dark:bg-black/15">
-                              <table className="w-full text-left text-[11px]">
-                                <thead className="sticky top-0 z-[1] bg-gradient-to-r from-blue-100/90 to-violet-100/70 dark:from-slate-800/95 dark:to-slate-800/90 border-b border-slate-200/80 dark:border-slate-600/50">
-                                  <tr className="text-slate-600 dark:text-slate-300 font-medium">
-                                    <th className="px-2 py-1.5 font-medium">Title</th>
-                                    <th className="px-2 py-1.5 font-medium w-[4.5rem]">Status</th>
-                                    <th className="px-1 py-1.5 w-9 text-right font-medium" aria-label="Actions" />
-                                  </tr>
-                                </thead>
-                                <tbody className="divide-y divide-slate-200/60 dark:divide-slate-700/50">
-                                  {filteredMyResources.map((r) => {
-                                    const ext = fileExtension({ name: r.originalName || '' });
-                                    const busy = deleteResourceMut.isPending && deleteResourceMut.variables === r._id;
-                                    const st = r.processingStatus;
-                                    const statusLabel = st === 'failed' ? 'Failed' : st === 'processing' || st === 'uploading' ? 'Busy' : r.chunkCount > 0 || st === 'ready' ? 'Ready' : '—';
-                                    return (
-                                      <tr
-                                        key={r._id}
-                                        className={`cursor-pointer transition-colors ${selectedResourceId === r._id ? 'bg-teal-500/12 dark:bg-teal-500/15' : 'hover:bg-blue-50/80 dark:hover:bg-slate-800/50'}`}
-                                        onClick={() => { setSelectedResourceId(r._id); setErrors((e) => ({ ...e, resource: undefined })); }}
-                                      >
-                                        <td className="px-2 py-1.5 min-w-0">
-                                          <div className="flex items-center gap-1.5 min-w-0">
-                                            <FileKindIcon ext={ext} className="w-3.5 h-3.5 shrink-0 text-teal-600 dark:text-teal-400" />
-                                            <span className="truncate text-[var(--color-text)]" title={r.title}>{r.title}</span>
-                                          </div>
-                                        </td>
-                                        <td className="px-2 py-1.5 text-[var(--color-text-muted)] tabular-nums whitespace-nowrap">{statusLabel}</td>
-                                        <td className="px-1 py-1 text-right">
-                                          <button
-                                            type="button"
-                                            className="inline-flex p-1 rounded-md text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-500/10 disabled:opacity-40"
-                                            disabled={busy}
-                                            aria-label={`Delete ${r.title}`}
-                                            onClick={(ev) => {
-                                              ev.stopPropagation();
-                                              setResourceDeleteConfirm({ _id: r._id, title: r.title });
-                                            }}
-                                          >
-                                            {busy ? <Loader2 size={14} className="animate-spin" aria-hidden /> : <Trash2 size={14} aria-hidden />}
-                                          </button>
-                                        </td>
-                                      </tr>
-                                    );
-                                  })}
-                                </tbody>
-                              </table>
-                              {filteredMyResources.length === 0 && (
-                                <p className="text-center text-[11px] text-slate-500 dark:text-slate-400 py-6 px-2">No matches</p>
-                              )}
-                            </div>
+                            {filteredMyResources.length === 0 && (
+                              <p className="text-[11px] text-[var(--color-text-muted)] py-1">No matches.</p>
+                            )}
+                            {hiddenMyResourceCount > 0 && !myResourcesShowAll && (
+                              <button
+                                type="button"
+                                onClick={() => setMyResourcesShowAll(true)}
+                                className="text-[11px] font-medium text-[var(--color-primary)] hover:underline"
+                              >
+                                View all resources ({filteredMyResources.length})
+                              </button>
+                            )}
+                            {myResourcesShowAll && hiddenMyResourceCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => setMyResourcesShowAll(false)}
+                                className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
+                              >
+                                Show fewer
+                              </button>
+                            )}
+                            {filteredMyResources.length > MY_RESOURCE_CHIP_PREVIEW && (
+                              <button
+                                type="button"
+                                onClick={() => setShowResourceModal(true)}
+                                className="text-[11px] text-[var(--color-text-muted)] hover:text-[var(--color-primary)]"
+                              >
+                                Browse in full view…
+                              </button>
+                            )}
                           </>
                         )}
+
+                        {errors.resource && <p className="text-red-500 text-xs">{errors.resource}</p>}
                       </div>
                     )}
                   </div>
                 )}
 
-                {/* Resource picker — shown for examprep and myresources */}
-                {(source === 'examprep' || source === 'myresources') && (
+                {/* Resource picker — examprep library only; myresources uses chips above */}
+                {source === 'examprep' && (
                   <div className="mt-3">
                     {selectedResource ? (
                       /* Selected file chip */

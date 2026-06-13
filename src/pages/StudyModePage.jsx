@@ -753,13 +753,13 @@ export default function StudyModePage() {
                     {e.subject && (
                       <p className="text-xs text-[var(--color-text-muted)] mb-2 font-medium">{e.subject}</p>
                     )}
-                    <p className="text-[10px] text-[var(--color-text-muted)] mb-2">
-                      {isInvited && e._inviteDate
-                        ? <>Enrolled: {fmtDate(e._inviteDate)}</>
-                        : e.createdAt
+                    {(isOwnerCard && e.createdAt) || (isInvited && e._inviteDate) ? (
+                      <p className="text-[10px] text-[var(--color-text-muted)] mb-2">
+                        {isOwnerCard && e.createdAt
                           ? <>Created: {fmtDate(e.createdAt)}</>
-                          : null}
-                    </p>
+                          : <>Enrolled: {fmtDate(e._inviteDate)}</>}
+                      </p>
+                    ) : null}
 
                     {/* Invited-by row */}
                     {isInvited && (
