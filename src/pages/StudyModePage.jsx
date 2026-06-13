@@ -7,7 +7,7 @@ import {
   RotateCcw, Search, Shield, Star,
   Target, Timer,
   Trash2,
-  TrendingUp, Upload, UserCheck, Users, X
+  TrendingUp, Upload, Users, X
 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -512,7 +512,7 @@ export default function StudyModePage() {
     (groupsData?.groups || []).map(g => [g._id, g.name])
   );
 
-  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : null;
+  const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : null;
 
   const ownExamIds = new Set(ownExams.map(e => String(e._id)));
   const invitedEntries = acceptedInvites
@@ -732,11 +732,6 @@ export default function StudyModePage() {
                             <Timer size={9} /> Expired
                           </span>
                         )}
-                        {isInvited && (
-                          <span className="flex items-center gap-1 text-[10px] bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-300 px-2 py-0.5 rounded-full font-semibold">
-                            <UserCheck size={9} /> Invited
-                          </span>
-                        )}
                         {e.proctored && (
                           <span className="flex items-center gap-1 text-[10px] bg-red-100 dark:bg-red-900/20 text-red-600 dark:text-red-400 px-2 py-0.5 rounded-full font-semibold">
                             <Shield size={9} /> Proctored
@@ -758,6 +753,13 @@ export default function StudyModePage() {
                     {e.subject && (
                       <p className="text-xs text-[var(--color-text-muted)] mb-2 font-medium">{e.subject}</p>
                     )}
+                    <p className="text-[10px] text-[var(--color-text-muted)] mb-2">
+                      {isInvited && e._inviteDate
+                        ? <>Enrolled: {fmtDate(e._inviteDate)}</>
+                        : e.createdAt
+                          ? <>Created: {fmtDate(e.createdAt)}</>
+                          : null}
+                    </p>
 
                     {/* Invited-by row */}
                     {isInvited && (
@@ -888,9 +890,6 @@ export default function StudyModePage() {
                         <span className={`text-xs ${isExpired ? 'text-red-500 dark:text-red-400 font-medium' : 'text-[var(--color-text-muted)]'}`}>
                           {isExpired ? 'This test has expired' : 'Not attempted yet'}
                         </span>
-                        {isInvited && e._inviteDate && !isExpired && (
-                          <span className="ml-auto text-[10px] text-[var(--color-text-muted)]">Invited {fmtDate(e._inviteDate)}</span>
-                        )}
                       </div>
                     )}
 
@@ -1039,7 +1038,7 @@ export default function StudyModePage() {
         <div className="flex items-center justify-between mb-6">
           <div>
             <h1 className="font-bold text-[var(--color-text)] text-lg">{selectedExam.title}</h1>
-            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Invited Exam</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Enrolled Exam</p>
           </div>
           <button onClick={exitStudy} className="btn-secondary text-xs py-1.5 px-3">← Back</button>
         </div>

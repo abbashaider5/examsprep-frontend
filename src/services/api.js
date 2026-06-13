@@ -310,6 +310,7 @@ export const instructorApi = {
   getExamAccessKey: (examId) => api.get(`/instructor/exams/${examId}/access-key`),
   saveExamAccessKey: (examId, data) => api.put(`/instructor/exams/${examId}/access-key`, data),
   deleteExamAccessKey: (examId) => api.delete(`/instructor/exams/${examId}/access-key`),
+  previewAccessKey: (accessKey) => api.post('/instructor/access-keys/preview', { accessKey }),
   enrollViaAccessKey: (accessKey) => api.post('/instructor/access-keys/enroll', { accessKey }),
 };
 

@@ -13,6 +13,7 @@ import {
   Pause,
   Lightbulb,
   Loader,
+  Loader2,
   Lock,
   Chrome,
   Maximize,
@@ -2569,29 +2570,26 @@ export default function ExamPage() {
                 <ChevronLeft size={16} /> Previous
               </button>
 
-              {/* Mobile submit */}
-              {!isPractice && current === exam.questions.length - 1 && (
-                <button
-                  onClick={() => setShowSubmitModal(true)}
-                  disabled={submitMut.isPending || submitMut.isSuccess}
-                  className="sm:hidden btn-primary text-sm font-semibold px-5 py-2.5 flex items-center gap-1"
-                >
-                  {submitMut.isPending ? 'Submitting...' : 'Submit Exam'}
-                </button>
-              )}
-              {isPractice && current === exam.questions.length - 1 && (
+              {isPractice && current === exam.questions.length - 1 ? (
                 <button onClick={() => navigate(getDashboardPath(user?.role))} className="bg-green-600 hover:bg-green-700 text-white text-sm font-semibold px-5 py-2.5 rounded-lg flex items-center gap-1.5">
                   <CheckCircle size={15} /> Finish Study
                 </button>
+              ) : !isPractice && current === exam.questions.length - 1 ? (
+                <button
+                  onClick={() => setShowSubmitModal(true)}
+                  disabled={submitMut.isPending || submitMut.isSuccess}
+                  className="btn-primary flex items-center gap-1.5 text-sm font-semibold px-5 py-2.5 disabled:opacity-50"
+                >
+                  <CheckCircle size={16} /> Submit Exam
+                </button>
+              ) : (
+                <button
+                  onClick={() => setCurrent(c => Math.min(exam.questions.length - 1, c + 1))}
+                  className="btn-primary flex items-center gap-1.5 text-sm"
+                >
+                  Next <ChevronRight size={16} />
+                </button>
               )}
-
-              <button
-                onClick={() => setCurrent(c => Math.min(exam.questions.length - 1, c + 1))}
-                disabled={current === exam.questions.length - 1}
-                className="btn-primary flex items-center gap-1.5 text-sm disabled:opacity-40"
-              >
-                Next <ChevronRight size={16} />
-              </button>
             </div>
           </div>
         </div>
@@ -2714,8 +2712,23 @@ export default function ExamPage() {
         </div>
       )}
 
+      {/* ── Submission overlay ── */}
+      {!isPractice && (submitMut.isPending || submitMut.isSuccess) && (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-[var(--color-bg)]/95 backdrop-blur-md px-6">
+          <div className="text-center max-w-md animate-fade-in">
+            <div className="w-16 h-16 rounded-2xl bg-[var(--color-primary)]/10 flex items-center justify-center mx-auto mb-5">
+              <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" />
+            </div>
+            <h2 className="text-xl font-bold text-[var(--color-text)] mb-2">Submitting Your Exam…</h2>
+            <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">
+              Please wait while we securely save your answers and generate your results.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* ── Submit Confirmation Modal ── */}
-      {showSubmitModal && (
+      {showSubmitModal && !submitMut.isPending && !submitMut.isSuccess && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm px-4">
           <div className="card max-w-sm w-full animate-slide-up">
             <div className="flex items-start justify-between mb-4">

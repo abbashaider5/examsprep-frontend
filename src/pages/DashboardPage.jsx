@@ -15,6 +15,7 @@ import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
 import { enterpriseApi, examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import AccessKeyEnrollModal from '../components/AccessKeyEnrollModal.jsx';
 import UserPageHeader from '../components/UserPageHeader.jsx';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
@@ -40,6 +41,7 @@ export default function DashboardPage() {
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const [accessKeyInput, setAccessKeyInput] = useState('');
+  const [accessKeyPreview, setAccessKeyPreview] = useState(null);
 
   const isInstructor = ['instructor', 'admin'].includes(user?.role);
   const isStudent    = user?.role === 'user';
@@ -86,16 +88,12 @@ export default function DashboardPage() {
     onError: (err) => toast.error(err.response?.data?.message || 'Failed to decline invite'),
   });
 
-  const enrollKeyMut = useMutation({
-    mutationFn: (key) => instructorApi.enrollViaAccessKey(key),
+  const previewKeyMut = useMutation({
+    mutationFn: (key) => instructorApi.previewAccessKey(key),
     onSuccess: (res) => {
-      toast.success(res.data?.message || 'Successfully enrolled in exam.');
-      setAccessKeyInput('');
-      queryClient.invalidateQueries({ queryKey: ['myAcceptedInvites'] });
-      const examId = res.data?.exam?._id;
-      if (examId) navigate(`/tests`);
+      setAccessKeyPreview(res.data);
     },
-    onError: (err) => toast.error(err.response?.data?.message || 'Could not enroll with this key'),
+    onError: (err) => toast.error(err.response?.data?.message || 'Invalid exam access key'),
   });
 
   const publicExams   = publicData?.exams || [];
@@ -243,17 +241,17 @@ export default function DashboardPage() {
                     onChange={(e) => setAccessKeyInput(e.target.value.toUpperCase())}
                     onKeyDown={(e) => {
                       if (e.key === 'Enter' && accessKeyInput.trim()) {
-                        enrollKeyMut.mutate(accessKeyInput.trim());
+                        previewKeyMut.mutate(accessKeyInput.trim());
                       }
                     }}
                   />
                   <button
                     type="button"
-                    onClick={() => enrollKeyMut.mutate(accessKeyInput.trim())}
-                    disabled={!accessKeyInput.trim() || enrollKeyMut.isPending}
+                    onClick={() => previewKeyMut.mutate(accessKeyInput.trim())}
+                    disabled={!accessKeyInput.trim() || previewKeyMut.isPending}
                     className="btn-primary text-sm px-5 py-2 inline-flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
                   >
-                    {enrollKeyMut.isPending ? <><Loader2 size={14} className="animate-spin" /> Enrolling…</> : 'Enroll'}
+                    {previewKeyMut.isPending ? <><Loader2 size={14} className="animate-spin" /> Checking…</> : 'Continue'}
                   </button>
                 </div>
               </div>
@@ -494,6 +492,17 @@ export default function DashboardPage() {
             ))}
           </div>
         </div>
+      )}
+      {accessKeyPreview && (
+        <AccessKeyEnrollModal
+          preview={accessKeyPreview}
+          onClose={() => setAccessKeyPreview(null)}
+          onEnrolled={() => {
+            setAccessKeyInput('');
+            queryClient.invalidateQueries({ queryKey: ['myAcceptedInvites'] });
+            navigate('/tests');
+          }}
+        />
       )}
     </div>
   );

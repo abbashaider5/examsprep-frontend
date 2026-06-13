@@ -280,6 +280,9 @@ export default function InstructorPage() {
                   <p className="font-medium text-sm text-[var(--color-text)] truncate">{exam.title}</p>
                   <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                     <span className="text-xs text-[var(--color-text-muted)]">{exam.subject} · {exam.difficulty}</span>
+                    {exam.createdAt && (
+                      <span className="text-[10px] text-[var(--color-text-muted)]">· Created: {new Date(exam.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+                    )}
                     {exam.certificate !== false && (
                       <span className="inline-flex items-center gap-0.5 text-[10px] bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400 px-1.5 py-0.5 rounded-full font-semibold">
                         <Award size={8} /> Certificate
