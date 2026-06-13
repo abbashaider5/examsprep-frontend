@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import { clearPersistedAuthStorage, isLogoutInProgress } from '../utils/authLifecycle.js';
 import { clearAccessToken } from '../utils/authToken.js';
 
 export const useAuthStore = create(
@@ -8,14 +9,18 @@ export const useAuthStore = create(
       user: null,
       isAuthenticated: false,
       needsAccountType: false,
-      setUser: (user, options = {}) => set({
-        user,
-        isAuthenticated: !!user,
-        needsAccountType: options.needsAccountType ?? false,
-      }),
+      setUser: (user, options = {}) => {
+        if (isLogoutInProgress()) return;
+        set({
+          user,
+          isAuthenticated: !!user,
+          needsAccountType: options.needsAccountType ?? false,
+        });
+      },
       clearNeedsAccountType: () => set({ needsAccountType: false }),
       clearUser: () => {
         clearAccessToken();
+        clearPersistedAuthStorage();
         set({ user: null, isAuthenticated: false, needsAccountType: false });
       },
     }),

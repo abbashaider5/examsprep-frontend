@@ -1,34 +1,33 @@
 import { authApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
+import { clearAccessToken } from '../utils/authToken.js';
+import {
+  beginLogout,
+  clearPersistedAuthStorage,
+  isLogoutInProgress,
+} from '../utils/authLifecycle.js';
 
-let logoutInProgress = false;
-
-export function isLogoutInProgress() {
-  return logoutInProgress;
-}
+export { isLogoutInProgress } from '../utils/authLifecycle.js';
 
 /**
  * End the client session immediately, invalidate server session (best effort), then hard-redirect.
- * Hard redirect avoids races with useMe refetch or AuthLayout bouncing back to the dashboard.
+ * Redirect happens synchronously after local cleanup so in-flight requests cannot restore auth state.
  */
-export async function performLogout({ queryClient } = {}) {
-  if (logoutInProgress) return;
-  logoutInProgress = true;
+export function performLogout({ queryClient } = {}) {
+  if (!beginLogout()) return;
+
+  queryClient?.cancelQueries();
+  queryClient?.clear();
+
+  clearAccessToken();
+  clearPersistedAuthStorage();
+  useAuthStore.getState().clearUser();
 
   try {
-    queryClient?.cancelQueries();
-    useAuthStore.getState().clearUser();
-    queryClient?.clear();
-
-    try {
-      await Promise.race([
-        authApi.logout(),
-        new Promise((resolve) => { setTimeout(resolve, 4000); }),
-      ]);
-    } catch {
-      /* Local session already cleared — still redirect. */
-    }
-  } finally {
-    window.location.replace('/login');
+    void authApi.logout().catch(() => {});
+  } catch {
+    /* Local session already cleared — still redirect. */
   }
+
+  window.location.replace('/login');
 }

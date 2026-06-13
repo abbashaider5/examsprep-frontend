@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft,
-  BarChart2, BookOpen, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
+  BarChart2, BookOpen, Calendar, CheckCircle, Clock, Download, Edit3, FlipHorizontal, Hash, Layers,
   Lightbulb, Loader2, Mail,
   KeyRound,
   RotateCcw, Search, Shield, Star,
@@ -463,6 +463,68 @@ const CARD_GRADIENTS = [
   'from-blue-500 to-indigo-600',
 ];
 
+function TestCardSkeleton({ gradientClass = CARD_GRADIENTS[0] }) {
+  return (
+    <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden flex flex-col">
+      <div className={`h-1.5 w-full bg-gradient-to-r ${gradientClass} opacity-40`} />
+      <div className="p-4 flex flex-col flex-1">
+        <div className="flex items-start justify-between mb-3">
+          <div className="h-10 w-10 rounded-xl bg-[var(--color-border)]/80 animate-pulse" />
+          <div className="flex gap-1.5">
+            <div className="h-5 w-16 rounded-full bg-[var(--color-border)]/80 animate-pulse" />
+            <div className="h-5 w-12 rounded-full bg-[var(--color-border)]/80 animate-pulse" />
+          </div>
+        </div>
+        <div className="h-4 w-[88%] rounded-md bg-[var(--color-border)]/80 animate-pulse mb-2" />
+        <div className="h-3 w-[55%] rounded-md bg-[var(--color-border)]/70 animate-pulse mb-3" />
+        <div className="flex flex-wrap gap-1.5 mb-3">
+          {[72, 88, 64, 96].map((w) => (
+            <div key={w} className="h-5 rounded-full bg-[var(--color-border)]/70 animate-pulse" style={{ width: `${w}px` }} />
+          ))}
+        </div>
+        <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3">
+          <div className="grid grid-cols-3 gap-2">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="bg-[var(--color-bg-alt)] rounded-lg p-2 space-y-1.5">
+                <div className="h-4 w-8 mx-auto rounded bg-[var(--color-border)]/80 animate-pulse" />
+                <div className="h-2.5 w-12 mx-auto rounded bg-[var(--color-border)]/60 animate-pulse" />
+              </div>
+            ))}
+          </div>
+          <div className="h-1.5 mt-2 rounded-full bg-[var(--color-border)]/70 animate-pulse" />
+        </div>
+        <div className="flex gap-2">
+          <div className="h-9 flex-1 rounded-xl bg-[var(--color-border)]/80 animate-pulse" />
+          <div className="h-9 w-9 rounded-xl bg-[var(--color-border)]/70 animate-pulse shrink-0" />
+          <div className="h-9 w-9 rounded-xl bg-[var(--color-border)]/70 animate-pulse shrink-0" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TestsPageLoading() {
+  return (
+    <div className="min-h-[calc(100vh-5rem)] flex flex-col items-center justify-center px-4 sm:px-6 lg:px-8 py-10 animate-fade-in">
+      <div className="flex flex-col items-center text-center mb-10">
+        <div className="relative mb-4">
+          <div className="absolute inset-0 rounded-full bg-[var(--color-primary)]/15 blur-xl scale-150" aria-hidden />
+          <Loader2 size={36} className="relative animate-spin text-[var(--color-primary)]" aria-hidden />
+        </div>
+        <h2 className="text-lg font-semibold text-[var(--color-text)] tracking-tight">Loading Your Tests</h2>
+        <p className="text-sm text-[var(--color-text-muted)] mt-1.5 max-w-sm">
+          Fetching your exams and enrollments…
+        </p>
+      </div>
+      <div className="w-full max-w-6xl grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+        {[0, 1, 2, 3, 4, 5].map((i) => (
+          <TestCardSkeleton key={i} gradientClass={CARD_GRADIENTS[i % CARD_GRADIENTS.length]} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main page ─────────────────────────────────────────────────────────────────
 export default function StudyModePage() {
   const { user } = useAuthStore();
@@ -594,31 +656,7 @@ export default function StudyModePage() {
 
   if (!selectedExam) {
     if (examsLoading) {
-      return (
-        <div className="px-4 sm:px-6 lg:px-8 py-8 animate-fade-in">
-          <div className="flex flex-col items-center justify-center gap-3 py-10 mb-6">
-            <Loader2 size={32} className="animate-spin text-[var(--color-primary)]" aria-hidden />
-            <p className="text-sm font-medium text-[var(--color-text)]">Loading tests…</p>
-            <p className="text-xs text-[var(--color-text-muted)]">Fetching your exams and invites</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {[1, 2, 3, 4, 5, 6].map(i => (
-              <div key={i} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl overflow-hidden animate-pulse">
-                <div className="h-1.5 w-full bg-[var(--color-border)]" />
-                <div className="p-4 space-y-3">
-                  <div className="flex justify-between items-start">
-                    <div className="h-10 w-10 rounded-xl bg-[var(--color-border)]" />
-                    <div className="h-5 w-14 rounded-full bg-[var(--color-border)]" />
-                  </div>
-                  <div className="h-4 w-[85%] max-w-[220px] rounded bg-[var(--color-border)]" />
-                  <div className="h-3 w-1/2 rounded bg-[var(--color-border)] max-w-[140px]" />
-                  <div className="h-9 w-full rounded-xl bg-[var(--color-border)] mt-4" />
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      );
+      return <TestsPageLoading />;
     }
 
     return (
@@ -753,13 +791,6 @@ export default function StudyModePage() {
                     {e.subject && (
                       <p className="text-xs text-[var(--color-text-muted)] mb-2 font-medium">{e.subject}</p>
                     )}
-                    {(isOwnerCard && e.createdAt) || (isInvited && e._inviteDate) ? (
-                      <p className="text-[10px] text-[var(--color-text-muted)] mb-2">
-                        {isOwnerCard && e.createdAt
-                          ? <>Created: {fmtDate(e.createdAt)}</>
-                          : <>Enrolled: {fmtDate(e._inviteDate)}</>}
-                      </p>
-                    ) : null}
 
                     {/* Invited-by row */}
                     {isInvited && (
@@ -779,6 +810,21 @@ export default function StudyModePage() {
 
                     {/* Meta chips */}
                     <div className="flex flex-wrap gap-1.5 mb-3">
+                      {isOwnerCard && e.createdAt && (
+                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                          <Calendar size={9} aria-hidden /> Created: {fmtDate(e.createdAt)}
+                        </span>
+                      )}
+                      {isInvited && e._inviteDate && (
+                        <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
+                          <Calendar size={9} aria-hidden /> Enrolled: {fmtDate(e._inviteDate)}
+                        </span>
+                      )}
+                      {isInvited && attempted && stats?.lastAttemptAt && (
+                        <span className="flex items-center gap-1 text-[10px] bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full">
+                          <CheckCircle size={9} aria-hidden /> Attempted: {fmtDate(stats.lastAttemptAt)}
+                        </span>
+                      )}
                       {qCount > 0 && (
                         <span className="flex items-center gap-1 text-[10px] bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">
                           <Hash size={9} /> {qCount} questions
@@ -880,9 +926,6 @@ export default function StudyModePage() {
                           <div className={`h-full rounded-full transition-all duration-700 bg-gradient-to-r ${stats.best >= 75 ? 'from-emerald-400 to-teal-500' : stats.best >= 50 ? 'from-amber-400 to-orange-500' : 'from-red-400 to-rose-500'}`}
                             style={{ width: `${stats.best}%` }} />
                         </div>
-                        <p className="text-[10px] text-[var(--color-text-muted)] mt-1.5">
-                          Last: {fmtDate(stats.lastAttemptAt)}
-                        </p>
                       </div>
                     ) : (
                       <div className="mt-auto border-t border-[var(--color-border)] pt-3 mb-3 flex items-center gap-2">

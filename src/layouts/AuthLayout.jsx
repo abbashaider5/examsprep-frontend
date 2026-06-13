@@ -4,6 +4,7 @@ import { Link, Navigate, Outlet } from 'react-router-dom';
 import { useAuthStore, useThemeStore } from '../store/index.js';
 import LegalFooterLinks from '../components/LegalFooterLinks.jsx';
 import { getDashboardPath } from '../utils/dashboardPath.js';
+import { isLogoutInProgress } from '../utils/authLifecycle.js';
 import likhitaiLogo from '../assets/logos/likhitai-logo.png';
 
 const SLIDES = [
@@ -96,7 +97,9 @@ export default function AuthLayout() {
   const { isAuthenticated, user, needsAccountType } = useAuthStore();
   const { dark, toggle } = useThemeStore();
 
-  if (isAuthenticated && !needsAccountType) return <Navigate to={getDashboardPath(user?.role)} replace />;
+  if (isAuthenticated && !needsAccountType && !isLogoutInProgress()) {
+    return <Navigate to={getDashboardPath(user?.role)} replace />;
+  }
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg)]">

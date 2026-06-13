@@ -11,7 +11,7 @@ import {
   getValidAccessToken,
   setAccessToken,
 } from '../utils/authToken.js';
-import { isLogoutInProgress } from '../utils/logout.js';
+import { isLogoutInProgress } from '../utils/authLifecycle.js';
 import { extractPdfTextFromFile } from '../utils/pdfClientExtract.js';
 
 const api = axios.create({
@@ -77,6 +77,9 @@ function prepareUploadHeaders(headers, data) {
 }
 
 api.interceptors.request.use(async (config) => {
+  if (isLogoutInProgress()) {
+    return Promise.reject(new axios.CanceledError('Logout in progress'));
+  }
   if (config._fixedBaseURL) return config;
 
   if (!config.directUpload) {
@@ -130,6 +133,9 @@ api.interceptors.response.use(
       return Promise.reject(err);
     }
     if (err.response?.status === 401 && err.response?.data?.code === 'TOKEN_EXPIRED' && !original._retry) {
+      if (isLogoutInProgress()) {
+        return Promise.reject(err);
+      }
       if (isRefreshing) {
         return new Promise((resolve, reject) => {
           failedQueue.push({ resolve, reject });
@@ -144,8 +150,10 @@ api.interceptors.response.use(
         return api(original);
       } catch (refreshErr) {
         processQueue(refreshErr);
-        useAuthStore.getState().clearUser();
-        window.location.href = '/login';
+        if (!isLogoutInProgress()) {
+          useAuthStore.getState().clearUser();
+          window.location.replace('/login');
+        }
         return Promise.reject(refreshErr);
       } finally {
         isRefreshing = false;

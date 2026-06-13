@@ -62,6 +62,7 @@ import TermsPage from './pages/TermsPage.jsx';
 import TicketsPage from './pages/TicketsPage.jsx';
 import VerifyCertPage from './pages/VerifyCertPage.jsx';
 import { getDashboardPath } from './utils/dashboardPath.js';
+import { isLogoutInProgress } from './utils/authLifecycle.js';
 import RouteSeo from './components/RouteSeo.jsx';
 
 function DashboardPageRoute() {
@@ -93,7 +94,7 @@ function InstructorDashboardRoute() {
 /** Instructor workspace routes (tests, create exam, etc.) */
 const Guard = ({ children, adminOnly, instructorOnly, instructorPrincipalOrAdmin, principalOnly }) => {
   const { isAuthenticated, user, needsAccountType } = useAuthStore();
-  if (!isAuthenticated) return <Navigate to="/login" replace />;
+  if (isLogoutInProgress() || !isAuthenticated) return <Navigate to="/login" replace />;
   if (needsAccountType) return <Navigate to="/signup" replace />;
   if (adminOnly && user?.role !== 'admin') {
     return <Navigate to={getDashboardPath(user?.role)} replace />;

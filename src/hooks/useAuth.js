@@ -78,9 +78,11 @@ export const useAuth = () => {
   });
 
   const logoutMut = useMutation({
-    mutationFn: () => performLogout({ queryClient: qc }),
+    mutationFn: () => {
+      performLogout({ queryClient: qc });
+      return Promise.resolve();
+    },
     onError: () => {
-      /* performLogout always redirects; onError is a safety net for unexpected throws before redirect. */
       useAuthStore.getState().clearUser();
       qc.clear();
       window.location.replace('/login');
