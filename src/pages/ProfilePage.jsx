@@ -7,6 +7,7 @@ import { useEffect, useState } from 'react';
 import { Bar } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link } from 'react-router-dom';
+import VerifiedName from '../components/VerifiedName.jsx';
 import { profileApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -43,6 +44,8 @@ export default function ProfilePage() {
     city: user?.address?.city || '',
     zipCode: user?.address?.zipCode || '',
   });
+  const [aboutMe, setAboutMe] = useState(user?.aboutMe || '');
+  const [editingAbout, setEditingAbout] = useState(false);
 
   const { data: analyticsData } = useQuery({
     queryKey: ['analytics'],
@@ -122,6 +125,7 @@ export default function ProfilePage() {
 
   useEffect(() => {
     setName(user?.name || '');
+    setAboutMe(user?.aboutMe || '');
     setProfileForm({
       schoolName: user?.schoolName || '',
       country: user?.address?.country || '',
@@ -174,7 +178,12 @@ export default function ProfilePage() {
         </div>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <h2 className="text-lg font-bold text-[var(--color-text)]">{user?.name}</h2>
+            <VerifiedName
+              name={user?.name}
+              verified={!!user?.isInstructorVerified && isInstructor}
+              nameClassName="text-lg font-bold text-[var(--color-text)]"
+              iconSize={18}
+            />
             {!isStudent && (
               <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full capitalize ${planInfo.color}`}>
                 <PlanIcon size={10} className="inline mr-1" />{planName}
@@ -273,6 +282,68 @@ export default function ProfilePage() {
               </div>
             </div>
           </div>
+
+          {isInstructor && (
+            <div className="card">
+              <div className="flex items-center justify-between gap-3 mb-3">
+                <h3 className="font-semibold text-[var(--color-text)] text-sm flex items-center gap-2">
+                  <Edit3 size={15} className="text-[var(--color-primary)]" /> About me
+                </h3>
+                {!editingAbout && (
+                  <button
+                    type="button"
+                    onClick={() => setEditingAbout(true)}
+                    className="text-xs text-[var(--color-primary)] hover:underline"
+                  >
+                    Edit
+                  </button>
+                )}
+              </div>
+              <p className="text-xs text-[var(--color-text-muted)] mb-3">
+                Students may see this when enrolling in your exams (for example via an access key).
+              </p>
+              {editingAbout ? (
+                <div className="space-y-3">
+                  <textarea
+                    className="input w-full text-sm min-h-[110px] resize-y"
+                    value={aboutMe}
+                    onChange={(e) => setAboutMe(e.target.value.slice(0, 1000))}
+                    placeholder="Share a short introduction about yourself, your teaching focus, or experience…"
+                    maxLength={1000}
+                  />
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10px] text-[var(--color-text-muted)] tabular-nums">{aboutMe.length}/1000</span>
+                    <div className="flex gap-2">
+                      <button
+                        type="button"
+                        onClick={() => { setEditingAbout(false); setAboutMe(user?.aboutMe || ''); }}
+                        className="btn-secondary text-xs py-1.5 px-3"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        disabled={updateMut.isPending}
+                        onClick={() => {
+                          updateMut.mutate(
+                            { aboutMe: aboutMe.trim() },
+                            { onSuccess: () => setEditingAbout(false) },
+                          );
+                        }}
+                        className="btn-primary text-xs py-1.5 px-3"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-sm text-[var(--color-text)] whitespace-pre-wrap leading-relaxed">
+                  {user?.aboutMe?.trim() || 'No about me yet. Add a short bio for students.'}
+                </p>
+              )}
+            </div>
+          )}
 
           <div className="card">
             <h3 className="font-semibold text-[var(--color-text)] text-sm mb-4 flex items-center gap-2">

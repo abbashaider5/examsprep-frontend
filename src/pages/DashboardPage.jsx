@@ -13,10 +13,11 @@ import { useState } from 'react';
 import { Line } from 'react-chartjs-2';
 import toast from 'react-hot-toast';
 import { Link, useNavigate } from 'react-router-dom';
-import { enterpriseApi, examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
-import { useAuthStore } from '../store/index.js';
 import AccessKeyEnrollModal from '../components/AccessKeyEnrollModal.jsx';
 import UserPageHeader from '../components/UserPageHeader.jsx';
+import VerifiedName from '../components/VerifiedName.jsx';
+import { enterpriseApi, examApi, instructorApi, profileApi, resultApi } from '../services/api.js';
+import { useAuthStore } from '../store/index.js';
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Tooltip, Filler);
 
@@ -193,7 +194,15 @@ export default function DashboardPage() {
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-[var(--color-text)] truncate">{invite.exam?.title || 'Test Invitation'}</p>
                   <div className="flex flex-wrap items-center gap-2 mt-0.5">
-                    <span className="text-xs text-[var(--color-text-muted)]">From <strong>{invite.invitedBy?.name || 'Instructor'}</strong></span>
+                    <span className="text-xs text-[var(--color-text-muted)] inline-flex items-center gap-1 flex-wrap">
+                      From{' '}
+                      <VerifiedName
+                        name={invite.invitedBy?.name || 'Instructor'}
+                        verified={!!invite.invitedBy?.isInstructorVerified}
+                        nameClassName="font-semibold text-[var(--color-text)]"
+                        iconSize={13}
+                      />
+                    </span>
                     {invite.exam?.subject && (
                       <span className="text-xs bg-[var(--color-bg-alt)] text-[var(--color-text-muted)] px-2 py-0.5 rounded-full">{invite.exam.subject}</span>
                     )}

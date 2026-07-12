@@ -13,6 +13,7 @@ import {
 } from 'chart.js';
 import {
   BarChart2,
+  BadgeCheck,
   Bell,
   BookOpen,
   CheckCircle,
@@ -48,6 +49,7 @@ import { useSearchParams } from 'react-router-dom';
 import HelpTopicsTab from '../components/admin/HelpTopicsTab.jsx';
 import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import Modal from '../components/Modal.jsx';
+import VerifiedName from '../components/VerifiedName.jsx';
 import { ADMIN_PANEL_TABS } from '../config/adminPanelTabs.js';
 import { adminApi, announcementApi, contactApi, enterpriseApi, feedbackApi, groupApi, logsApi, resourceApi, settingsApi } from '../services/api.js';
 import { BOARDS, CLASS_LEVELS } from '../constants/curriculum.js';
@@ -326,6 +328,11 @@ function UsersTab() {
     onSuccess: (res) => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); toast.success(res.data.message); },
     onError: (e) => toast.error(e.response?.data?.message || 'Failed'),
   });
+  const verifyMut = useMutation({
+    mutationFn: ({ id, verified }) => adminApi.toggleVerify(id, verified),
+    onSuccess: (res) => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); toast.success(res.data.message); },
+    onError: (e) => toast.error(e.response?.data?.message || 'Failed to update verification'),
+  });
   const deleteMut = useMutation({
     mutationFn: (id) => adminApi.deleteUser(id),
     onSuccess: () => { qc.invalidateQueries({ queryKey: ['adminUsers'] }); toast.success('User deleted'); },
@@ -408,7 +415,12 @@ function UsersTab() {
                       <div className="flex items-center gap-2">
                         <div className="w-7 h-7 rounded-full bg-[var(--color-primary)] text-white flex items-center justify-center text-xs font-bold shrink-0">{u.name?.[0]?.toUpperCase()}</div>
                         <div>
-                          <p className="font-medium text-[var(--color-text)]">{u.name}</p>
+                          <VerifiedName
+                            name={u.name}
+                            verified={!!u.isInstructorVerified && (u.role === 'instructor' || u.role === 'admin')}
+                            nameClassName="font-medium text-[var(--color-text)]"
+                            iconSize={14}
+                          />
                           <p className="text-xs text-[var(--color-text-muted)]">{u.email}</p>
                         </div>
                       </div>
@@ -452,6 +464,22 @@ function UsersTab() {
                       <div className="flex items-center gap-1">
                         {u.role !== 'admin' && (
                           <>
+                            {(u.role === 'instructor') && (
+                              <button
+                                type="button"
+                                onClick={() => verifyMut.mutate({ id: u._id, verified: !u.isInstructorVerified })}
+                                disabled={verifyMut.isPending}
+                                className={`text-xs px-2 py-1 rounded border transition-colors inline-flex items-center gap-1 ${
+                                  u.isInstructorVerified
+                                    ? 'border-emerald-400 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                                    : 'border-slate-300 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-800'
+                                }`}
+                                title={u.isInstructorVerified ? 'Remove verification' : 'Verify instructor'}
+                              >
+                                <BadgeCheck size={12} className={u.isInstructorVerified ? 'fill-emerald-500 text-white' : ''} />
+                                {u.isInstructorVerified ? 'Verified' : 'Verify'}
+                              </button>
+                            )}
                             <button
                               type="button"
                               onClick={() => {

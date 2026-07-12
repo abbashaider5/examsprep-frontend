@@ -3,6 +3,7 @@ import { BookOpen, Clock, Hash, Loader2, User, X } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { instructorApi } from '../services/api.js';
 import Modal from './Modal.jsx';
+import VerifiedName from './VerifiedName.jsx';
 
 function fmtCardDate(d) {
   if (!d) return null;
@@ -21,6 +22,9 @@ export default function AccessKeyEnrollModal({ preview, onClose, onEnrolled }) {
   });
 
   const exam = preview?.exam;
+  const instructorName = preview?.instructor?.name || preview?.instructorName || 'Instructor';
+  const instructorVerified = !!(preview?.instructor?.isVerified ?? preview?.instructorVerified);
+  const instructorAboutMe = (preview?.instructor?.aboutMe || preview?.instructorAboutMe || '').trim();
 
   return (
     <Modal onClose={onClose}>
@@ -57,9 +61,22 @@ export default function AccessKeyEnrollModal({ preview, onClose, onEnrolled }) {
           </div>
 
           <dl className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 gap-y-2 text-xs">
-            <div>
+            <div className="sm:col-span-2">
               <dt className="text-[var(--color-text-muted)] flex items-center gap-1"><User size={11} /> Instructor</dt>
-              <dd className="font-medium text-[var(--color-text)] mt-0.5">{preview?.instructorName || 'Instructor'}</dd>
+              <dd className="mt-0.5">
+                <VerifiedName
+                  name={instructorName}
+                  verified={instructorVerified}
+                  nameClassName="font-medium text-[var(--color-text)]"
+                  iconSize={15}
+                  showLabel={instructorVerified}
+                />
+                {instructorAboutMe && (
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-1.5 leading-relaxed whitespace-pre-wrap">
+                    {instructorAboutMe}
+                  </p>
+                )}
+              </dd>
             </div>
             <div>
               <dt className="text-[var(--color-text-muted)] flex items-center gap-1"><Hash size={11} /> Total questions</dt>

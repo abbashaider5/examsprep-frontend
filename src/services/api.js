@@ -258,6 +258,7 @@ export const adminApi = {
   createUser: (data) => api.post('/admin/users', data),
   updateRole: (id, role) => api.patch(`/admin/users/${id}/role`, { role }),
   toggleBlock: (id) => api.patch(`/admin/users/${id}/block`),
+  toggleVerify: (id, verified) => api.patch(`/admin/users/${id}/verify`, { verified }),
   deleteUser: (id) => api.delete(`/admin/users/${id}`),
   updatePlan: (id, payload) => api.patch(`/admin/users/${id}/plan`, payload),
   transactions: (page = 1) => api.get(`/admin/transactions?page=${page}`),

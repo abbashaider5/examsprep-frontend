@@ -18,6 +18,7 @@ import ConfirmDialog from '../components/ConfirmDialog.jsx';
 import EditExamModal from '../components/EditExamModal.jsx';
 import ExamAccessKeyModal from '../components/ExamAccessKeyModal.jsx';
 import Modal from '../components/Modal.jsx';
+import VerifiedName from '../components/VerifiedName.jsx';
 import { enterpriseApi, examApi, groupApi, instructorApi, resultApi } from '../services/api.js';
 import { useAuthStore } from '../store/index.js';
 
@@ -619,6 +620,7 @@ export default function StudyModePage() {
       _inviteId: inv._id,
       _inviteToken: inv.token,
       _invitedBy: inv.invitedBy?.name,
+      _invitedByVerified: !!inv.invitedBy?.isInstructorVerified,
       _groupName: inv.group?.name || (inv.group ? groupMap[inv.group._id || inv.group] : null) || null,
       _isInvited: true,
       _inviteDate: inv.createdAt,
@@ -836,8 +838,14 @@ export default function StudyModePage() {
                           </span>
                         ) : null}
                         {e._invitedBy && (
-                          <span className="text-xs text-[var(--color-text-muted)]">
-                            {e._groupName ? 'via' : 'From'} <span className="font-semibold text-[var(--color-text)]">{e._invitedBy}</span>
+                          <span className="text-xs text-[var(--color-text-muted)] inline-flex items-center gap-1 flex-wrap">
+                            {e._groupName ? 'via' : 'From'}{' '}
+                            <VerifiedName
+                              name={e._invitedBy}
+                              verified={!!e._invitedByVerified}
+                              nameClassName="font-semibold text-[var(--color-text)]"
+                              iconSize={13}
+                            />
                           </span>
                         )}
                       </div>
