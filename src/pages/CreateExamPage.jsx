@@ -317,22 +317,14 @@ function getResourceProcessingLabel(r) {
   return 'Pending';
 }
 
-const PROD_RESOURCE_MAX_BYTES = Math.floor(4.5 * 1024 * 1024);
-
-function isProductionUploadHost() {
-  if (typeof window === 'undefined') return false;
-  const host = window.location.hostname;
-  return /^(www\.)?likhitai\.com$/i.test(host) || /\.vercel\.app$/i.test(host);
-}
+const RESOURCE_UPLOAD_MAX_BYTES = 20 * 1024 * 1024;
 
 function uploadErrorFriendly(err) {
   const status = err?.response?.status;
   const msg = err?.response?.data?.message;
   const code = err?.response?.data?.code;
   if (status === 413 || code === 'FILE_TOO_LARGE') {
-    return isProductionUploadHost()
-      ? 'File is too large for production (max 4.5 MB). Try a smaller PDF or Word (.docx).'
-      : 'File is too large for upload.';
+    return 'File is too large (max 20 MB). Try a smaller PDF or Word (.docx).';
   }
   if (status === 503 || code === 'DB_UNAVAILABLE') {
     return 'Database is temporarily unavailable. Please wait a few seconds and try again.';
@@ -378,7 +370,7 @@ function uploadErrorSubtitle(err) {
     return 'The database could not be reached. Your file was not saved.';
   }
   if (status === 413 || code === 'FILE_TOO_LARGE') {
-    return 'Production uploads are limited to 4.5 MB per file.';
+    return 'Uploads are limited to 20 MB per file.';
   }
   if (status === 401 || code === 'TOKEN_EXPIRED') {
     return 'You need to be logged in for uploads to reach the server.';
@@ -905,8 +897,8 @@ export default function CreateExamPage() {
       return;
     }
     const ext = fileExtension(file);
-    if (isProductionUploadHost() && file.size > PROD_RESOURCE_MAX_BYTES) {
-      toast.error('File is too large for production (max 4.5 MB). Try Word (.docx) or a smaller PDF.');
+    if (file.size > RESOURCE_UPLOAD_MAX_BYTES) {
+      toast.error('File is too large (max 20 MB). Try Word (.docx) or a smaller PDF.');
       return;
     }
     setUploadInFlight(true);
