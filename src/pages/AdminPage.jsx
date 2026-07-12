@@ -2469,9 +2469,14 @@ function ResourcesTab() {
               className="block w-full text-sm text-[var(--color-text-muted)] file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-[var(--color-primary)] file:text-white hover:file:opacity-90 cursor-pointer"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
-            <p className="mt-2 text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-              Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT · Max size 20 MB
-            </p>
+            <div className="mt-2 space-y-0.5">
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT
+              </p>
+              <p className="text-[11px] text-[var(--color-text-muted)]">
+                Max size: 20 MB
+              </p>
+            </div>
           </div>
           <button
             type="submit"

@@ -1937,9 +1937,14 @@ export default function CreateExamPage() {
                           </button>
                         </div>
 
-                        <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
-                          Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT · Max size 20 MB
-                        </p>
+                        <div className="space-y-0.5">
+                          <p className="text-[11px] text-[var(--color-text-muted)]">
+                            Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT
+                          </p>
+                          <p className="text-[11px] text-[var(--color-text-muted)]">
+                            Max size: 20 MB
+                          </p>
+                        </div>
 
                         {pickedUploadFile && (
                           <div className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs">
