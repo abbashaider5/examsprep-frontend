@@ -1937,22 +1937,9 @@ export default function CreateExamPage() {
                           </button>
                         </div>
 
-                        <div className="rounded-md border border-[var(--color-border)]/80 bg-[var(--color-surface)]/70 px-2.5 py-2">
-                          <p className="text-[10px] font-medium text-[var(--color-text-muted)] mb-1.5">Upload guidelines</p>
-                          <div className="flex flex-wrap items-center gap-1.5">
-                            {['PDF', 'DOCX', 'DOC', 'PPTX', 'PPT', 'TXT'].map((type) => (
-                              <span
-                                key={type}
-                                className="inline-flex items-center px-1.5 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-bg-alt)] text-[10px] font-semibold tracking-wide text-[var(--color-text)]"
-                              >
-                                {type}
-                              </span>
-                            ))}
-                          </div>
-                          <p className="mt-1.5 text-[10px] text-[var(--color-text-muted)]">
-                            Maximum file size: <span className="font-semibold text-[var(--color-text)]">20 MB</span>
-                          </p>
-                        </div>
+                        <p className="text-[11px] text-[var(--color-text-muted)] leading-relaxed">
+                          Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT · Max size 20 MB
+                        </p>
 
                         {pickedUploadFile && (
                           <div className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs">
