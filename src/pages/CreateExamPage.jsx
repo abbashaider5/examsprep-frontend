@@ -1930,6 +1930,20 @@ export default function CreateExamPage() {
                           </button>
                         </div>
 
+                        <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] text-[var(--color-text-muted)]">
+                          <span className="shrink-0">Supported:</span>
+                          {['PDF', 'DOCX', 'DOC', 'PPTX', 'PPT', 'TXT'].map((type) => (
+                            <span
+                              key={type}
+                              className="inline-flex items-center px-1.5 py-0.5 rounded border border-[var(--color-border)] bg-[var(--color-surface)] font-medium tabular-nums tracking-wide text-[var(--color-text)]/80"
+                            >
+                              {type}
+                            </span>
+                          ))}
+                          <span className="text-[var(--color-border)] hidden sm:inline" aria-hidden>·</span>
+                          <span className="shrink-0">Max size <span className="font-medium text-[var(--color-text)]/80">20 MB</span></span>
+                        </div>
+
                         {pickedUploadFile && (
                           <div className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs">
                             <FileKindIcon ext={fileExtension(pickedUploadFile)} className="w-3.5 h-3.5 shrink-0 text-[var(--color-text-muted)]" />
