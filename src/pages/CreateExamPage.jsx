@@ -1286,7 +1286,7 @@ export default function CreateExamPage() {
   const SOURCES = [
     { value: 'ai',          icon: Globe,       label: 'Web',                   desc: 'Generate from AI knowledge' },
     { value: 'examprep',    icon: BookOpen,    label: 'LikhitAI Resources', desc: 'Admin-curated materials' },
-    { value: 'myresources', icon: FolderOpen,  label: 'My Resources',          desc: 'Your uploaded files' },
+    { value: 'myresources', icon: FolderOpen,  label: 'My Resources',          desc: 'PDF, DOCX, PPTX, TXT · max 20 MB' },
   ];
   const availableSources = isInstituteWorkflow
     ? SOURCES.filter((s) => s.value === 'ai' || s.value === 'myresources')
@@ -1856,7 +1856,11 @@ export default function CreateExamPage() {
                       <button
                         key={s.value}
                         type="button"
-                        onClick={() => { setSource(s.value); setSelectedResourceId(''); }}
+                        onClick={() => {
+                          setSource(s.value);
+                          setSelectedResourceId('');
+                          if (s.value === 'myresources') setMyLibraryExpanded(true);
+                        }}
                         className={`flex flex-col items-center gap-1.5 p-3 rounded-xl border-2 text-center transition-all ${active ? 'border-[var(--color-primary)] bg-[var(--color-primary)]/5' : 'border-[var(--color-border)] hover:border-[var(--color-primary)]/40'}`}
                       >
                         <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${active ? 'bg-[var(--color-primary)] text-white' : 'bg-[var(--color-bg-alt)] text-[var(--color-primary)]'}`}>
@@ -1937,14 +1941,12 @@ export default function CreateExamPage() {
                           </button>
                         </div>
 
-                        <div className="space-y-0.5">
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT
-                          </p>
-                          <p className="text-[11px] text-[var(--color-text-muted)]">
-                            Max size: 20 MB
-                          </p>
-                        </div>
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          Supported formats: PDF, DOCX, DOC, PPTX, PPT, TXT
+                        </p>
+                        <p className="text-xs text-[var(--color-text-muted)]">
+                          Max size: 20 MB
+                        </p>
 
                         {pickedUploadFile && (
                           <div className="inline-flex items-center gap-1.5 max-w-full pl-2 pr-1 py-1 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] text-xs">
