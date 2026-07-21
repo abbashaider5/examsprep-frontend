@@ -12,7 +12,7 @@ import {
   Plus, RefreshCw,
   Settings,
   Sun,
-  Trophy, User, Users, X, Zap,
+  User, Users, X, Zap,
 } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
@@ -115,7 +115,6 @@ const STUDENT_NAV = [
   { to: '/tests', icon: GraduationCap, label: 'My tests' },
   { to: '/performance', icon: BarChart2, label: 'Performance' },
   { to: '/certificates', icon: Award, label: 'Certificates' },
-  { to: '/leaderboard', icon: Trophy, label: 'Leaderboard' },
   { to: '/batches', icon: Users, label: 'Batches' },
   { to: '/profile', icon: User, label: 'Profile' },
   { to: '/settings', icon: Settings, label: 'Settings' },

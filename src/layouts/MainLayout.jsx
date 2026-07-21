@@ -18,7 +18,6 @@ export default function MainLayout() {
   const navLinks = [
     { to: '/', label: 'Home' },
     { to: '/pricing', label: 'Pricing' },
-    { to: '/leaderboard', label: 'Leaderboard' },
     { to: '/about', label: 'About' },
   ];
 
@@ -143,7 +142,7 @@ export default function MainLayout() {
             <div>
               <p className="font-semibold text-[var(--color-text)] text-sm mb-3">Product</p>
               <div className="space-y-2">
-                {[{ to: '/pricing', label: 'Pricing' }, { to: '/leaderboard', label: 'Leaderboard' }, { to: '/about', label: 'About' }].map(l => (
+                {[{ to: '/pricing', label: 'Pricing' }, { to: '/about', label: 'About' }].map(l => (
                   <Link key={l.to} to={l.to} className="block text-xs text-[var(--color-text-muted)] hover:text-[var(--color-primary)] transition-colors">{l.label}</Link>
                 ))}
               </div>
