@@ -281,110 +281,136 @@ export default function HomePage() {
   return (
     <div className="bg-[var(--color-bg)]">
 
-      {/* ── Hero: Instructor-First ── */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[900px] h-[600px] bg-gradient-radial from-teal-100/50 via-cyan-50/25 to-transparent dark:from-teal-900/15 dark:via-cyan-900/8 dark:to-transparent rounded-full blur-3xl" />
-          <div className="absolute top-20 left-0 w-72 h-72 bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-3xl" />
-          <div className="absolute top-40 right-0 w-80 h-80 bg-teal-100/30 dark:bg-teal-900/10 rounded-full blur-3xl" />
+      {/* ── Hero ── */}
+      <section className="relative min-h-[min(92vh,880px)] flex items-center overflow-hidden border-b border-[var(--color-border)]">
+        {/* Full-bleed atmosphere */}
+        <div className="absolute inset-0 pointer-events-none" aria-hidden>
+          <div className="absolute inset-0 bg-[var(--color-bg)]" />
+          <div
+            className="absolute inset-0 opacity-[0.45] dark:opacity-[0.2]"
+            style={{
+              backgroundImage:
+                'linear-gradient(to right, rgba(13,148,136,0.07) 1px, transparent 1px), linear-gradient(to bottom, rgba(13,148,136,0.07) 1px, transparent 1px)',
+              backgroundSize: '64px 64px',
+              maskImage: 'radial-gradient(ellipse 80% 70% at 50% 40%, black 20%, transparent 75%)',
+              WebkitMaskImage: 'radial-gradient(ellipse 80% 70% at 50% 40%, black 20%, transparent 75%)',
+            }}
+          />
+          <div className="absolute -top-24 left-1/2 -translate-x-1/2 w-[1100px] h-[520px] rounded-full bg-gradient-to-b from-teal-400/25 via-cyan-300/10 to-transparent blur-3xl animate-orb-drift" />
+          <div className="absolute bottom-0 right-0 w-[480px] h-[480px] rounded-full bg-sky-400/10 dark:bg-sky-500/10 blur-3xl" />
+          <div className="absolute top-1/3 -left-24 w-[360px] h-[360px] rounded-full bg-teal-500/10 blur-3xl" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
-          <div className="text-center max-w-4xl mx-auto mb-10 lg:mb-12">
-            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm ring-1 ring-teal-500/10">
-              <Sparkles size={12} /> The AI Platform for Modern Assessments
-            </div>
-            <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold text-[var(--color-text)] mb-5 leading-[1.12] tracking-tight">
-              Create, Enroll & Analyze Tests<br />
-              <span className="bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 bg-clip-text text-transparent">Powered End-to-End by AI</span>
-            </h1>
-            <p className="text-lg text-[var(--color-text-muted)] max-w-2xl mx-auto leading-relaxed">
-              Generate exams from a topic or your own documents, let students self-enroll instantly with a single access key, and track every result with AI-driven analytics — all secured with enterprise-grade 2FA.
-            </p>
-            <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
-              <Link
-                to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'}
-                className="btn-primary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl shadow-lg shadow-teal-500/20 text-base"
-              >
-                <Sparkles size={18} /> Create Your First Test
-              </Link>
-              <Link
-                to={isAuthenticated ? '/instructor-dashboard' : '/signup?role=instructor'}
-                className="btn-secondary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
-              >
-                <LayoutDashboard size={18} /> View Dashboard
-              </Link>
-            </div>
-            <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[var(--color-text-muted)] mt-7">
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Exam in 10 seconds</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Instant access-key enrollment</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> AI proctoring built-in</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verified instructor badges</span>
-              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> 2FA account security</span>
-            </div>
-          </div>
 
-          {/* Feature cards — no product screenshots */}
-          <div className="relative max-w-4xl mx-auto">
-            <div className="absolute -inset-4 sm:-inset-8 bg-gradient-to-b from-teal-400/15 via-cyan-400/10 to-transparent dark:from-teal-500/10 blur-2xl rounded-[2rem] pointer-events-none" />
-
-            <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
-              {[
-                {
-                  icon: KeyRound,
-                  iconBg: 'bg-violet-100 dark:bg-violet-900/40',
-                  iconColor: 'text-violet-600 dark:text-violet-400',
-                  label: 'Access Key',
-                  value: 'PHYS-7X9K',
-                  hint: 'Students self-enroll instantly',
-                  float: 'animate-float',
-                },
-                {
-                  icon: ShieldCheck,
-                  iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
-                  iconColor: 'text-emerald-600 dark:text-emerald-400',
-                  label: 'Proctoring',
-                  value: 'Active · 0 alerts',
-                  hint: 'Integrity built into every exam',
-                  float: 'animate-float-delayed',
-                },
-                {
-                  icon: Sparkles,
-                  iconBg: 'bg-blue-100 dark:bg-blue-900/40',
-                  iconColor: 'text-blue-600 dark:text-blue-400',
-                  label: 'AI Generator',
-                  value: '40 Qs ready in 8s',
-                  hint: 'From topics or your own files',
-                  float: 'animate-float-slow',
-                },
-                {
-                  icon: TrendingUp,
-                  iconBg: 'bg-amber-100 dark:bg-amber-900/40',
-                  iconColor: 'text-amber-600 dark:text-amber-400',
-                  label: 'Avg Score',
-                  value: '82% · +12% this week',
-                  hint: 'AI insights after every attempt',
-                  float: 'animate-float',
-                },
-              ].map((card) => (
-                <div
-                  key={card.label}
-                  className={`flex items-start gap-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-lg shadow-black/5 rounded-2xl px-4 py-4 ${card.float}`}
+        <div className="relative w-full max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
+            {/* Copy */}
+            <div className="lg:col-span-6 xl:col-span-5">
+              <p className="font-display text-sm sm:text-base font-bold tracking-[0.08em] uppercase text-teal-600 dark:text-teal-400 mb-5 animate-hero-in">
+                LikhitAI
+              </p>
+              <h1 className="font-display text-[2.35rem] sm:text-5xl lg:text-[3.25rem] font-extrabold text-[var(--color-text)] leading-[1.08] tracking-tight mb-5 animate-hero-in-delay">
+                AI exams your classroom can trust.
+              </h1>
+              <p className="text-base sm:text-lg text-[var(--color-text-muted)] leading-relaxed max-w-xl mb-8 animate-hero-in-delay">
+                Generate assessments from a topic or your documents, enroll students with one access key, and grade with AI — on Likhitai.com.
+              </p>
+              <div className="flex flex-col sm:flex-row gap-3 animate-hero-in-delay-2">
+                <Link
+                  to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'}
+                  className="btn-primary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
                 >
-                  <div className={`w-11 h-11 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0`}>
-                    <card.icon size={18} className={card.iconColor} />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">{card.label}</p>
-                    <p className="text-sm font-bold text-[var(--color-text)] mt-0.5">{card.value}</p>
-                    <p className="text-xs text-[var(--color-text-muted)] mt-1">{card.hint}</p>
-                  </div>
-                </div>
-              ))}
+                  Start creating tests
+                  <ArrowRight size={16} />
+                </Link>
+                <Link
+                  to={isAuthenticated ? '/instructor-dashboard' : '/login'}
+                  className="btn-secondary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
+                >
+                  {isAuthenticated ? 'Open dashboard' : 'Sign in'}
+                </Link>
+              </div>
+              <p className="mt-8 text-sm text-[var(--color-text-muted)] animate-hero-in-delay-2">
+                Access keys · AI proctoring · Verified instructors · 2FA
+              </p>
             </div>
 
-            <p className="text-center text-xs text-[var(--color-text-muted)] mt-6">
-              Built for instructors at <span className="font-semibold text-[var(--color-text)]">Likhitai.com</span>
-            </p>
+            {/* Abstract product composition — no screenshots, no cards */}
+            <div className="lg:col-span-6 xl:col-span-7 relative animate-hero-in-delay-2">
+              <div className="relative mx-auto max-w-lg lg:max-w-none aspect-square max-h-[420px] lg:max-h-[480px]">
+                <svg
+                  viewBox="0 0 520 520"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="w-full h-full"
+                  aria-hidden
+                >
+                  <defs>
+                    <linearGradient id="heroRing" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#0d9488" stopOpacity="0.55" />
+                      <stop offset="100%" stopColor="#0284c7" stopOpacity="0.25" />
+                    </linearGradient>
+                    <linearGradient id="heroCore" x1="0" y1="0" x2="1" y2="1">
+                      <stop offset="0%" stopColor="#14b8a6" />
+                      <stop offset="100%" stopColor="#0369a1" />
+                    </linearGradient>
+                  </defs>
+
+                  {/* Soft disc */}
+                  <circle cx="260" cy="260" r="210" className="fill-teal-500/[0.06] dark:fill-teal-400/[0.08]" />
+                  <circle cx="260" cy="260" r="168" stroke="url(#heroRing)" strokeWidth="1.5" strokeDasharray="6 10" className="opacity-80" />
+                  <circle cx="260" cy="260" r="124" stroke="url(#heroRing)" strokeWidth="1.25" className="opacity-60" />
+                  <circle cx="260" cy="260" r="78" stroke="url(#heroRing)" strokeWidth="1" className="opacity-40" />
+
+                  {/* Orbit nodes */}
+                  <g className="animate-float-slow">
+                    <circle cx="260" cy="92" r="10" fill="#0d9488" />
+                    <circle cx="260" cy="92" r="18" className="fill-teal-500/20" />
+                  </g>
+                  <g className="animate-float">
+                    <circle cx="428" cy="260" r="9" fill="#0284c7" />
+                    <circle cx="428" cy="260" r="16" className="fill-sky-500/20" />
+                  </g>
+                  <g className="animate-float-delayed">
+                    <circle cx="260" cy="428" r="9" fill="#0f766e" />
+                    <circle cx="260" cy="428" r="16" className="fill-teal-600/20" />
+                  </g>
+                  <g className="animate-float">
+                    <circle cx="92" cy="260" r="9" fill="#0369a1" />
+                    <circle cx="92" cy="260" r="16" className="fill-sky-600/20" />
+                  </g>
+
+                  {/* Connecting arcs */}
+                  <path d="M260 110 C340 130 390 180 410 260" stroke="#0d9488" strokeOpacity="0.35" strokeWidth="1.5" />
+                  <path d="M410 260 C390 340 340 390 260 410" stroke="#0284c7" strokeOpacity="0.3" strokeWidth="1.5" />
+                  <path d="M260 410 C180 390 130 340 110 260" stroke="#0d9488" strokeOpacity="0.28" strokeWidth="1.5" />
+                  <path d="M110 260 C130 180 180 130 260 110" stroke="#0369a1" strokeOpacity="0.28" strokeWidth="1.5" />
+
+                  {/* Center mark */}
+                  <circle cx="260" cy="260" r="46" fill="url(#heroCore)" />
+                  <circle cx="260" cy="260" r="46" className="stroke-white/30" strokeWidth="1" />
+                  {/* Minimal spark glyph */}
+                  <path
+                    d="M260 236 L266 252 L282 258 L266 264 L260 280 L254 264 L238 258 L254 252 Z"
+                    fill="white"
+                    fillOpacity="0.95"
+                  />
+                </svg>
+
+                {/* Labels as plain text anchors — not cards */}
+                <div className="absolute left-[6%] top-[18%] text-left">
+                  <p className="font-display text-xs font-semibold text-teal-700 dark:text-teal-300 tracking-wide">Generate</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">AI from topic or files</p>
+                </div>
+                <div className="absolute right-[4%] top-[46%] text-right">
+                  <p className="font-display text-xs font-semibold text-sky-700 dark:text-sky-300 tracking-wide">Enroll</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">One access key</p>
+                </div>
+                <div className="absolute left-[8%] bottom-[16%] text-left">
+                  <p className="font-display text-xs font-semibold text-teal-800 dark:text-teal-200 tracking-wide">Analyze</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Scores & insights</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>

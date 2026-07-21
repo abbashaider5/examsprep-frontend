@@ -20,15 +20,28 @@ export default {
       },
       fontFamily: {
         sans: ['Inter', 'system-ui', 'sans-serif'],
+        display: ['"Plus Jakarta Sans"', 'Inter', 'system-ui', 'sans-serif'],
       },
       animation: {
         'fade-in': 'fadeIn 0.3s ease-in-out',
         'slide-up': 'slideUp 0.3s ease-out',
         'pulse-slow': 'pulse 3s infinite',
+        'hero-in': 'heroIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) both',
+        'hero-in-delay': 'heroIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.12s both',
+        'hero-in-delay-2': 'heroIn 0.8s cubic-bezier(0.22, 1, 0.36, 1) 0.24s both',
+        'orb-drift': 'orbDrift 14s ease-in-out infinite',
       },
       keyframes: {
         fadeIn: { from: { opacity: '0' }, to: { opacity: '1' } },
         slideUp: { from: { transform: 'translateY(16px)', opacity: '0' }, to: { transform: 'translateY(0)', opacity: '1' } },
+        heroIn: {
+          from: { opacity: '0', transform: 'translateY(18px)' },
+          to: { opacity: '1', transform: 'translateY(0)' },
+        },
+        orbDrift: {
+          '0%, 100%': { transform: 'translate(0, 0) scale(1)' },
+          '50%': { transform: 'translate(12px, -18px) scale(1.05)' },
+        },
       },
     },
   },
