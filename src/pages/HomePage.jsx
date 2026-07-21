@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
+import Reveal from '../components/Reveal.jsx';
 import { useAuthStore } from '../store/index.js';
 
 // Screenshot imports — Vite hashes these filenames for automatic cache-busting
@@ -195,15 +196,15 @@ function ScreenshotShowcase() {
     <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
       <div className="absolute inset-0 pointer-events-none bg-gradient-to-b from-[var(--color-bg)] via-indigo-50/30 to-[var(--color-bg)] dark:via-indigo-900/8" />
       <div className="relative max-w-7xl mx-auto">
-        <div className="text-center mb-10">
+        <Reveal className="text-center mb-10">
           <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
             <Monitor size={13} /> Platform Preview
           </div>
           <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">See your dashboard in action</h2>
           <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A clean, modern interface built for real instructor workflows — from test creation to deep analytics.</p>
-        </div>
+        </Reveal>
 
-        <div className="flex flex-wrap justify-center gap-2 mb-8">
+        <Reveal delay={80} className="flex flex-wrap justify-center gap-2 mb-8">
           {DEMO_SCREENSHOTS.map((s, i) => (
             <button
               key={i}
@@ -217,11 +218,11 @@ function ScreenshotShowcase() {
               {s.tag}
             </button>
           ))}
-        </div>
+        </Reveal>
 
         <div className={`transition-opacity duration-200 ${fading ? 'opacity-0' : 'opacity-100'}`}>
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_2fr] gap-8 items-center">
-            <div className="order-2 lg:order-1">
+            <Reveal variant="left" delay={100} className="order-2 lg:order-1">
               <div className={`inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full mb-4 bg-${ss.accentColor}-100 dark:bg-${ss.accentColor}-900/30 text-${ss.accentColor}-600 dark:text-${ss.accentColor}-400`}>
                 {ss.tag}
               </div>
@@ -244,9 +245,9 @@ function ScreenshotShowcase() {
                   />
                 ))}
               </div>
-            </div>
+            </Reveal>
 
-            <div className="order-1 lg:order-2">
+            <Reveal variant="right" delay={160} className="order-1 lg:order-2">
               <div className="rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-2xl shadow-black/10">
                 <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[var(--color-bg-alt)] border-b border-[var(--color-border)]">
                   <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
@@ -266,7 +267,7 @@ function ScreenshotShowcase() {
                   style={{ maxHeight: '420px' }}
                 />
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </div>
@@ -359,7 +360,9 @@ export default function HomePage() {
 
                   {/* Soft disc */}
                   <circle cx="260" cy="260" r="210" className="fill-teal-500/[0.06] dark:fill-teal-400/[0.08]" />
-                  <circle cx="260" cy="260" r="168" stroke="url(#heroRing)" strokeWidth="1.5" strokeDasharray="6 10" className="opacity-80" />
+                  <g className="animate-spin-slow">
+                    <circle cx="260" cy="260" r="168" stroke="url(#heroRing)" strokeWidth="1.5" strokeDasharray="6 10" className="animate-dash-pulse opacity-80" />
+                  </g>
                   <circle cx="260" cy="260" r="124" stroke="url(#heroRing)" strokeWidth="1.25" className="opacity-60" />
                   <circle cx="260" cy="260" r="78" stroke="url(#heroRing)" strokeWidth="1" className="opacity-40" />
 
@@ -399,15 +402,15 @@ export default function HomePage() {
                 </svg>
 
                 {/* Labels as plain text anchors — not cards */}
-                <div className="absolute left-[6%] top-[18%] text-left">
+                <div className="absolute left-[6%] top-[18%] text-left animate-hero-in-delay">
                   <p className="font-display text-xs font-semibold text-teal-700 dark:text-teal-300 tracking-wide">Create</p>
                   <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">AI builds the test</p>
                 </div>
-                <div className="absolute right-[4%] top-[46%] text-right">
+                <div className="absolute right-[4%] top-[46%] text-right animate-hero-in-delay-2">
                   <p className="font-display text-xs font-semibold text-sky-700 dark:text-sky-300 tracking-wide">Share</p>
                   <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">One access key</p>
                 </div>
-                <div className="absolute left-[8%] bottom-[16%] text-left">
+                <div className="absolute left-[8%] bottom-[16%] text-left animate-hero-in-delay-2" style={{ animationDelay: '0.36s' }}>
                   <p className="font-display text-xs font-semibold text-teal-800 dark:text-teal-200 tracking-wide">Evaluate</p>
                   <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Results in minutes</p>
                 </div>
@@ -421,8 +424,8 @@ export default function HomePage() {
       <section className="border-y border-[var(--color-border)] bg-[var(--color-surface)]">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-            {STATS.map((s) => (
-              <div key={s.label} className="flex items-center gap-3">
+            {STATS.map((s, i) => (
+              <Reveal key={s.label} delay={i * 80} className="flex items-center gap-3">
                 <div className="w-10 h-10 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center shrink-0">
                   <s.icon size={18} className="text-[var(--color-primary)]" />
                 </div>
@@ -430,7 +433,7 @@ export default function HomePage() {
                   <div className="text-xl font-bold text-[var(--color-text)]">{s.value}</div>
                   <div className="text-xs text-[var(--color-text-muted)]">{s.label}</div>
                 </div>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -492,22 +495,24 @@ export default function HomePage() {
           <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[400px] bg-gradient-radial from-blue-50/40 via-indigo-50/20 to-transparent dark:from-blue-900/8 dark:to-transparent rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-7xl mx-auto">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-blue-100 dark:bg-blue-900/30 text-[var(--color-primary)] text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
               <Sparkles size={13} /> Platform Features
             </div>
             <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Everything you need to manage your students</h2>
             <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">A complete assessment platform built for instructors, trainers, and organizations who want results.</p>
-          </div>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {FEATURES.map((f) => (
-              <div key={f.title} className="card hover:shadow-md transition-all hover:-translate-y-0.5 group">
-                <div className={`w-11 h-11 rounded-xl ${f.color} flex items-center justify-center mb-4`}>
-                  <f.icon size={20} />
+            {FEATURES.map((f, i) => (
+              <Reveal key={f.title} delay={Math.min(i * 55, 440)} variant="scale">
+                <div className="card hover:shadow-md transition-all hover:-translate-y-0.5 group h-full">
+                  <div className={`w-11 h-11 rounded-xl ${f.color} flex items-center justify-center mb-4 transition-transform duration-300 group-hover:scale-110`}>
+                    <f.icon size={20} />
+                  </div>
+                  <h3 className="font-bold text-[var(--color-text)] mb-2">{f.title}</h3>
+                  <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{f.desc}</p>
                 </div>
-                <h3 className="font-bold text-[var(--color-text)] mb-2">{f.title}</h3>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{f.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -520,7 +525,7 @@ export default function HomePage() {
         </div>
         <div className="relative max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
-            <div>
+            <Reveal variant="left">
               <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
                 <UserCheck size={13} /> Advanced Test Controls
               </div>
@@ -547,10 +552,10 @@ export default function HomePage() {
               <Link to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
                 <Zap size={16} /> {isAuthenticated ? 'Create a Test' : 'Start Creating Tests'}
               </Link>
-            </div>
+            </Reveal>
 
             {/* Live settings panel mockup */}
-            <div className="relative">
+            <Reveal variant="right" delay={120} className="relative">
               <div className="absolute -inset-3 bg-gradient-to-br from-teal-400/20 via-cyan-400/10 to-blue-400/10 blur-2xl rounded-3xl pointer-events-none" />
               <div className="relative bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl shadow-black/5 overflow-hidden">
                 <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/50">
@@ -604,7 +609,7 @@ export default function HomePage() {
                   ))}
                 </div>
               </div>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -613,7 +618,7 @@ export default function HomePage() {
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-            <div>
+            <Reveal variant="left">
               <div className="inline-flex items-center gap-2 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
                 <KeyRound size={13} /> Instant Enrollment
               </div>
@@ -637,9 +642,9 @@ export default function HomePage() {
               <Link to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
                 <KeyRound size={16} /> {isAuthenticated ? 'Generate an Access Key' : 'Try Access Keys Free'}
               </Link>
-            </div>
+            </Reveal>
 
-            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm">
+            <Reveal variant="right" delay={120} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm">
               <div className="flex items-center gap-2 mb-5">
                 <KeyRound size={16} className="text-violet-500" />
                 <span className="font-semibold text-sm text-[var(--color-text)]">Confirm enrollment</span>
@@ -680,7 +685,7 @@ export default function HomePage() {
               <button type="button" tabIndex={-1} className="w-full mt-4 btn-primary py-2.5 text-sm rounded-xl pointer-events-none">
                 Enroll Instantly
               </button>
-            </div>
+            </Reveal>
           </div>
         </div>
       </section>
@@ -688,7 +693,7 @@ export default function HomePage() {
       {/* ── AI Proctoring highlight ── */}
       <section className="py-20 px-4 sm:px-6 lg:px-8">
         <div className="max-w-7xl mx-auto">
-          <div className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 dark:from-slate-700 dark:to-slate-800 p-8 sm:p-12 text-white overflow-hidden relative">
+          <Reveal variant="scale" className="rounded-2xl bg-gradient-to-br from-slate-800 to-slate-700 dark:from-slate-700 dark:to-slate-800 p-8 sm:p-12 text-white overflow-hidden relative">
             <div className="absolute top-0 right-0 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
             <div className="relative z-10 grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
@@ -740,7 +745,7 @@ export default function HomePage() {
                 </div>
               </div>
             </div>
-          </div>
+          </Reveal>
         </div>
       </section>
 
@@ -751,20 +756,22 @@ export default function HomePage() {
           <div className="absolute bottom-0 left-0 w-64 h-64 bg-teal-50/40 dark:bg-teal-900/8 rounded-full blur-3xl" />
         </div>
         <div className="relative max-w-7xl mx-auto">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
               <CheckCircle size={13} /> How This Helps You
             </div>
             <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Built for real instructor outcomes</h2>
             <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Every feature is designed to make you more effective — saving time, improving results, and giving you the data to act.</p>
-          </div>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {HOW_HELPS.map((item) => (
-              <div key={item.title} className="card hover:shadow-md transition-all hover:-translate-y-0.5">
-                <item.icon size={22} className={`${item.color} mb-4`} />
-                <h3 className="font-bold text-[var(--color-text)] mb-2 text-sm">{item.title}</h3>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
-              </div>
+            {HOW_HELPS.map((item, i) => (
+              <Reveal key={item.title} delay={i * 70} variant="scale">
+                <div className="card hover:shadow-md transition-all hover:-translate-y-0.5 h-full">
+                  <item.icon size={22} className={`${item.color} mb-4`} />
+                  <h3 className="font-bold text-[var(--color-text)] mb-2 text-sm">{item.title}</h3>
+                  <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
+                </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -774,7 +781,7 @@ export default function HomePage() {
 <section className="py-20 px-4 sm:px-6 lg:px-8">
   <div className="max-w-7xl mx-auto">
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-      <div>
+      <Reveal variant="left">
         <div className="inline-flex items-center gap-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
           <Brain size={13} /> Smart School Insights
         </div>
@@ -811,9 +818,9 @@ export default function HomePage() {
           <BarChart2 size={16} />
           {isAuthenticated ? 'View Analytics' : 'Explore School Analytics'}
         </Link>
-      </div>
+      </Reveal>
 
-      <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
+      <Reveal variant="right" delay={100} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6">
         <div className="flex items-center gap-2 mb-5">
           <Brain size={16} className="text-indigo-500" />
           <span className="font-semibold text-sm text-[var(--color-text)]">
@@ -827,7 +834,7 @@ export default function HomePage() {
             { topic: 'Geometry', accuracy: 74, status: 'Good', color: 'bg-blue-500' },
             { topic: 'Trigonometry', accuracy: 52, status: 'Needs Work', color: 'bg-amber-500' },
             { topic: 'Mensuration', accuracy: 35, status: 'Weak', color: 'bg-red-500' },
-          ].map(item => (
+          ].map((item, i) => (
             <div key={item.topic}>
               <div className="flex items-center justify-between mb-1">
                 <span className="text-xs text-[var(--color-text)]">
@@ -851,8 +858,8 @@ export default function HomePage() {
 
               <div className="w-full h-2 bg-[var(--color-border)] rounded-full overflow-hidden">
                 <div
-                  className={`h-full ${item.color} rounded-full`}
-                  style={{ width: `${item.accuracy}%` }}
+                  className={`h-full ${item.color} rounded-full reveal-bar`}
+                  style={{ width: `${item.accuracy}%`, transitionDelay: `${150 + i * 90}ms` }}
                 />
               </div>
 
@@ -872,7 +879,7 @@ export default function HomePage() {
             Students are struggling in Mensuration and Trigonometry. Schedule revision classes and conduct a follow-up assessment next week.
           </p>
         </div>
-      </div>
+      </Reveal>
     </div>
   </div>
 </section>
@@ -880,22 +887,24 @@ export default function HomePage() {
       {/* ── Who It's For ── */}
       <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden bg-[var(--color-surface)]">
         <div className="relative max-w-7xl mx-auto">
-          <div className="text-center mb-14">
+          <Reveal className="text-center mb-14">
             <div className="inline-flex items-center gap-2 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-4">
               <Users size={13} /> Who It's For
             </div>
             <h2 className="text-3xl font-bold text-[var(--color-text)] mb-3">Built for instructors & organizations</h2>
             <p className="text-[var(--color-text-muted)] max-w-xl mx-auto text-sm">Whether you're an individual trainer or running assessments for thousands — this platform scales with you.</p>
-          </div>
+          </Reveal>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {WHO_FOR.map((uc) => (
-              <div key={uc.title} className="card hover:shadow-md transition-all hover:-translate-y-0.5">
-                <div className={`w-11 h-11 rounded-xl ${uc.color} flex items-center justify-center mb-4`}>
-                  <uc.icon size={20} />
+            {WHO_FOR.map((uc, i) => (
+              <Reveal key={uc.title} delay={i * 80} variant="scale">
+                <div className="card hover:shadow-md transition-all hover:-translate-y-0.5 h-full">
+                  <div className={`w-11 h-11 rounded-xl ${uc.color} flex items-center justify-center mb-4`}>
+                    <uc.icon size={20} />
+                  </div>
+                  <h3 className="font-bold text-[var(--color-text)] mb-2">{uc.title}</h3>
+                  <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{uc.desc}</p>
                 </div>
-                <h3 className="font-bold text-[var(--color-text)] mb-2">{uc.title}</h3>
-                <p className="text-sm text-[var(--color-text-muted)] leading-relaxed">{uc.desc}</p>
-              </div>
+              </Reveal>
             ))}
           </div>
         </div>
@@ -987,7 +996,7 @@ export default function HomePage() {
         <div className="absolute inset-0 pointer-events-none">
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[500px] h-[300px] bg-gradient-radial from-teal-100/50 via-cyan-50/20 to-transparent dark:from-teal-900/15 dark:to-transparent rounded-full blur-3xl" />
         </div>
-        <div className="relative max-w-3xl mx-auto text-center">
+        <Reveal className="relative max-w-3xl mx-auto text-center">
           <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6">
             <Sparkles size={12} /> Start Today
           </div>
@@ -1017,7 +1026,7 @@ export default function HomePage() {
             <CheckCircle size={12} className="inline mr-1 text-green-500" />
             Students always join free · No credit card for trial
           </p>
-        </div>
+        </Reveal>
       </section>
     </div>
   );

@@ -171,6 +171,92 @@ body {
   animation: floatY 6.5s ease-in-out 1.4s infinite;
 }
 
+/* ── Scroll reveal (homepage / marketing) ── */
+.reveal {
+  opacity: 0;
+  transform: translateY(22px);
+  transition:
+    opacity 0.7s cubic-bezier(0.22, 1, 0.36, 1),
+    transform 0.7s cubic-bezier(0.22, 1, 0.36, 1);
+  will-change: opacity, transform;
+}
+
+.reveal-left {
+  transform: translateX(-24px);
+}
+
+.reveal-right {
+  transform: translateX(24px);
+}
+
+.reveal-scale {
+  transform: translateY(12px) scale(0.97);
+}
+
+.reveal.is-visible {
+  opacity: 1;
+  transform: none;
+}
+
+@keyframes spinSlow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+.animate-spin-slow {
+  animation: spinSlow 48s linear infinite;
+  transform-origin: 260px 260px;
+}
+
+@keyframes dashPulse {
+  0%, 100% { stroke-dashoffset: 0; opacity: 0.8; }
+  50%      { stroke-dashoffset: 24; opacity: 1; }
+}
+
+.animate-dash-pulse {
+  animation: dashPulse 6s ease-in-out infinite;
+}
+
+@keyframes barGrow {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
+.reveal-bar {
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.reveal.is-visible .reveal-bar {
+  transform: scaleX(1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal,
+  .reveal-left,
+  .reveal-right,
+  .reveal-scale {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+
+  .reveal-bar {
+    transform: none;
+    transition: none;
+  }
+
+  .animate-float,
+  .animate-float-delayed,
+  .animate-float-slow,
+  .animate-spin-slow,
+  .animate-dash-pulse,
+  .animate-orb-drift {
+    animation: none !important;
+  }
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }
