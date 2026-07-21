@@ -1,9 +1,11 @@
 import {
-  ArrowRight, Award, BarChart2, BookOpen, Brain, Briefcase,
+  ArrowRight, Award, BadgeCheck, BarChart2, BookOpen, Brain, Briefcase,
   Camera,
   CheckCircle,
   Clock, Code2, Crown,
-  GraduationCap, LayoutDashboard,
+  FolderOpen,
+  GraduationCap, KeyRound, LayoutDashboard,
+  Lock,
   Monitor,
   ShieldCheck, Sparkles, Star,
   Target,
@@ -26,12 +28,16 @@ import ss8 from '../assets/screenshots/demo-screenshots/8.png';
 
 const FEATURES = [
   { icon: Sparkles, title: 'AI Test Generator', desc: 'Automatically generate high-quality questions by subject, difficulty, and topic — MCQ and coding questions with built-in compiler. Done in seconds.', color: 'bg-blue-100 dark:bg-blue-900/30 text-blue-600' },
+  { icon: FolderOpen, title: 'AI Questions From Your Own Content', desc: 'Upload PDFs, DOCX, or PPTX and let AI generate questions strictly grounded in your material — perfect for curriculum-aligned assessments.', color: 'bg-cyan-100 dark:bg-cyan-900/30 text-cyan-600' },
+  { icon: KeyRound, title: 'Instant Access Key Enrollment', desc: 'Share one reusable key so students self-enroll in seconds — no manual invites. Set an enrollment cap and track usage live.', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' },
   { icon: ShieldCheck, title: 'AI Proctoring & Monitoring', desc: 'Webcam-based monitoring, tab-switch detection, violation tracking, and random photo capture. You control whether proctoring is enabled per test.', color: 'bg-red-100 dark:bg-red-900/30 text-red-600' },
   { icon: BarChart2, title: 'Student Performance Tracking', desc: 'See how every student performs across each test. Track accuracy, score trends, attempt history, and time analysis — per student and per test.', color: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600' },
   { icon: Users, title: 'Batch Management', desc: 'Create batches, add or remove students, and assign tests to entire groups at once. Manage all your students from one place.', color: 'bg-teal-100 dark:bg-teal-900/30 text-teal-600' },
   { icon: Brain, title: 'AI Recommendations', desc: 'Our AI analyzes your students\' recent test performance and identifies strong topics, weak areas, and suggests what they should focus on next.', color: 'bg-violet-100 dark:bg-violet-900/30 text-violet-600' },
   { icon: Code2, title: 'Coding Assessments', desc: 'Create coding questions evaluated by AI. Candidates write and run code in a sandboxed browser environment — no setup needed.', color: 'bg-purple-100 dark:bg-purple-900/30 text-purple-600' },
   { icon: Award, title: 'Certificates & Verification', desc: 'Auto-generate branded PDF certificates for passing students. QR-code based verification so anyone can confirm authenticity instantly.', color: 'bg-green-100 dark:bg-green-900/30 text-green-600' },
+  { icon: BadgeCheck, title: 'Verified Instructor Badges', desc: 'Platform-verified instructors get a trust badge students can see on every test and enrollment screen — building confidence before they even start.', color: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600' },
+  { icon: Lock, title: 'Two-Factor Account Security', desc: 'Email OTP and authenticator app (TOTP) 2FA, independently configurable — keep instructor and admin accounts locked down.', color: 'bg-slate-100 dark:bg-slate-800/60 text-slate-700 dark:text-slate-300' },
   { icon: Clock, title: 'Test Expiry Control', desc: 'Set expiry date/time or lifetime availability. Tests automatically become inaccessible after expiry — no manual intervention needed.', color: 'bg-amber-100 dark:bg-amber-900/30 text-amber-600' },
   { icon: Camera, title: 'Screenshot Evidence', desc: 'Randomly capture webcam snapshots during proctored exams. Evidence stored securely for instructor review to ensure exam integrity.', color: 'bg-rose-100 dark:bg-rose-900/30 text-rose-600' },
 ];
@@ -41,8 +47,10 @@ const INSTRUCTOR_CONTROLS = [
   { label: 'Answer Review', desc: 'Show answers after exam' },
   { label: 'Certificates', desc: 'Auto-issue on pass' },
   { label: 'AI Proctoring', desc: 'Enable per test' },
+  { label: 'Access Key', desc: 'Self-enroll with a cap' },
   { label: 'Expiry Date', desc: 'Date/time or lifetime' },
   { label: 'Passing Score', desc: 'Set your own threshold' },
+  { label: 'Resource Grounding', desc: 'Generate from your files' },
 ];
 
 const HOW_HELPS = [
@@ -278,15 +286,15 @@ export default function HomePage() {
         </div>
         <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
           <div className="text-center max-w-4xl mx-auto mb-12">
-            <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm">
-              <Sparkles size={12} /> AI-Powered Instructor Platform
+            <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm ring-1 ring-teal-500/10">
+              <Sparkles size={12} /> The AI Platform for Modern Assessments
             </div>
             <h1 className="text-4xl sm:text-5xl lg:text-[3.5rem] font-extrabold text-[var(--color-text)] mb-5 leading-[1.12] tracking-tight">
-              Create, Manage & Analyze Tests<br />
-              <span className="text-[var(--color-primary)]">All in One Instructor Platform</span>
+              Create, Enroll & Analyze Tests<br />
+              <span className="bg-gradient-to-r from-teal-500 via-cyan-500 to-blue-600 bg-clip-text text-transparent">Powered End-to-End by AI</span>
             </h1>
             <p className="text-lg text-[var(--color-text-muted)] max-w-2xl mx-auto leading-relaxed">
-              Create exams in seconds using AI, manage batches, and track how your students perform with detailed analytics and smart recommendations.
+              Generate exams from a topic or your own documents, let students self-enroll instantly with a single access key, and track every result with AI-driven analytics — all secured with enterprise-grade 2FA.
             </p>
             <div className="flex flex-col sm:flex-row gap-3 justify-center mt-8">
               <Link
@@ -306,10 +314,11 @@ export default function HomePage() {
 
           {/* Trust indicators */}
           <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[var(--color-text-muted)] mb-10">
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> No setup required</span>
             <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Exam in 10 seconds</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Instant access-key enrollment</span>
             <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> AI proctoring built-in</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verifiable certificates</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verified instructor badges</span>
+            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> 2FA account security</span>
           </div>
 
           {/* Core value props — 3 cards */}
@@ -464,7 +473,7 @@ export default function HomePage() {
             </div>
             <div className="grid grid-cols-2 gap-4">
               {[
-                { label: 'Test Created', value: 'Python Fundamentals', badge: '24 students invited', color: 'bg-teal-50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800' },
+                { label: 'Test Created', value: 'Python Fundamentals', badge: '24 enrolled via access key', color: 'bg-teal-50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800' },
                 { label: 'Avg Score', value: '82%', badge: 'Pass rate: 91%', color: 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' },
                 { label: 'Proctoring', value: 'Active', badge: '0 violations detected', color: 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' },
                 { label: 'Certificates', value: '22', badge: 'Auto-issued on pass', color: 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' },
@@ -475,6 +484,82 @@ export default function HomePage() {
                   <p className="text-xs text-[var(--color-text-muted)] mt-1">{item.badge}</p>
                 </div>
               ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Instant Enrollment via Access Keys ── */}
+      <section className="py-20 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+            <div>
+              <div className="inline-flex items-center gap-2 bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
+                <KeyRound size={13} /> Instant Enrollment
+              </div>
+              <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">One access key. Unlimited self-enrollment.</h2>
+              <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
+                Generate a reusable access key for any test and share it however you like — email, chat, or a classroom slide. Students enter the key, preview the exam and instructor, and enroll themselves in seconds. No invite lists, no waiting.
+              </p>
+              <ul className="space-y-3 mb-8">
+                {[
+                  ['Generate a key with a custom enrollment cap you control', KeyRound],
+                  ['Students preview exam details before confirming enrollment', CheckCircle],
+                  ['Verified instructor badge builds trust at the enrollment step', BadgeCheck],
+                  ['Track live enrollment count and disable the key anytime', BarChart2],
+                ].map(([text, Icon]) => (
+                  <li key={text} className="flex items-center gap-2.5 text-sm text-[var(--color-text)]">
+                    <Icon size={15} className="text-violet-500 shrink-0" />
+                    {text}
+                  </li>
+                ))}
+              </ul>
+              <Link to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'} className="btn-primary px-6 py-3 inline-flex items-center gap-2 font-semibold rounded-xl">
+                <KeyRound size={16} /> {isAuthenticated ? 'Generate an Access Key' : 'Try Access Keys Free'}
+              </Link>
+            </div>
+
+            <div className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 shadow-sm">
+              <div className="flex items-center gap-2 mb-5">
+                <KeyRound size={16} className="text-violet-500" />
+                <span className="font-semibold text-sm text-[var(--color-text)]">Confirm enrollment</span>
+              </div>
+
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/60 p-4 mb-4">
+                <div className="flex items-center gap-1.5 mb-3">
+                  <span className="text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Access key</span>
+                </div>
+                <div className="font-mono text-sm font-bold text-[var(--color-text)] tracking-widest bg-[var(--color-surface)] border border-dashed border-violet-300 dark:border-violet-700 rounded-lg px-3 py-2 text-center">
+                  PHYS-7X9K2M
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 p-4 space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-9 h-9 rounded-xl bg-[var(--color-primary)]/10 flex items-center justify-center shrink-0">
+                    <BookOpen size={16} className="text-[var(--color-primary)]" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-semibold text-sm text-[var(--color-text)] leading-snug">Physics Mock Test — Term 2</p>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-0.5">40 questions · ~35 min</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between text-xs pt-2 border-t border-[var(--color-border)]">
+                  <span className="text-[var(--color-text-muted)]">Instructor</span>
+                  <span className="inline-flex items-center gap-1 font-medium text-[var(--color-text)]">
+                    Priya Sharma
+                    <BadgeCheck size={13} className="fill-emerald-500 text-white shrink-0" strokeWidth={1.5} />
+                  </span>
+                </div>
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-[var(--color-text-muted)]">Seats remaining</span>
+                  <span className="font-medium text-[var(--color-text)]">48 / 50</span>
+                </div>
+              </div>
+
+              <button type="button" tabIndex={-1} className="w-full mt-4 btn-primary py-2.5 text-sm rounded-xl pointer-events-none">
+                Enroll Instantly
+              </button>
             </div>
           </div>
         </div>
