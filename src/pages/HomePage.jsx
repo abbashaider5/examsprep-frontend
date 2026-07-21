@@ -254,7 +254,7 @@ function ScreenshotShowcase() {
                   <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
                   <div className="flex-1 mx-3">
                     <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded px-2.5 py-0.5 text-[10px] text-[var(--color-text-muted)] font-mono">
-                      exams.abbaslogic.com
+                      likhitai.com
                     </div>
                   </div>
                 </div>
@@ -288,7 +288,7 @@ export default function HomePage() {
           <div className="absolute top-20 left-0 w-72 h-72 bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-3xl" />
           <div className="absolute top-40 right-0 w-80 h-80 bg-teal-100/30 dark:bg-teal-900/10 rounded-full blur-3xl" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 lg:pt-24 pb-8 lg:pb-12">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 sm:py-20 lg:py-24">
           <div className="text-center max-w-4xl mx-auto mb-10 lg:mb-12">
             <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm ring-1 ring-teal-500/10">
               <Sparkles size={12} /> The AI Platform for Modern Assessments
@@ -323,97 +323,68 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* Product visual with floating elements */}
-          <div className="relative max-w-5xl mx-auto">
-            {/* Soft glow under the frame */}
+          {/* Feature cards — no product screenshots */}
+          <div className="relative max-w-4xl mx-auto">
             <div className="absolute -inset-4 sm:-inset-8 bg-gradient-to-b from-teal-400/15 via-cyan-400/10 to-transparent dark:from-teal-500/10 blur-2xl rounded-[2rem] pointer-events-none" />
 
-            {/* Floating chips — desktop */}
-            <div className="hidden lg:block absolute -left-2 top-16 z-20 animate-float">
-              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
-                <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
-                  <KeyRound size={16} className="text-violet-600 dark:text-violet-400" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Access Key</p>
-                  <p className="text-sm font-bold text-[var(--color-text)] font-mono tracking-wider">PHYS-7X9K</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden lg:block absolute -right-4 top-24 z-20 animate-float-delayed">
-              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
-                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
-                  <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Proctoring</p>
-                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Active · 0 alerts</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden lg:block absolute -left-6 bottom-28 z-20 animate-float-slow">
-              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
-                <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
-                  <TrendingUp size={16} className="text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Avg Score</p>
-                  <p className="text-sm font-bold text-[var(--color-text)]">82% · +12% this week</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="hidden lg:block absolute -right-2 bottom-20 z-20 animate-float">
-              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
-                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
-                  <Sparkles size={16} className="text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">AI Generator</p>
-                  <p className="text-sm font-bold text-[var(--color-text)]">40 Qs ready in 8s</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Browser frame + screenshot */}
-            <div className="relative rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-2xl shadow-teal-900/10 dark:shadow-black/40 bg-[var(--color-surface)]">
-              <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[var(--color-bg-alt)] border-b border-[var(--color-border)]">
-                <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
-                <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/80" />
-                <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
-                <div className="flex-1 mx-3">
-                  <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-md px-2.5 py-0.5 text-[10px] text-[var(--color-text-muted)] font-mono text-center sm:text-left">
-                    exams.abbaslogic.com/dashboard
+            <div className="relative grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+              {[
+                {
+                  icon: KeyRound,
+                  iconBg: 'bg-violet-100 dark:bg-violet-900/40',
+                  iconColor: 'text-violet-600 dark:text-violet-400',
+                  label: 'Access Key',
+                  value: 'PHYS-7X9K',
+                  hint: 'Students self-enroll instantly',
+                  float: 'animate-float',
+                },
+                {
+                  icon: ShieldCheck,
+                  iconBg: 'bg-emerald-100 dark:bg-emerald-900/40',
+                  iconColor: 'text-emerald-600 dark:text-emerald-400',
+                  label: 'Proctoring',
+                  value: 'Active · 0 alerts',
+                  hint: 'Integrity built into every exam',
+                  float: 'animate-float-delayed',
+                },
+                {
+                  icon: Sparkles,
+                  iconBg: 'bg-blue-100 dark:bg-blue-900/40',
+                  iconColor: 'text-blue-600 dark:text-blue-400',
+                  label: 'AI Generator',
+                  value: '40 Qs ready in 8s',
+                  hint: 'From topics or your own files',
+                  float: 'animate-float-slow',
+                },
+                {
+                  icon: TrendingUp,
+                  iconBg: 'bg-amber-100 dark:bg-amber-900/40',
+                  iconColor: 'text-amber-600 dark:text-amber-400',
+                  label: 'Avg Score',
+                  value: '82% · +12% this week',
+                  hint: 'AI insights after every attempt',
+                  float: 'animate-float',
+                },
+              ].map((card) => (
+                <div
+                  key={card.label}
+                  className={`flex items-start gap-3.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-lg shadow-black/5 rounded-2xl px-4 py-4 ${card.float}`}
+                >
+                  <div className={`w-11 h-11 rounded-xl ${card.iconBg} flex items-center justify-center shrink-0`}>
+                    <card.icon size={18} className={card.iconColor} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">{card.label}</p>
+                    <p className="text-sm font-bold text-[var(--color-text)] mt-0.5">{card.value}</p>
+                    <p className="text-xs text-[var(--color-text-muted)] mt-1">{card.hint}</p>
                   </div>
                 </div>
-              </div>
-              <img
-                src={ss7}
-                alt="LikhitAI instructor dashboard with AI recommendations and score trends"
-                className="w-full object-cover object-top"
-                style={{ maxHeight: '440px' }}
-                loading="eager"
-              />
-              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[var(--color-bg)] via-[var(--color-bg)]/40 to-transparent pointer-events-none" />
-            </div>
-
-            {/* Mobile floating chips row */}
-            <div className="lg:hidden flex flex-wrap justify-center gap-2 mt-4">
-              {[
-                { icon: KeyRound, label: 'Access Key', color: 'text-violet-600 bg-violet-100 dark:bg-violet-900/40' },
-                { icon: ShieldCheck, label: 'AI Proctoring', color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40' },
-                { icon: Sparkles, label: 'AI Generator', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/40' },
-              ].map((chip) => (
-                <span key={chip.label} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full pl-1.5 pr-3 py-1 shadow-sm">
-                  <span className={`w-6 h-6 rounded-full flex items-center justify-center ${chip.color}`}>
-                    <chip.icon size={12} />
-                  </span>
-                  {chip.label}
-                </span>
               ))}
             </div>
+
+            <p className="text-center text-xs text-[var(--color-text-muted)] mt-6">
+              Built for instructors at <span className="font-semibold text-[var(--color-text)]">Likhitai.com</span>
+            </p>
           </div>
         </div>
       </section>
