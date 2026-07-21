@@ -6,7 +6,7 @@ import {
   Clock, Code2, Crown,
   Eye,
   FolderOpen,
-  GraduationCap, KeyRound, LayoutDashboard,
+  GraduationCap, KeyRound,
   Lock,
   Monitor,
   Percent,
@@ -275,8 +275,7 @@ function ScreenshotShowcase() {
 }
 
 export default function HomePage() {
-  const { isAuthenticated, user } = useAuthStore();
-  const isInstructor = user?.role === 'instructor';
+  const { isAuthenticated } = useAuthStore();
 
   return (
     <div className="bg-[var(--color-bg)]">
