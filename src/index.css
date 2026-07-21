@@ -154,6 +154,23 @@ body {
   animation: slideLeft 0.25s ease-out both;
 }
 
+@keyframes floatY {
+  0%, 100% { transform: translateY(0); }
+  50%      { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: floatY 5s ease-in-out infinite;
+}
+
+.animate-float-delayed {
+  animation: floatY 5.5s ease-in-out 0.8s infinite;
+}
+
+.animate-float-slow {
+  animation: floatY 6.5s ease-in-out 1.4s infinite;
+}
+
 /* Scrollbar */
 ::-webkit-scrollbar       { width: 5px; height: 5px; }
 ::-webkit-scrollbar-track { background: transparent; }

@@ -1,12 +1,16 @@
 import {
   ArrowRight, Award, BadgeCheck, BarChart2, BookOpen, Brain, Briefcase,
+  Calendar,
   Camera,
   CheckCircle,
   Clock, Code2, Crown,
+  Eye,
   FolderOpen,
   GraduationCap, KeyRound, LayoutDashboard,
   Lock,
   Monitor,
+  Percent,
+  RefreshCw,
   ShieldCheck, Sparkles, Star,
   Target,
   TrendingUp,
@@ -43,14 +47,14 @@ const FEATURES = [
 ];
 
 const INSTRUCTOR_CONTROLS = [
-  { label: 'Reattempt', desc: 'Allow or block retakes' },
-  { label: 'Answer Review', desc: 'Show answers after exam' },
-  { label: 'Certificates', desc: 'Auto-issue on pass' },
-  { label: 'AI Proctoring', desc: 'Enable per test' },
-  { label: 'Access Key', desc: 'Self-enroll with a cap' },
-  { label: 'Expiry Date', desc: 'Date/time or lifetime' },
-  { label: 'Passing Score', desc: 'Set your own threshold' },
-  { label: 'Resource Grounding', desc: 'Generate from your files' },
+  { icon: RefreshCw, label: 'Reattempt', desc: 'Allow or block retakes', on: true },
+  { icon: Eye, label: 'Answer Review', desc: 'Show answers after exam', on: false },
+  { icon: Award, label: 'Certificates', desc: 'Auto-issue on pass', on: true },
+  { icon: ShieldCheck, label: 'AI Proctoring', desc: 'Enable per test', on: true },
+  { icon: KeyRound, label: 'Access Key', desc: 'Self-enroll with a cap', on: true },
+  { icon: Calendar, label: 'Expiry Date', desc: 'Date/time or lifetime', on: false },
+  { icon: Percent, label: 'Passing Score', desc: 'Set your own threshold', on: true },
+  { icon: FolderOpen, label: 'Resource Grounding', desc: 'Generate from your files', on: true },
 ];
 
 const HOW_HELPS = [
@@ -284,8 +288,8 @@ export default function HomePage() {
           <div className="absolute top-20 left-0 w-72 h-72 bg-blue-100/30 dark:bg-blue-900/10 rounded-full blur-3xl" />
           <div className="absolute top-40 right-0 w-80 h-80 bg-teal-100/30 dark:bg-teal-900/10 rounded-full blur-3xl" />
         </div>
-        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20 lg:py-28">
-          <div className="text-center max-w-4xl mx-auto mb-12">
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-16 sm:pt-20 lg:pt-24 pb-8 lg:pb-12">
+          <div className="text-center max-w-4xl mx-auto mb-10 lg:mb-12">
             <div className="inline-flex items-center gap-2 bg-gradient-to-r from-teal-100 to-cyan-100 dark:from-teal-900/30 dark:to-cyan-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-6 shadow-sm ring-1 ring-teal-500/10">
               <Sparkles size={12} /> The AI Platform for Modern Assessments
             </div>
@@ -310,41 +314,107 @@ export default function HomePage() {
                 <LayoutDashboard size={18} /> View Dashboard
               </Link>
             </div>
+            <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[var(--color-text-muted)] mt-7">
+              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Exam in 10 seconds</span>
+              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Instant access-key enrollment</span>
+              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> AI proctoring built-in</span>
+              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verified instructor badges</span>
+              <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> 2FA account security</span>
+            </div>
           </div>
 
-          {/* Trust indicators */}
-          <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-xs text-[var(--color-text-muted)] mb-10">
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Exam in 10 seconds</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Instant access-key enrollment</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> AI proctoring built-in</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> Verified instructor badges</span>
-            <span className="flex items-center gap-1"><CheckCircle size={12} className="text-green-500" /> 2FA account security</span>
-          </div>
+          {/* Product visual with floating elements */}
+          <div className="relative max-w-5xl mx-auto">
+            {/* Soft glow under the frame */}
+            <div className="absolute -inset-4 sm:-inset-8 bg-gradient-to-b from-teal-400/15 via-cyan-400/10 to-transparent dark:from-teal-500/10 blur-2xl rounded-[2rem] pointer-events-none" />
 
-          {/* Core value props — 3 cards */}
-          {/* <div className="grid grid-cols-1 md:grid-cols-3 gap-5 max-w-4xl mx-auto">
-            {[
-              { icon: Users, title: 'Manage all your students from one place', desc: 'Create batches, assign tests, track who attempted, who passed, and who needs support.', color: 'from-teal-400 to-cyan-500' },
-              { icon: BarChart2, title: 'Track performance with real data', desc: 'Per-student analytics, topic-wise accuracy, score trends, and time analysis on every test.', color: 'from-blue-400 to-indigo-500' },
-              { icon: Brain, title: 'Improve results using AI insights', desc: 'AI identifies weak areas for each student and suggests what they should focus on next.', color: 'from-violet-400 to-purple-500' },
-            ].map(item => (
-              <div key={item.title} className="bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl p-6 hover:shadow-md transition-all hover:-translate-y-0.5">
-                <div className={`w-11 h-11 rounded-xl bg-gradient-to-br ${item.color} flex items-center justify-center mb-4 shadow-sm`}>
-                  <item.icon size={20} className="text-white" />
+            {/* Floating chips — desktop */}
+            <div className="hidden lg:block absolute -left-2 top-16 z-20 animate-float">
+              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
+                <div className="w-9 h-9 rounded-xl bg-violet-100 dark:bg-violet-900/40 flex items-center justify-center">
+                  <KeyRound size={16} className="text-violet-600 dark:text-violet-400" />
                 </div>
-                <h3 className="font-bold text-[var(--color-text)] mb-2 text-sm leading-snug">{item.title}</h3>
-                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{item.desc}</p>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Access Key</p>
+                  <p className="text-sm font-bold text-[var(--color-text)] font-mono tracking-wider">PHYS-7X9K</p>
+                </div>
               </div>
-            ))}
-          </div> */}
+            </div>
 
-          {/* Student join note */}
-          {/* <div className="text-center mt-8">
-            <p className="text-xs text-[var(--color-text-muted)]">
-              <CheckCircle size={12} className="inline mr-1 text-green-500" />
-              Your students join <strong className="text-[var(--color-text)]">completely free</strong> — they take your tests, earn certificates, and never pay a thing.
-            </p>
-          </div> */}
+            <div className="hidden lg:block absolute -right-4 top-24 z-20 animate-float-delayed">
+              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center">
+                  <ShieldCheck size={16} className="text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Proctoring</p>
+                  <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400">Active · 0 alerts</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden lg:block absolute -left-6 bottom-28 z-20 animate-float-slow">
+              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
+                <div className="w-9 h-9 rounded-xl bg-amber-100 dark:bg-amber-900/40 flex items-center justify-center">
+                  <TrendingUp size={16} className="text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">Avg Score</p>
+                  <p className="text-sm font-bold text-[var(--color-text)]">82% · +12% this week</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="hidden lg:block absolute -right-2 bottom-20 z-20 animate-float">
+              <div className="flex items-center gap-2.5 bg-[var(--color-surface)] border border-[var(--color-border)] shadow-xl shadow-black/10 rounded-2xl px-3.5 py-2.5">
+                <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-900/40 flex items-center justify-center">
+                  <Sparkles size={16} className="text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase tracking-wide text-[var(--color-text-muted)] font-semibold">AI Generator</p>
+                  <p className="text-sm font-bold text-[var(--color-text)]">40 Qs ready in 8s</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Browser frame + screenshot */}
+            <div className="relative rounded-2xl overflow-hidden border border-[var(--color-border)] shadow-2xl shadow-teal-900/10 dark:shadow-black/40 bg-[var(--color-surface)]">
+              <div className="flex items-center gap-1.5 px-4 py-2.5 bg-[var(--color-bg-alt)] border-b border-[var(--color-border)]">
+                <div className="w-2.5 h-2.5 rounded-full bg-red-400/80" />
+                <div className="w-2.5 h-2.5 rounded-full bg-yellow-400/80" />
+                <div className="w-2.5 h-2.5 rounded-full bg-green-400/80" />
+                <div className="flex-1 mx-3">
+                  <div className="bg-[var(--color-bg)] border border-[var(--color-border)] rounded-md px-2.5 py-0.5 text-[10px] text-[var(--color-text-muted)] font-mono text-center sm:text-left">
+                    exams.abbaslogic.com/dashboard
+                  </div>
+                </div>
+              </div>
+              <img
+                src={ss7}
+                alt="LikhitAI instructor dashboard with AI recommendations and score trends"
+                className="w-full object-cover object-top"
+                style={{ maxHeight: '440px' }}
+                loading="eager"
+              />
+              <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-[var(--color-bg)] via-[var(--color-bg)]/40 to-transparent pointer-events-none" />
+            </div>
+
+            {/* Mobile floating chips row */}
+            <div className="lg:hidden flex flex-wrap justify-center gap-2 mt-4">
+              {[
+                { icon: KeyRound, label: 'Access Key', color: 'text-violet-600 bg-violet-100 dark:bg-violet-900/40' },
+                { icon: ShieldCheck, label: 'AI Proctoring', color: 'text-emerald-600 bg-emerald-100 dark:bg-emerald-900/40' },
+                { icon: Sparkles, label: 'AI Generator', color: 'text-blue-600 bg-blue-100 dark:bg-blue-900/40' },
+              ].map((chip) => (
+                <span key={chip.label} className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text)] bg-[var(--color-surface)] border border-[var(--color-border)] rounded-full pl-1.5 pr-3 py-1 shadow-sm">
+                  <span className={`w-6 h-6 rounded-full flex items-center justify-center ${chip.color}`}>
+                    <chip.icon size={12} />
+                  </span>
+                  {chip.label}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
 
@@ -445,24 +515,32 @@ export default function HomePage() {
       </section>
 
       {/* ── Advanced Test Controls ── */}
-      <section className="py-20 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-7xl mx-auto">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
+      <section className="relative py-20 px-4 sm:px-6 lg:px-8 overflow-hidden">
+        <div className="absolute inset-0 pointer-events-none">
+          <div className="absolute top-1/2 right-0 w-80 h-80 bg-teal-100/40 dark:bg-teal-900/10 rounded-full blur-3xl -translate-y-1/2" />
+        </div>
+        <div className="relative max-w-7xl mx-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-12 lg:gap-16 items-center">
             <div>
               <div className="inline-flex items-center gap-2 bg-teal-100 dark:bg-teal-900/30 text-teal-700 dark:text-teal-400 text-xs font-semibold px-4 py-1.5 rounded-full mb-5">
                 <UserCheck size={13} /> Advanced Test Controls
               </div>
               <h2 className="text-3xl font-bold text-[var(--color-text)] mb-4">You control every aspect of every test</h2>
-              <p className="text-[var(--color-text-muted)] mb-6 leading-relaxed text-sm">
-                Set duration, difficulty, and passing score. Enable or disable reattempt, answer review, certificates, and AI proctoring — independently for each test you create.
+              <p className="text-[var(--color-text-muted)] mb-8 leading-relaxed text-sm">
+                Fine-tune duration, difficulty, passing score, access keys, proctoring, certificates, and more — independently for each exam. Switch settings on or off in one click.
               </p>
-              <div className="grid grid-cols-2 gap-3 mb-8">
-                {INSTRUCTOR_CONTROLS.map(ctrl => (
-                  <div key={ctrl.label} className="flex items-center gap-2.5 p-3 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)]">
-                    <div className="w-2 h-2 rounded-full bg-teal-500 shrink-0" />
-                    <div>
-                      <p className="text-xs font-semibold text-[var(--color-text)]">{ctrl.label}</p>
-                      <p className="text-[10px] text-[var(--color-text-muted)]">{ctrl.desc}</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-8">
+                {INSTRUCTOR_CONTROLS.map((ctrl) => (
+                  <div
+                    key={ctrl.label}
+                    className="flex items-start gap-3 p-3.5 rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] hover:border-teal-300 dark:hover:border-teal-700 hover:shadow-sm transition-all"
+                  >
+                    <div className="w-9 h-9 rounded-lg bg-teal-50 dark:bg-teal-900/30 flex items-center justify-center shrink-0">
+                      <ctrl.icon size={16} className="text-teal-600 dark:text-teal-400" />
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-[var(--color-text)] leading-snug">{ctrl.label}</p>
+                      <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{ctrl.desc}</p>
                     </div>
                   </div>
                 ))}
@@ -471,19 +549,62 @@ export default function HomePage() {
                 <Zap size={16} /> {isAuthenticated ? 'Create a Test' : 'Start Creating Tests'}
               </Link>
             </div>
-            <div className="grid grid-cols-2 gap-4">
-              {[
-                { label: 'Test Created', value: 'Python Fundamentals', badge: '24 enrolled via access key', color: 'bg-teal-50 dark:bg-teal-900/10 border-teal-200 dark:border-teal-800' },
-                { label: 'Avg Score', value: '82%', badge: 'Pass rate: 91%', color: 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800' },
-                { label: 'Proctoring', value: 'Active', badge: '0 violations detected', color: 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800' },
-                { label: 'Certificates', value: '22', badge: 'Auto-issued on pass', color: 'bg-amber-50 dark:bg-amber-900/10 border-amber-200 dark:border-amber-800' },
-              ].map(item => (
-                <div key={item.label} className={`card border ${item.color} hover:shadow-sm transition-shadow`}>
-                  <p className="text-xs text-[var(--color-text-muted)] mb-1">{item.label}</p>
-                  <p className="text-xl font-bold text-[var(--color-text)]">{item.value}</p>
-                  <p className="text-xs text-[var(--color-text-muted)] mt-1">{item.badge}</p>
+
+            {/* Live settings panel mockup */}
+            <div className="relative">
+              <div className="absolute -inset-3 bg-gradient-to-br from-teal-400/20 via-cyan-400/10 to-blue-400/10 blur-2xl rounded-3xl pointer-events-none" />
+              <div className="relative bg-[var(--color-surface)] border border-[var(--color-border)] rounded-2xl shadow-xl shadow-black/5 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-[var(--color-border)] bg-[var(--color-bg-alt)]/50">
+                  <div>
+                    <p className="text-sm font-bold text-[var(--color-text)]">Exam Settings</p>
+                    <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Python Fundamentals · Draft</p>
+                  </div>
+                  <span className="inline-flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wide text-teal-700 dark:text-teal-400 bg-teal-100 dark:bg-teal-900/40 px-2.5 py-1 rounded-full">
+                    <span className="w-1.5 h-1.5 rounded-full bg-teal-500 animate-pulse" />
+                    Live Preview
+                  </span>
                 </div>
-              ))}
+
+                <div className="p-5 space-y-1">
+                  {INSTRUCTOR_CONTROLS.map((ctrl) => (
+                    <div
+                      key={`panel-${ctrl.label}`}
+                      className="flex items-center justify-between gap-3 py-3 border-b border-[var(--color-border)] last:border-0"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className={`w-8 h-8 rounded-lg flex items-center justify-center shrink-0 ${ctrl.on ? 'bg-teal-100 dark:bg-teal-900/40 text-teal-600 dark:text-teal-400' : 'bg-[var(--color-bg-alt)] text-[var(--color-text-muted)]'}`}>
+                          <ctrl.icon size={14} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-[var(--color-text)] truncate">{ctrl.label}</p>
+                          <p className="text-[11px] text-[var(--color-text-muted)] truncate">{ctrl.desc}</p>
+                        </div>
+                      </div>
+                      <div
+                        className={`relative w-10 h-5 rounded-full shrink-0 transition-colors ${ctrl.on ? 'bg-teal-500' : 'bg-[var(--color-border)]'}`}
+                        aria-hidden
+                      >
+                        <span
+                          className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-all ${ctrl.on ? 'left-5' : 'left-0.5'}`}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="px-5 py-4 border-t border-[var(--color-border)] bg-[var(--color-bg-alt)]/40 grid grid-cols-3 gap-3">
+                  {[
+                    { label: 'Duration', value: '45 min' },
+                    { label: 'Questions', value: '40' },
+                    { label: 'Pass mark', value: '60%' },
+                  ].map((m) => (
+                    <div key={m.label} className="text-center rounded-xl bg-[var(--color-surface)] border border-[var(--color-border)] px-2 py-2.5">
+                      <p className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide font-semibold">{m.label}</p>
+                      <p className="text-sm font-bold text-[var(--color-text)] mt-0.5">{m.value}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         </div>
