@@ -304,21 +304,24 @@ export default function HomePage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-12 lg:gap-8 items-center">
             {/* Copy */}
             <div className="lg:col-span-6 xl:col-span-5">
-              <p className="font-display text-sm sm:text-base font-bold tracking-[0.08em] uppercase text-teal-600 dark:text-teal-400 mb-5 animate-hero-in">
+              <p className="font-display text-sm sm:text-base font-bold tracking-[0.08em] uppercase text-teal-600 dark:text-teal-400 mb-4 animate-hero-in">
                 LikhitAI
               </p>
-              <h1 className="font-display text-[2.35rem] sm:text-5xl lg:text-[3.25rem] font-extrabold text-[var(--color-text)] leading-[1.08] tracking-tight mb-5 animate-hero-in-delay">
-                AI exams your classroom can trust.
+              <p className="text-sm text-[var(--color-text-muted)] mb-4 animate-hero-in">
+                For schools, coaching institutes, tutors &amp; HR teams
+              </p>
+              <h1 className="font-display text-[2.25rem] sm:text-5xl lg:text-[3.1rem] font-extrabold text-[var(--color-text)] leading-[1.1] tracking-tight mb-5 animate-hero-in-delay">
+                Create and run AI-powered tests in minutes.
               </h1>
               <p className="text-base sm:text-lg text-[var(--color-text-muted)] leading-relaxed max-w-xl mb-8 animate-hero-in-delay">
-                Generate assessments from a topic or your documents, enroll students with one access key, and grade with AI — on Likhitai.com.
+                LikhitAI helps you generate exams, share them with an access key, monitor attempts with AI proctoring, and see results instantly — whether you teach a class, run a coaching batch, or assess candidates at work.
               </p>
               <div className="flex flex-col sm:flex-row gap-3 animate-hero-in-delay-2">
                 <Link
                   to={isAuthenticated ? '/create-exam' : '/signup?role=instructor'}
                   className="btn-primary px-7 py-3.5 flex items-center justify-center gap-2 font-semibold rounded-xl text-base"
                 >
-                  Start creating tests
+                  Create your first test
                   <ArrowRight size={16} />
                 </Link>
                 <Link
@@ -329,7 +332,7 @@ export default function HomePage() {
                 </Link>
               </div>
               <p className="mt-8 text-sm text-[var(--color-text-muted)] animate-hero-in-delay-2">
-                Access keys · AI proctoring · Verified instructors · 2FA
+                AI question generation · Access-key enrollment · Proctoring · Instant reports
               </p>
             </div>
 
@@ -397,16 +400,16 @@ export default function HomePage() {
 
                 {/* Labels as plain text anchors — not cards */}
                 <div className="absolute left-[6%] top-[18%] text-left">
-                  <p className="font-display text-xs font-semibold text-teal-700 dark:text-teal-300 tracking-wide">Generate</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">AI from topic or files</p>
+                  <p className="font-display text-xs font-semibold text-teal-700 dark:text-teal-300 tracking-wide">Create</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">AI builds the test</p>
                 </div>
                 <div className="absolute right-[4%] top-[46%] text-right">
-                  <p className="font-display text-xs font-semibold text-sky-700 dark:text-sky-300 tracking-wide">Enroll</p>
+                  <p className="font-display text-xs font-semibold text-sky-700 dark:text-sky-300 tracking-wide">Share</p>
                   <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">One access key</p>
                 </div>
                 <div className="absolute left-[8%] bottom-[16%] text-left">
-                  <p className="font-display text-xs font-semibold text-teal-800 dark:text-teal-200 tracking-wide">Analyze</p>
-                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Scores & insights</p>
+                  <p className="font-display text-xs font-semibold text-teal-800 dark:text-teal-200 tracking-wide">Evaluate</p>
+                  <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">Results in minutes</p>
                 </div>
               </div>
             </div>
