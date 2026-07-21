@@ -1,10 +1,11 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,400;0,9..40,500;0,9..40,600;0,9..40,700;1,9..40,400&family=Sora:wght@500;600;700;800&display=swap");
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 /* ── Design Tokens ───────────────────────────────────────────────────────────
    PRIMARY THEME: Teal-600 → Blue-700
-   Typography: Apple system stack (SF Pro on macOS/iOS)
+   Typography: Sora (display) + DM Sans (body)
    ─────────────────────────────────────────────────────────────────────────── */
 :root {
   --color-primary: #0d9488;        /* teal-600 — main brand color            */
@@ -19,8 +20,8 @@
   --radius-lg: 14px;
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.06), 0 1px 2px rgba(0,0,0,0.04);
   --shadow-md: 0 4px 16px rgba(0,0,0,0.08), 0 2px 4px rgba(0,0,0,0.04);
-  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
-  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+  --font-sans: "DM Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --font-display: "Sora", "DM Sans", system-ui, sans-serif;
 }
 
 .dark {
@@ -46,7 +47,8 @@ html {
 
 body {
   font-family: var(--font-sans);
-  letter-spacing: -0.011em;
+  font-optical-sizing: auto;
+  letter-spacing: -0.01em;
   background-color: var(--color-bg);
   /* Subtle teal-blue ambient gradient — never looks plain white */
   background-image:
@@ -62,7 +64,12 @@ body {
 
 .font-display {
   font-family: var(--font-display);
-  letter-spacing: -0.022em;
+  letter-spacing: -0.03em;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
+  letter-spacing: -0.025em;
 }
 
 @layer components {

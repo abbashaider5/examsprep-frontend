@@ -120,7 +120,7 @@ export default function App() {
     <GoogleOAuthProvider clientId={googleClientId || 'missing-google-client-id'}>
       <BrowserRouter>
         <RouteSeo />
-        <Toaster position="top-right" toastOptions={{ duration: 3500, style: { borderRadius: '10px', fontSize: '14px', fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif' } }} />
+        <Toaster position="top-right" toastOptions={{ duration: 3500, style: { borderRadius: '10px', fontSize: '14px', fontFamily: '"DM Sans", system-ui, sans-serif' } }} />
 
       <Routes>
         {/* Public marketing pages */}
